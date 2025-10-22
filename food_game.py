@@ -14,9 +14,10 @@ Key features:
 from __future__ import annotations
 
 import random
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Sequence, Tuple
 
 from food_api import Chef, Ingredient, RULES_VERSION, GameData, build_market_deck
+from seed_utils import resolve_seed
 
 DATA = GameData.from_json()
 
@@ -28,7 +29,7 @@ DEFAULT_DECK_SIZE = 60
 DEFAULT_BIAS = 2.7
 
 
-def _prompt_selection(prompt: str, options: Sequence[str]) -> str:
+def _prompt_selection(prompt: str, options: Sequence[str], rng: random.Random) -> str:
     """Display numbered options and return the chosen value."""
     indexed = list(enumerate(options, start=1))
     for idx, value in indexed:
@@ -36,7 +37,7 @@ def _prompt_selection(prompt: str, options: Sequence[str]) -> str:
     while True:
         raw = input(f"{prompt} (number or name, blank for random): ").strip()
         if not raw:
-            choice = random.choice(options)
+            choice = rng.choice(options)
             print(f"  -> Randomly selected: {choice}\n")
             return choice
         if raw.isdigit():
@@ -52,16 +53,16 @@ def _prompt_selection(prompt: str, options: Sequence[str]) -> str:
         print("Invalid selection. Please try again.")
 
 
-def choose_theme() -> str:
+def choose_theme(rng: random.Random) -> str:
     theme_names = sorted(DATA.themes.keys())
     print("\n=== Choose a market theme ===")
-    return _prompt_selection("Theme", theme_names)
+    return _prompt_selection("Theme", theme_names, rng)
 
 
-def choose_chef() -> Chef:
+def choose_chef(rng: random.Random) -> Chef:
     chef_names = [chef.name for chef in DATA.chefs]
     print("\n=== Choose a chef ===")
-    selected_name = _prompt_selection("Chef", chef_names)
+    selected_name = _prompt_selection("Chef", chef_names, rng)
     for chef in DATA.chefs:
         if chef.name == selected_name:
             return chef
@@ -88,6 +89,21 @@ def prompt_run_count() -> int:
         if raw.isdigit() and int(raw) > 0:
             return int(raw)
         print("Please enter a positive integer.")
+
+
+def prompt_seed() -> Tuple[int, random.Random]:
+    """Prompt the user for a reproducible RNG seed."""
+
+    while True:
+        seed_raw = input("Optional RNG seed (blank for random): ").strip()
+        if not seed_raw:
+            return resolve_seed(None)
+        try:
+            typed_seed = int(seed_raw)
+        except ValueError:
+            print("Please enter a valid integer seed.")
+            continue
+        return resolve_seed(typed_seed)
 
 
 def describe_ingredient(ingredient: Ingredient, chef_key_set: Iterable[str]) -> str:
@@ -163,11 +179,11 @@ def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
     return final_score
 
 
-def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
+def play_single_run(theme_name: str, chef: Chef, turns: int, rng: random.Random) -> int:
     deck = build_market_deck(
-        DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=random
+        DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=rng
     )
-    random.shuffle(deck)
+    rng.shuffle(deck)
     total_score = 0
     hand: List = []
 
@@ -176,9 +192,9 @@ def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
         if needed > 0:
             if len(deck) < needed:
                 deck = build_market_deck(
-                    DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=random
+                    DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=rng
                 )
-                random.shuffle(deck)
+                rng.shuffle(deck)
                 print("\n-- Deck refreshed --")
             hand.extend(deck.pop() for _ in range(needed))
         print(f"\n=== Turn {turn}/{turns} ===")
@@ -212,19 +228,20 @@ def main() -> None:
     )
 
     while True:
-        theme = choose_theme()
-        chef = choose_chef()
+        seed_value, rng = prompt_seed()
+        print(
+            f"\nUsing RNG seed: {seed_value}\n"
+            "  (Pass this seed to food_simulator.py with --seed to reproduce runs.)\n"
+        )
+
+        theme = choose_theme(rng)
+        chef = choose_chef(rng)
         turns = prompt_turn_count()
         runs = prompt_run_count()
-        seed_raw = input("Optional RNG seed (blank for random): ").strip()
-        if seed_raw:
-            random.seed(int(seed_raw))
-        else:
-            random.seed()
 
         for run_index in range(1, runs + 1):
             print(f"\n>>> Starting run {run_index}/{runs} with Chef {chef.name} in {theme} <<<")
-            score = play_single_run(theme, chef, turns)
+            score = play_single_run(theme, chef, turns, rng)
             print(f"Final score for run {run_index}: {score}\n")
 
         again = input("Play another configuration? (y/N): ").strip().lower()

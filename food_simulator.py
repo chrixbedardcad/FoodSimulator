@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import os
-import random
 from collections import Counter
 from datetime import datetime
 from typing import Dict, List
@@ -15,6 +14,7 @@ from food_api import (
     format_report_header,
     simulate_many,
 )
+from seed_utils import resolve_seed
 
 
 def write_report_files(
@@ -117,7 +117,8 @@ if __name__ == "__main__":
         print(f"Theme '{args.theme}' not found. Available: {available}")
         raise SystemExit(1)
 
-    seed_used = args.seed if args.seed is not None else random.randint(0, 2**32 - 1)
+    seed_used, _ = resolve_seed(args.seed)
+    print(f"Using RNG seed: {seed_used}")
 
     summary, ingredient_totals, taste_totals, recipe_totals, scores = simulate_many(
         data,

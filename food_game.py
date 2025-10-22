@@ -16,6 +16,7 @@ from __future__ import annotations
 import random
 from typing import Iterable, List, Sequence
 
+import food_simulator as sim
 from food_simulator import (
     Chef,
     Ingredient,
@@ -24,8 +25,6 @@ from food_simulator import (
     initialize_data,
     trio_score,
     which_recipe,
-    CHEFS,
-    THEMES,
 )
 
 # Default gameplay knobs – tweak freely for experimentation.
@@ -61,16 +60,16 @@ def _prompt_selection(prompt: str, options: Sequence[str]) -> str:
 
 
 def choose_theme() -> str:
-    theme_names = sorted(THEMES.keys())
+    theme_names = sorted(sim.THEMES.keys())
     print("\n=== Choose a market theme ===")
     return _prompt_selection("Theme", theme_names)
 
 
 def choose_chef() -> Chef:
-    chef_names = [chef.name for chef in CHEFS]
+    chef_names = [chef.name for chef in sim.CHEFS]
     print("\n=== Choose a chef ===")
     selected_name = _prompt_selection("Chef", chef_names)
-    for chef in CHEFS:
+    for chef in sim.CHEFS:
         if chef.name == selected_name:
             return chef
     raise RuntimeError("Selected chef not found; data set may be inconsistent.")
@@ -156,7 +155,7 @@ def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
 
 
 def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
-    theme_pool = THEMES[theme_name]
+    theme_pool = sim.THEMES[theme_name]
     deck = build_market_deck(
         theme_pool, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS
     )

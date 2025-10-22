@@ -6,14 +6,24 @@
       "Carbonara",
       "Risotto"
     ],
-    "perks": {}
+    "perks": {
+      "recipe_multipliers": {
+        "Caprese": 1.5,
+        "Carbonara": 2.0,
+        "Risotto": 1.8
+      }
+    }
   },
   {
     "name": "Chef Asian",
     "recipe_names": [
       "Sushi"
     ],
-    "perks": {}
+    "perks": {
+      "recipe_multipliers": {
+        "Sushi": 2.5
+      }
+    }
   },
   {
     "name": "Chef Sweettooth",
@@ -21,13 +31,22 @@
       "Mousse",
       "LemonTart"
     ],
-    "perks": {}
+    "perks": {
+      "recipe_multipliers": {
+        "Mousse": 2.0,
+        "LemonTart": 1.7
+      }
+    }
   },
   {
     "name": "Chef Rustic",
     "recipe_names": [
       "BeefStew"
     ],
-    "perks": {}
+    "perks": {
+      "recipe_multipliers": {
+        "BeefStew": 2.2
+      }
+    }
   }
 ]

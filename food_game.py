@@ -135,23 +135,39 @@ def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:
         return [hand[p - 1] for p in picks]
 
 
+def _recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
+    if not recipe_name:
+        return 1.0
+    multipliers = chef.perks.get("recipe_multipliers", {})
+    try:
+        return float(multipliers.get(recipe_name, 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
-    score, chips, taste_sum, multiplier = trio_score(list(selected))
+    base_score, chips, taste_sum, taste_multiplier = trio_score(list(selected))
     recipe_name = which_recipe(list(selected))
+    recipe_multiplier = _recipe_multiplier(chef, recipe_name)
+    total_multiplier = taste_multiplier * recipe_multiplier
+    final_score = int(round(base_score * recipe_multiplier))
     chef_hits = sum(1 for ing in selected if ing.name in chef_key_ingredients(chef))
+
     print("\n--- Trio Result ---")
     for ing in selected:
         print(f"  {ing.name} (Taste: {ing.taste}, Chips: {ing.chips})")
     print(f"Total chips: {chips}")
     print(f"Taste synergy sum: {taste_sum}")
-    print(f"Multiplier applied: x{multiplier}")
-    print(f"Score gained: {score}")
+    print(f"Taste multiplier: x{taste_multiplier}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
     else:
         print("No recipe completed this turn.")
+    print(f"Recipe multiplier: x{recipe_multiplier}")
+    print(f"Total multiplier: x{total_multiplier:.2f}")
+    print(f"Score gained: {final_score} (base score before recipe bonus: {base_score})")
     print(f"Chef key ingredients used: {chef_hits}/{TRIO_SIZE}\n")
-    return score
+    return final_score
 
 
 def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:

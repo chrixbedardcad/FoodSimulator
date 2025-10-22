@@ -1,139 +1,135 @@
+
 # 🍲 Food Deck Simulator — Core Balancing Prototype
 
-This project is a **Monte Carlo–based balancing simulator** for the *Food Card Deck Video Game*, a design inspired by *Balatro* and *Slay the Spire*, where cards represent **ingredients** instead of poker hands.
+A toolkit for experimenting with the Food Card Deck video game concept. The repository now ships with two complementary entry points:
 
-The simulator models the core **scoring, recipe-learning, and chef bias mechanics** that form the foundation of the gameplay loop.
+* `food_simulator.py` — a Monte Carlo batch simulator that stress tests balance across hundreds of automated runs and exports CSV/TXT reports.
+* `food_game.py` — an interactive terminal mini-game that lets designers play short sessions using the exact same rules, decks, and scoring logic.
 
----
-
-## 🎮 Concept Overview
-
-- Each **ingredient card** has:
-  - A *Taste* tag (`Sweet`, `Umami`, `Salty`, `Sour`, or `Bitter`)
-  - A *Chip value* (1–30)
-- **Recipes** are sets of 3 ingredients (trios) that can be discovered and mastered.
-- **Chefs** define groups of recipes and apply a bias to draw their own ingredients more often.
-- **Themes** (markets) like *Mediterranean* or *Asian* define which ingredients are available in a round.
-- Each **run** simulates drawing ingredients, forming trios, scoring them, and tracking mastery frequency.
-
-The simulator helps find the right balance between:
-- Ingredient frequency
-- Scoring potential
-- Taste distribution
-- Chef advantage
-- Recipe progression
+Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and themes) so that data tweaks are immediately reflected everywhere.
 
 ---
 
-## ⚙️ Core Mechanics Simulated
+## ✨ Features at a Glance
 
-| Mechanic | Description |
-|-----------|-------------|
-| **Trio Draws** | 3 ingredients are drawn from a market deck (chef bias may alter odds). |
-| **Scoring** | Each trio’s score = sum of chip values × taste synergy multiplier. |
-| **Taste Matrix** | JSON-defined table that determines synergy between tastes (e.g. `Sweet + Salty = 3`). |
-| **Learning Slot** | Tracks recipes being learned; cooking the same recipe twice masters it. |
-| **Chef Bias** | Weighted draw probability toward a chef’s preferred ingredients. |
-| **Market Themes** | Sets of ingredients by region or cuisine, used to vary gameplay flavor. |
+- **Data-first design**: All cards, recipes, chefs, and taste synergies live in JSON files. Adjust the numbers or add new entries without touching Python code.
+- **Monte Carlo balance passes**: Run hundreds of fully automated sessions to inspect scoring distributions, mastery rates, and ingredient diversity.
+- **Automatic report generation**: Every batch run produces a timestamped TXT summary plus CSVs for ingredients, tastes, recipes, and per-run scores.
+- **Interactive prototyping loop**: Use the terminal mini-game to make choices turn-by-turn, preview chef perks, and see trio scoring breakdowns in real time.
 
 ---
 
-## 🗂️ File Structure
+## 🗂️ Project Structure
 
 ```
 FoodSimulator/
-│
-├── food_simulator.py       ← Main simulator with CLI & report generator
-│
-├── ingredients.json        ← All available ingredients with name, taste, and chip value
-├── taste_matrix.json       ← Defines taste synergy multipliers
-├── recipes.json            ← List of recipe trios
-├── chefs.json              ← List of chefs, their recipes, and perk slots
-├── themes.json             ← Market themes defining available ingredient pools
-│
-└── reports/                ← Auto-generated after each simulation run (TXT + CSV)
+├── food_simulator.py       ← Monte Carlo simulator with CLI & report writer
+├── food_game.py            ← Interactive terminal harness for manual playtests
+├── ingredients.json        ← Ingredient cards (taste tags + chip values)
+├── recipes.json            ← Recipe trios that can be discovered and mastered
+├── chefs.json              ← Chef definitions, signature recipes, and perks
+├── themes.json             ← Market/theme decks that feed the draw pile
+├── taste_matrix.json       ← Taste synergy multipliers between flavour pairs
+└── README.md
 ```
 
 ---
 
-## 🧮 Running the Simulator
+## ⚙️ Requirements
 
-Example commands:
+- Python 3.10 or newer.
+- `numpy` is optional; if unavailable the simulator gracefully falls back to Python's `statistics` module for percentile calculations.
+
+---
+
+## 🚀 Running the Monte Carlo Simulator
+
+1. Ensure you're in the project root and initialize the dataset implicitly by running the script.
+2. Execute the simulator with Python:
 
 ```bash
-# Run 200 Monte Carlo simulations using the Mediterranean market
-py food_simulator.py
-
-# Asian market with 500 simulations
-py food_simulator.py --runs 500 --theme Asian
-
-# Reproducible run (seed fixed)
-py food_simulator.py --runs 300 --theme Mediterranean --seed 42
-
-# Change output folder for reports
-py food_simulator.py --out ./data/reports
+python food_simulator.py --runs 300 --theme Mediterranean
+python food_simulator.py --runs 500 --theme Asian --out reports
+python food_simulator.py --runs 200 --theme Mediterranean --seed 42
 ```
 
----
+Key CLI flags:
 
-## 📊 Output Files
+| Flag | Description |
+|------|-------------|
+| `--runs` | Number of simulated runs to execute (default `200`). |
+| `--theme` | Market/theme name drawn from `themes.json` (default `Mediterranean`). |
+| `--out` | Output directory for generated reports (default `reports/`). |
+| `--seed` | RNG seed. When omitted a random seed is chosen and printed for reproducibility. |
 
-Each simulation produces reports in `/reports` (or your chosen output directory):
+After each batch completes the script prints a console summary including:
 
-| File Type | Description |
-|------------|-------------|
-| `report_[theme]_runs[runs]_seed[seed]_timestamp.txt` | Human-readable summary |
-| `..._ingredients.csv` | Usage counts per ingredient |
-| `..._tastes.csv` | Taste distribution across all draws |
-| `..._recipes.csv` | How many times each recipe was cooked |
-| `..._scores.csv` | Individual run scores for statistical analysis |
+- Average score, standard deviation, and p50/p90/p99 percentiles.
+- Mastery rate (% of runs where any recipe hit mastery).
+- Average count of chef-favoured ingredients per trio.
+- Ingredient Herfindahl–Hirschman Index (HHI) to gauge draw diversity.
 
-Each report file includes a unique **timestamp and seed** for reproducibility.
-
----
-
-## 🔍 Key Metrics
-
-| Metric | Meaning |
-|---------|----------|
-| **Average Score** | Mean total points per run |
-| **Std Deviation (±)** | Consistency indicator — higher = more swingy results |
-| **p50 / p90 / p99** | Score percentiles (typical, strong, top-1%) |
-| **Mastery Rate** | % of runs where a recipe reached mastery |
-| **Chef-key per Draw** | Avg. number of chef-favored ingredients per trio |
-| **Ingredient HHI** | Diversity index (0 = diverse, 1 = repetitive) |
+Report files land in the requested output directory using the pattern `report_<theme>_runs<runs>_seed<seed>_<timestamp>.*`.
 
 ---
 
-## 🧠 For Developers (Codex Context)
+## 🕹️ Interactive Terminal Prototype
 
-- The project is **data-driven** — all content (ingredients, tastes, recipes, chefs, themes) is loaded from JSON.  
-- You can **extend** the system by editing or adding new JSONs (no code changes needed).  
-- The simulator output can be parsed in Codex or Unreal Engine for:
-  - Automated balancing dashboards
-  - Visualization of score distributions
-  - Testing chef/recipe synergies
-  - Future training data for AI opponents or difficulty scaling
+`food_game.py` mirrors the simulator rules but lets you choose trios manually:
+
+```bash
+python food_game.py
+```
+
+During each session you can:
+
+1. Pick a market theme and chef (or opt for random selection).
+2. Decide how many turns to play and how many runs to chain back-to-back.
+3. (Optionally) set an RNG seed for reproducible decks.
+4. Review five-card hands, pick any trio, and instantly inspect chip totals, taste multipliers, chef key cards, and recipe completions.
+
+Chef perks defined in `chefs.json` apply automatically—e.g., recipe-specific score multipliers—so designers can evaluate perk tuning without code changes.
 
 ---
 
-## 🚀 Next Steps for Integration
+## 🎯 Mechanics & Metrics Modelled
 
-1. **In Codex:**
-   - Open `food_simulator.py` and explore how `simulate_run()` and `simulate_many()` build gameplay logic.
-   - Add or modify JSON files to test new ingredients or chefs.
-   - Visualize CSV outputs using `matplotlib`, `pandas`, or Unreal’s analytics tools.
+| Mechanic | Description |
+|----------|-------------|
+| **Trio draws** | Five-card hands are dealt from theme-driven decks; trios are cooked each turn. |
+| **Taste synergy** | Taste combinations look up multipliers in `taste_matrix.json` to scale chip totals. |
+| **Recipe mastery** | Cooking the same signature recipe twice in a row masters it and contributes to mastery rate metrics. |
+| **Chef bias** | Signature ingredients appear more frequently thanks to weighted deck construction. |
+| **Chef perks** | Additional modifiers (such as recipe multipliers) are pulled from `chefs.json` and applied during scoring. |
+| **Market swaps** | Runs can rotate chefs mid-simulation and rebuild decks to stress test variety. |
 
-2. **In Unreal Engine (5.3+):**
-   - Import the JSONs as **Data Assets** (e.g., `UDataTable` or `UDataAsset` objects).
-   - Use them to populate card decks, chefs, and market logic in Blueprints or C++.
-   - Mirror the scoring rules for real-time gameplay simulation.
+---
+
+## 📊 Report Contents
+
+Each Monte Carlo batch exports the following artefacts:
+
+| File | Description |
+|------|-------------|
+| `*.txt` | Human-readable snapshot of run parameters, summary stats, and top-used content. |
+| `*_ingredients.csv` | Ingredient usage counts across all simulated trios. |
+| `*_tastes.csv` | Taste distribution tally (useful for balance heatmaps). |
+| `*_recipes.csv` | Frequency of recipe completions to track mastery difficulty. |
+| `*_scores.csv` | Per-run score log for deeper statistical analysis. |
+
+---
+
+## 🔧 Extending the Sandbox
+
+- Add or tweak ingredient entries in `ingredients.json` to explore new taste/chip combinations.
+- Expand `recipes.json`, `chefs.json`, or `themes.json` to introduce fresh synergies and market flavours.
+- Iterate quickly by playtesting in `food_game.py`, then run `food_simulator.py` to validate balance at scale.
 
 ---
 
 ## 📚 Credits
 
-Project: **Food Card Deck Video Game Prototype**  
-Tech: Python 3.10+, JSON, NumPy (optional), CLI report generator  
-Design Goal: Blend *culinary creativity* with *strategic deck-building mechanics*  
-Inspired by: *Balatro*, *Slay the Spire*, and real-world flavor pairing theory.
+- Project: **Food Card Deck Video Game Prototype**
+- Tech: Python 3.10+, JSON, optional NumPy
+- Design Goal: Blend *culinary creativity* with *strategic deck-building mechanics*
+- Inspired by: *Balatro*, *Slay the Spire*, and flavour pairing research

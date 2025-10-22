@@ -16,16 +16,9 @@ from __future__ import annotations
 import random
 from typing import Iterable, List, Sequence
 
-import food_simulator as sim
-from food_simulator import (
-    Chef,
-    Ingredient,
-    build_market_deck,
-    chef_key_ingredients,
-    initialize_data,
-    trio_score,
-    which_recipe,
-)
+from food_api import Chef, Ingredient, RULES_VERSION, GameData, build_market_deck
+
+DATA = GameData.from_json()
 
 # Default gameplay knobs – tweak freely for experimentation.
 HAND_SIZE = 5
@@ -60,16 +53,16 @@ def _prompt_selection(prompt: str, options: Sequence[str]) -> str:
 
 
 def choose_theme() -> str:
-    theme_names = sorted(sim.THEMES.keys())
+    theme_names = sorted(DATA.themes.keys())
     print("\n=== Choose a market theme ===")
     return _prompt_selection("Theme", theme_names)
 
 
 def choose_chef() -> Chef:
-    chef_names = [chef.name for chef in sim.CHEFS]
+    chef_names = [chef.name for chef in DATA.chefs]
     print("\n=== Choose a chef ===")
     selected_name = _prompt_selection("Chef", chef_names)
-    for chef in sim.CHEFS:
+    for chef in DATA.chefs:
         if chef.name == selected_name:
             return chef
     raise RuntimeError("Selected chef not found; data set may be inconsistent.")
@@ -104,7 +97,7 @@ def describe_ingredient(ingredient: Ingredient, chef_key_set: Iterable[str]) -> 
 
 def display_hand(hand: Sequence[Ingredient], chef: Chef) -> None:
     print("\nYour hand:")
-    key_set = chef_key_ingredients(chef)
+    key_set = DATA.chef_key_ingredients(chef)
     for idx, ingredient in enumerate(hand, start=1):
         print(f"  {idx}. {describe_ingredient(ingredient, key_set)}")
     print("  * indicates an ingredient that appears in the chef's signature recipes.")
@@ -146,12 +139,12 @@ def _recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
 
 
 def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
-    base_score, chips, taste_sum, taste_multiplier = trio_score(list(selected))
-    recipe_name = which_recipe(list(selected))
+    base_score, chips, taste_sum, taste_multiplier = DATA.trio_score(list(selected))
+    recipe_name = DATA.which_recipe(list(selected))
     recipe_multiplier = _recipe_multiplier(chef, recipe_name)
     total_multiplier = taste_multiplier * recipe_multiplier
     final_score = int(round(base_score * recipe_multiplier))
-    chef_hits = sum(1 for ing in selected if ing.name in chef_key_ingredients(chef))
+    chef_hits = sum(1 for ing in selected if ing.name in DATA.chef_key_ingredients(chef))
 
     print("\n--- Trio Result ---")
     for ing in selected:
@@ -171,20 +164,19 @@ def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
 
 
 def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
-    theme_pool = sim.THEMES[theme_name]
     deck = build_market_deck(
-        theme_pool, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS
+        DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=random
     )
     random.shuffle(deck)
     total_score = 0
-    hand: List[Ingredient] = []
+    hand: List = []
 
     for turn in range(1, turns + 1):
         needed = HAND_SIZE - len(hand)
         if needed > 0:
             if len(deck) < needed:
                 deck = build_market_deck(
-                    theme_pool, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS
+                    DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=random
                 )
                 random.shuffle(deck)
                 print("\n-- Deck refreshed --")
@@ -204,9 +196,11 @@ def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
 
 
 def main() -> None:
-    print("""
+    print(
+        f"""
 ===============================================
  Food Deck Mini Game (terminal prototype)
+ Version: {RULES_VERSION}
 -----------------------------------------------
  * Data shared with food_simulator.py (JSON-driven).
  * Pick a chef and theme, draw 5 ingredients per turn,
@@ -214,9 +208,8 @@ def main() -> None:
  * Scores are computed using the same trio scoring model.
  * Enter 'q' during a turn to stop the current run early.
 ===============================================
-""")
-
-    initialize_data()
+"""
+    )
 
     while True:
         theme = choose_theme()

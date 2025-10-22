@@ -69,6 +69,49 @@ def choose_chef(rng: random.Random) -> Chef:
     raise RuntimeError("Selected chef not found; data set may be inconsistent.")
 
 
+def choose_additional_chef(
+    existing_names: Iterable[str], rng: random.Random
+) -> Chef | None:
+    """Prompt the user to add a new chef, excluding already selected ones."""
+
+    taken = {name.lower() for name in existing_names}
+    available = [chef.name for chef in DATA.chefs if chef.name.lower() not in taken]
+    if not available:
+        print("No additional chefs available to add.")
+        return None
+
+    print("\n=== Add a new chef to your lineup ===")
+    selected_name = _prompt_selection("New Chef", available, rng)
+    for chef in DATA.chefs:
+        if chef.name == selected_name:
+            return chef
+    raise RuntimeError("Selected chef not found; data set may be inconsistent.")
+
+
+def select_round_chef(
+    available_chefs: Sequence[Chef], current: Chef, rng: random.Random
+) -> Chef:
+    """Allow the user to keep or change the chef for the current round."""
+
+    if len(available_chefs) == 1:
+        sole_chef = available_chefs[0]
+        print(f"\nChef {sole_chef.name} will cook this round.")
+        return sole_chef
+
+    print(f"\nCurrent chef: {current.name}")
+    change = input("Switch chefs for this round? (y/N): ").strip().lower()
+    if change not in {"y", "yes"}:
+        return current
+
+    print("\n=== Select the chef for this round ===")
+    options = [chef.name for chef in available_chefs]
+    selected_name = _prompt_selection("Round Chef", options, rng)
+    for chef in available_chefs:
+        if chef.name == selected_name:
+            return chef
+    raise RuntimeError("Selected chef not found; data set may be inconsistent.")
+
+
 def prompt_turn_count() -> int:
     while True:
         raw = input(
@@ -180,30 +223,56 @@ def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
 
 
 def play_single_run(theme_name: str, chef: Chef, turns: int, rng: random.Random) -> int:
-    deck = build_market_deck(
-        DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=rng
-    )
-    rng.shuffle(deck)
+    decks: dict[str, List[Ingredient]] = {}
     total_score = 0
-    hand: List = []
+    hand: List[Ingredient] = []
+    roster: List[Chef] = [chef]
+    active_chef = chef
 
     for turn in range(1, turns + 1):
+        if len(roster) < len(DATA.chefs):
+            add_choice = input("Add a new chef to your lineup this round? (y/N): ").strip().lower()
+            if add_choice in {"y", "yes"}:
+                new_chef = choose_additional_chef([chef.name for chef in roster], rng)
+                if new_chef and new_chef not in roster:
+                    roster.append(new_chef)
+                    print(f"Chef {new_chef.name} has joined your team.")
+        active_chef = select_round_chef(roster, active_chef, rng)
+
         needed = HAND_SIZE - len(hand)
         if needed > 0:
-            if len(deck) < needed:
+            deck = decks.get(active_chef.name)
+            if deck is None:
                 deck = build_market_deck(
-                    DATA, theme_name, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS, rng=rng
+                    DATA,
+                    theme_name,
+                    active_chef,
+                    deck_size=DEFAULT_DECK_SIZE,
+                    bias=DEFAULT_BIAS,
+                    rng=rng,
                 )
                 rng.shuffle(deck)
-                print("\n-- Deck refreshed --")
+                decks[active_chef.name] = deck
+            if len(deck) < needed:
+                deck = build_market_deck(
+                    DATA,
+                    theme_name,
+                    active_chef,
+                    deck_size=DEFAULT_DECK_SIZE,
+                    bias=DEFAULT_BIAS,
+                    rng=rng,
+                )
+                rng.shuffle(deck)
+                decks[active_chef.name] = deck
+                print(f"\n-- Deck refreshed for Chef {active_chef.name} --")
             hand.extend(deck.pop() for _ in range(needed))
         print(f"\n=== Turn {turn}/{turns} ===")
-        display_hand(hand, chef)
+        display_hand(hand, active_chef)
         selected = prompt_trio(hand)
         if selected is None:
             print("Run ended early by player choice.\n")
             break
-        gained = score_trio(selected, chef)
+        gained = score_trio(selected, active_chef)
         total_score += gained
         print(f"Cumulative score: {total_score}\n")
         for ingredient in selected:

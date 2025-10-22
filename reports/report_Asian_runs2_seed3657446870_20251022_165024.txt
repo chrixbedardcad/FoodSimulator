@@ -1,0 +1,53 @@
+=== Food Simulator Report (Rules v1.0.0) ===
+Generated: 2025-10-22 16:50:24
+
+runs: 2
+theme: Asian
+seed: 3657446870
+rounds: 2
+cooks_per_round: 3
+average_score: 546.5
+std_score: 5.5
+p50: 546.5
+p90: 550.9
+p99: 551.89
+mastery_rate_pct: 0.0
+avg_chef_key_per_draw: 1.58
+ingredient_hhi: 0.0941
+average_round_scores: 330.5, 216.0
+average_cumulative_scores: 330.5, 546.5
+average_points_per_round: 273.25
+rules_version: 1.0.0
+
+Average Multipliers:
+Taste multiplier: 2.83
+Recipe multiplier: 1.0
+Overall multiplier: 2.83
+
+Top Ingredients (usage):
+Egg,6
+Rice,6
+Seaweed,4
+Mushroom,3
+Onion,2
+Sugar,2
+Butter,2
+Tomato,2
+Bacon,1
+Salt,1
+Basil,1
+Garlic,1
+Parmesan,1
+Fish,1
+Yogurt,1
+Beef,1
+Honey,1
+
+Taste Mix:
+Salty,8
+Sweet,7
+Umami,16
+Bitter,2
+Sour,3
+
+Most Cooked Recipes:

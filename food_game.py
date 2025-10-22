@@ -161,16 +161,18 @@ def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
     )
     random.shuffle(deck)
     total_score = 0
+    hand: List[Ingredient] = []
 
     for turn in range(1, turns + 1):
-        if len(deck) < HAND_SIZE:
-            deck = build_market_deck(
-                theme_pool, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS
-            )
-            random.shuffle(deck)
-            print("\n-- Deck refreshed --")
-
-        hand = [deck.pop() for _ in range(HAND_SIZE)]
+        needed = HAND_SIZE - len(hand)
+        if needed > 0:
+            if len(deck) < needed:
+                deck = build_market_deck(
+                    theme_pool, chef, deck_size=DEFAULT_DECK_SIZE, bias=DEFAULT_BIAS
+                )
+                random.shuffle(deck)
+                print("\n-- Deck refreshed --")
+            hand.extend(deck.pop() for _ in range(needed))
         print(f"\n=== Turn {turn}/{turns} ===")
         display_hand(hand, chef)
         selected = prompt_trio(hand)
@@ -179,6 +181,8 @@ def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
             break
         gained = score_trio(selected, chef)
         total_score += gained
+        for ingredient in selected:
+            hand.remove(ingredient)
     return total_score
 
 

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Caprese",
+    "trio": [
+      "Tomato",
+      "Parmesan",
+      "Basil"
+    ]
+  },
+  {
+    "name": "Carbonara",
+    "trio": [
+      "Pasta",
+      "Egg",
+      "Bacon"
+    ]
+  },
+  {
+    "name": "Risotto",
+    "trio": [
+      "Rice",
+      "Parmesan",
+      "Butter"
+    ]
+  },
+  {
+    "name": "Sushi",
+    "trio": [
+      "Rice",
+      "Fish",
+      "Seaweed"
+    ]
+  },
+  {
+    "name": "Mousse",
+    "trio": [
+      "Chocolate",
+      "Cream",
+      "Egg"
+    ]
+  },
+  {
+    "name": "LemonTart",
+    "trio": [
+      "Lemon",
+      "Sugar",
+      "Butter"
+    ]
+  },
+  {
+    "name": "BeefStew",
+    "trio": [
+      "Beef",
+      "Onion",
+      "Bread"
+    ]
+  }
+]

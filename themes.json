@@ -1,0 +1,178 @@
+{
+  "Mediterranean": [
+    {
+      "ingredient": "Tomato",
+      "copies": 5
+    },
+    {
+      "ingredient": "Onion",
+      "copies": 5
+    },
+    {
+      "ingredient": "Garlic",
+      "copies": 4
+    },
+    {
+      "ingredient": "Bread",
+      "copies": 4
+    },
+    {
+      "ingredient": "Butter",
+      "copies": 4
+    },
+    {
+      "ingredient": "OliveOil",
+      "copies": 4
+    },
+    {
+      "ingredient": "Pasta",
+      "copies": 4
+    },
+    {
+      "ingredient": "Rice",
+      "copies": 4
+    },
+    {
+      "ingredient": "Parmesan",
+      "copies": 3
+    },
+    {
+      "ingredient": "Basil",
+      "copies": 3
+    },
+    {
+      "ingredient": "Lemon",
+      "copies": 3
+    },
+    {
+      "ingredient": "Yogurt",
+      "copies": 2
+    },
+    {
+      "ingredient": "Cream",
+      "copies": 2
+    },
+    {
+      "ingredient": "Honey",
+      "copies": 2
+    },
+    {
+      "ingredient": "Sugar",
+      "copies": 2
+    },
+    {
+      "ingredient": "Fish",
+      "copies": 2
+    },
+    {
+      "ingredient": "Bacon",
+      "copies": 2
+    },
+    {
+      "ingredient": "Truffle",
+      "copies": 1
+    },
+    {
+      "ingredient": "Beef",
+      "copies": 1
+    },
+    {
+      "ingredient": "Seaweed",
+      "copies": 1
+    },
+    {
+      "ingredient": "Chocolate",
+      "copies": 1
+    },
+    {
+      "ingredient": "Salt",
+      "copies": 2
+    }
+  ],
+  "Asian": [
+    {
+      "ingredient": "Rice",
+      "copies": 6
+    },
+    {
+      "ingredient": "Fish",
+      "copies": 4
+    },
+    {
+      "ingredient": "Seaweed",
+      "copies": 4
+    },
+    {
+      "ingredient": "Onion",
+      "copies": 4
+    },
+    {
+      "ingredient": "Garlic",
+      "copies": 4
+    },
+    {
+      "ingredient": "Salt",
+      "copies": 4
+    },
+    {
+      "ingredient": "Sugar",
+      "copies": 3
+    },
+    {
+      "ingredient": "Lemon",
+      "copies": 3
+    },
+    {
+      "ingredient": "Yogurt",
+      "copies": 2
+    },
+    {
+      "ingredient": "Mushroom",
+      "copies": 4
+    },
+    {
+      "ingredient": "Bacon",
+      "copies": 2
+    },
+    {
+      "ingredient": "Egg",
+      "copies": 4
+    },
+    {
+      "ingredient": "Cream",
+      "copies": 1
+    },
+    {
+      "ingredient": "Honey",
+      "copies": 2
+    },
+    {
+      "ingredient": "Truffle",
+      "copies": 1
+    },
+    {
+      "ingredient": "Beef",
+      "copies": 2
+    },
+    {
+      "ingredient": "Pasta",
+      "copies": 1
+    },
+    {
+      "ingredient": "Parmesan",
+      "copies": 1
+    },
+    {
+      "ingredient": "Basil",
+      "copies": 1
+    },
+    {
+      "ingredient": "Butter",
+      "copies": 2
+    },
+    {
+      "ingredient": "Tomato",
+      "copies": 2
+    }
+  ]
+}

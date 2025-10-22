@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Chef Italiano",
+    "recipe_names": [
+      "Caprese",
+      "Carbonara",
+      "Risotto"
+    ],
+    "perks": {}
+  },
+  {
+    "name": "Chef Asian",
+    "recipe_names": [
+      "Sushi"
+    ],
+    "perks": {}
+  },
+  {
+    "name": "Chef Sweettooth",
+    "recipe_names": [
+      "Mousse",
+      "LemonTart"
+    ],
+    "perks": {}
+  },
+  {
+    "name": "Chef Rustic",
+    "recipe_names": [
+      "BeefStew"
+    ],
+    "perks": {}
+  }
+]

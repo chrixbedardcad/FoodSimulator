@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Truffle",
+    "taste": "Umami",
+    "chips": 30
+  },
+  {
+    "name": "Parmesan",
+    "taste": "Umami",
+    "chips": 18
+  },
+  {
+    "name": "Egg",
+    "taste": "Salty",
+    "chips": 12
+  },
+  {
+    "name": "Tomato",
+    "taste": "Sour",
+    "chips": 22
+  },
+  {
+    "name": "Basil",
+    "taste": "Bitter",
+    "chips": 6
+  },
+  {
+    "name": "OliveOil",
+    "taste": "Umami",
+    "chips": 10
+  },
+  {
+    "name": "Mushroom",
+    "taste": "Umami",
+    "chips": 10
+  },
+  {
+    "name": "Garlic",
+    "taste": "Bitter",
+    "chips": 6
+  },
+  {
+    "name": "Lemon",
+    "taste": "Sour",
+    "chips": 8
+  },
+  {
+    "name": "Honey",
+    "taste": "Sweet",
+    "chips": 12
+  },
+  {
+    "name": "Chocolate",
+    "taste": "Sweet",
+    "chips": 12
+  },
+  {
+    "name": "Salt",
+    "taste": "Salty",
+    "chips": 3
+  },
+  {
+    "name": "Beef",
+    "taste": "Umami",
+    "chips": 18
+  },
+  {
+    "name": "Bacon",
+    "taste": "Salty",
+    "chips": 14
+  },
+  {
+    "name": "Pasta",
+    "taste": "Umami",
+    "chips": 12
+  },
+  {
+    "name": "Rice",
+    "taste": "Umami",
+    "chips": 10
+  },
+  {
+    "name": "Fish",
+    "taste": "Umami",
+    "chips": 14
+  },
+  {
+    "name": "Seaweed",
+    "taste": "Umami",
+    "chips": 8
+  },
+  {
+    "name": "Cream",
+    "taste": "Sweet",
+    "chips": 10
+  },
+  {
+    "name": "Sugar",
+    "taste": "Sweet",
+    "chips": 8
+  },
+  {
+    "name": "Onion",
+    "taste": "Sweet",
+    "chips": 8
+  },
+  {
+    "name": "Bread",
+    "taste": "Umami",
+    "chips": 10
+  },
+  {
+    "name": "Butter",
+    "taste": "Sweet",
+    "chips": 10
+  },
+  {
+    "name": "Yogurt",
+    "taste": "Sour",
+    "chips": 10
+  }
+]

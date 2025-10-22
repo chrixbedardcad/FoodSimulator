@@ -1,0 +1,46 @@
+{
+  "tastes": [
+    "Sweet",
+    "Salty",
+    "Sour",
+    "Umami",
+    "Bitter"
+  ],
+  "matrix": {
+    "Sweet": {
+      "Sweet": 1,
+      "Salty": 3,
+      "Sour": 2,
+      "Umami": 0,
+      "Bitter": 1
+    },
+    "Salty": {
+      "Sweet": 3,
+      "Salty": 1,
+      "Sour": 0,
+      "Umami": 2,
+      "Bitter": 0
+    },
+    "Sour": {
+      "Sweet": 2,
+      "Salty": 0,
+      "Sour": 1,
+      "Umami": 2,
+      "Bitter": 0
+    },
+    "Umami": {
+      "Sweet": 0,
+      "Salty": 2,
+      "Sour": 2,
+      "Umami": 1,
+      "Bitter": 0
+    },
+    "Bitter": {
+      "Sweet": 1,
+      "Salty": 0,
+      "Sour": 0,
+      "Umami": 0,
+      "Bitter": 1
+    }
+  }
+}

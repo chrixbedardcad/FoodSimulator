@@ -5,16 +5,48 @@ import csv
 import os
 from collections import Counter
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, Iterator, List, Tuple
 
 from food_api import (
     RULES_VERSION,
     GameData,
+    SimulationConfig,
     ensure_dir,
     format_report_header,
     simulate_many,
 )
 from seed_utils import resolve_seed
+
+
+PRIMARY_SUMMARY_KEYS: Tuple[str, ...] = (
+    "runs",
+    "theme",
+    "seed",
+    "rounds",
+    "cooks_per_round",
+)
+
+MULTIPLIER_SUMMARY_KEYS = {
+    "avg_taste_multiplier",
+    "avg_recipe_multiplier",
+    "avg_overall_multiplier",
+}
+
+
+def iter_summary_items(summary: Dict[str, object]) -> Iterator[Tuple[str, object]]:
+    """Yield summary entries in a stable order for console and reports."""
+
+    seen: set[str] = set()
+    for key in PRIMARY_SUMMARY_KEYS:
+        if key in summary and key not in MULTIPLIER_SUMMARY_KEYS:
+            seen.add(key)
+            yield key, summary[key]
+
+    for key, value in summary.items():
+        if key in MULTIPLIER_SUMMARY_KEYS or key in seen:
+            continue
+        seen.add(key)
+        yield key, value
 
 
 def write_report_files(
@@ -36,15 +68,8 @@ def write_report_files(
     with open(txt_path, "w", encoding="utf-8") as handle:
         handle.write(format_report_header())
         handle.write("\n")
-        multiplier_keys = {
-            "avg_taste_multiplier",
-            "avg_recipe_multiplier",
-            "avg_overall_multiplier",
-        }
-        for key, value in summary.items():
-            if key in multiplier_keys:
-                continue
-            handle.write(f"{key}: {value}\n")
+        for key, value in iter_summary_items(summary):
+            handle.write(f"{key}: {format_summary_value(value)}\n")
 
         multiplier_sections = [
             ("avg_taste_multiplier", "Taste multiplier"),
@@ -58,7 +83,7 @@ def write_report_files(
             if not wrote_multiplier_header:
                 handle.write("\nAverage Multipliers:\n")
                 wrote_multiplier_header = True
-            handle.write(f"{label}: {summary[key]}\n")
+            handle.write(f"{label}: {format_summary_value(summary[key])}\n")
 
         handle.write("\nTop Ingredients (usage):\n")
         for name, count in ingredient_totals.most_common(20):
@@ -107,8 +132,15 @@ def write_report_files(
     }
 
 
+def format_summary_value(value: object) -> str:
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Food Deck Simulator")
+    default_config = SimulationConfig()
     parser.add_argument(
         "--runs", type=int, default=200, help="Number of Monte Carlo runs (default=200)"
     )
@@ -130,6 +162,18 @@ if __name__ == "__main__":
         default=None,
         help="RNG seed for reproducibility (default=None=randomized)",
     )
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=default_config.rounds,
+        help=f"Number of rounds per run (default={default_config.rounds})",
+    )
+    parser.add_argument(
+        "--cooks-per-round",
+        type=int,
+        default=default_config.cooks,
+        help=f"Number of cooking turns per round (default={default_config.cooks})",
+    )
     args = parser.parse_args()
 
     data = GameData.from_json()
@@ -139,22 +183,32 @@ if __name__ == "__main__":
         print(f"Theme '{args.theme}' not found. Available: {available}")
         raise SystemExit(1)
 
+    if args.rounds <= 0:
+        raise SystemExit("--rounds must be a positive integer")
+    if args.cooks_per_round <= 0:
+        raise SystemExit("--cooks-per-round must be a positive integer")
+
     seed_used, _ = resolve_seed(args.seed)
     print(f"Using RNG seed: {seed_used}")
+
+    sim_config = SimulationConfig(rounds=args.rounds, cooks=args.cooks_per_round)
 
     summary, ingredient_totals, taste_totals, recipe_totals, scores = simulate_many(
         data,
         n=args.runs,
         theme_name=args.theme,
         seed=seed_used,
+        config=sim_config,
     )
 
     summary = dict(summary)
+    summary.setdefault("rounds", sim_config.rounds)
+    summary.setdefault("cooks_per_round", sim_config.cooks)
     summary["rules_version"] = RULES_VERSION
 
     print(f"=== SUMMARY (Rules v{RULES_VERSION}) ===")
-    for key, value in summary.items():
-        print(f"{key}: {value}")
+    for key, value in iter_summary_items(summary):
+        print(f"{key}: {format_summary_value(value)}")
 
     paths = write_report_files(args.out, summary, ingredient_totals, taste_totals, recipe_totals, scores)
     print("\nFiles written:")

@@ -1,0 +1,51 @@
+=== Food Simulator Report (Rules v1.0.0) ===
+Generated: 2025-10-22 15:56:49
+
+runs: 200
+theme: Mediterranean
+seed: 426959285
+average_score: 1848.12
+std_score: 319.57
+p50: 1826.5
+p90: 2313.4
+p99: 2514.97
+mastery_rate_pct: 0.0
+avg_chef_key_per_draw: 1.28
+ingredient_hhi: 0.0596
+rules_version: 1.0.0
+
+Top Ingredients (usage):
+Rice,1047
+Butter,959
+Onion,937
+Tomato,910
+Bread,745
+Pasta,712
+Lemon,546
+Parmesan,526
+OliveOil,507
+Basil,506
+Garlic,494
+Fish,365
+Bacon,359
+Sugar,342
+Cream,341
+Yogurt,278
+Seaweed,240
+Salt,239
+Honey,227
+Beef,204
+
+Taste Mix:
+Bitter,1000
+Sour,1734
+Umami,4481
+Salty,598
+Sweet,2987
+
+Most Cooked Recipes:
+Caprese,11
+Risotto,11
+LemonTart,6
+Sushi,5
+BeefStew,2

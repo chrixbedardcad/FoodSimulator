@@ -68,7 +68,14 @@ def write_report_files(
     with open(txt_path, "w", encoding="utf-8") as handle:
         handle.write(format_report_header())
         handle.write("\n")
-        for key, value in iter_summary_items(summary):
+        multiplier_keys = {
+            "avg_taste_multiplier",
+            "avg_recipe_multiplier",
+            "avg_overall_multiplier",
+        }
+        for key, value in summary.items():
+            if key in multiplier_keys:
+                continue
             handle.write(f"{key}: {format_summary_value(value)}\n")
 
         multiplier_sections = [
@@ -207,7 +214,7 @@ if __name__ == "__main__":
     summary["rules_version"] = RULES_VERSION
 
     print(f"=== SUMMARY (Rules v{RULES_VERSION}) ===")
-    for key, value in iter_summary_items(summary):
+    for key, value in summary.items():
         print(f"{key}: {format_summary_value(value)}")
 
     paths = write_report_files(args.out, summary, ingredient_totals, taste_totals, recipe_totals, scores)

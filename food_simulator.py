@@ -36,8 +36,30 @@ def write_report_files(
     with open(txt_path, "w", encoding="utf-8") as handle:
         handle.write(format_report_header())
         handle.write("\n")
+        multiplier_keys = {
+            "avg_taste_multiplier",
+            "avg_recipe_multiplier",
+            "avg_overall_multiplier",
+        }
         for key, value in summary.items():
+            if key in multiplier_keys:
+                continue
             handle.write(f"{key}: {value}\n")
+
+        multiplier_sections = [
+            ("avg_taste_multiplier", "Taste multiplier"),
+            ("avg_recipe_multiplier", "Recipe multiplier"),
+            ("avg_overall_multiplier", "Overall multiplier"),
+        ]
+        wrote_multiplier_header = False
+        for key, label in multiplier_sections:
+            if key not in summary:
+                continue
+            if not wrote_multiplier_header:
+                handle.write("\nAverage Multipliers:\n")
+                wrote_multiplier_header = True
+            handle.write(f"{label}: {summary[key]}\n")
+
         handle.write("\nTop Ingredients (usage):\n")
         for name, count in ingredient_totals.most_common(20):
             handle.write(f"{name},{count}\n")

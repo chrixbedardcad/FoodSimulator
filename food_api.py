@@ -239,6 +239,16 @@ class LearningState:
     hits: int = 0
 
 
+def _recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
+    if not recipe_name:
+        return 1.0
+    multipliers = chef.perks.get("recipe_multipliers", {})
+    try:
+        return float(multipliers.get(recipe_name, 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def update_learning(state: LearningState, chef: Chef, recipe_name: Optional[str]) -> LearningState:
     if recipe_name and recipe_name in chef.recipe_names:
         if state.recipe_name == recipe_name:
@@ -274,6 +284,10 @@ def simulate_run(
     learning = LearningState()
     mastered: set[str] = set()
     total_score = 0
+    taste_multiplier_total = 0.0
+    recipe_multiplier_total = 0.0
+    overall_multiplier_total = 0.0
+    multiplier_events = 0
 
     chefkey_per_draw: List[int] = []
     taste_counts: Counter[str] = Counter()
@@ -319,13 +333,21 @@ def simulate_run(
                 taste_counts[ingredient.taste] += 1
                 ingredient_use[ingredient.name] += 1
 
-            score, _, _, _ = data.trio_score(trio)
-            total_score += score
-
             recipe_name = data.which_recipe(trio)
             if recipe_name:
                 recipe_counts[recipe_name] += 1
             learning = update_learning(learning, chef, recipe_name)
+
+            score, _, _, taste_multiplier = data.trio_score(trio)
+            recipe_multiplier = _recipe_multiplier(chef, recipe_name)
+            total_multiplier = taste_multiplier * recipe_multiplier
+            final_score = int(round(score * recipe_multiplier))
+            total_score += final_score
+
+            taste_multiplier_total += taste_multiplier
+            recipe_multiplier_total += recipe_multiplier
+            overall_multiplier_total += total_multiplier
+            multiplier_events += 1
 
             if learning.recipe_name and learning.hits >= 2:
                 mastered.add(learning.recipe_name)
@@ -348,6 +370,10 @@ def simulate_run(
         "taste_counts": taste_counts,
         "chefkey_per_draw": chefkey_per_draw,
         "recipe_counts": recipe_counts,
+        "taste_multiplier_total": taste_multiplier_total,
+        "recipe_multiplier_total": recipe_multiplier_total,
+        "overall_multiplier_total": overall_multiplier_total,
+        "multiplier_events": multiplier_events,
     }
 
 
@@ -389,6 +415,10 @@ def simulate_many(
     taste_totals: Counter[str] = Counter()
     chefkey_all: List[int] = []
     recipe_totals: Counter[str] = Counter()
+    taste_multiplier_total = 0.0
+    recipe_multiplier_total = 0.0
+    overall_multiplier_total = 0.0
+    multiplier_events = 0
 
     for _ in range(n):
         result = simulate_run(data, theme_name=theme_name, config=cfg, rng=rng)
@@ -401,11 +431,24 @@ def simulate_many(
         taste_totals.update(result["taste_counts"])  # type: ignore[arg-type]
         chefkey_all.extend(result["chefkey_per_draw"])  # type: ignore[arg-type]
         recipe_totals.update(result["recipe_counts"])  # type: ignore[arg-type]
+        taste_multiplier_total += float(result.get("taste_multiplier_total", 0.0))
+        recipe_multiplier_total += float(result.get("recipe_multiplier_total", 0.0))
+        overall_multiplier_total += float(result.get("overall_multiplier_total", 0.0))
+        multiplier_events += int(result.get("multiplier_events", 0))
 
     mean_val, std_val, p50, p90, p99 = summarize_scores(scores)
     total_ing = sum(ingredient_totals.values())
     hhi = sum((count / total_ing) ** 2 for count in ingredient_totals.values()) if total_ing else 0.0
     avg_chef_keys = (sum(chefkey_all) / len(chefkey_all)) if chefkey_all else 0.0
+    avg_taste_multiplier = (
+        taste_multiplier_total / multiplier_events if multiplier_events else 0.0
+    )
+    avg_recipe_multiplier = (
+        recipe_multiplier_total / multiplier_events if multiplier_events else 0.0
+    )
+    avg_overall_multiplier = (
+        overall_multiplier_total / multiplier_events if multiplier_events else 0.0
+    )
 
     summary = {
         "runs": n,
@@ -419,6 +462,9 @@ def simulate_many(
         "mastery_rate_pct": round(100.0 * mastered_any / n, 1) if n else 0.0,
         "avg_chef_key_per_draw": round(avg_chef_keys, 2),
         "ingredient_hhi": round(hhi, 4),
+        "avg_taste_multiplier": round(avg_taste_multiplier, 2),
+        "avg_recipe_multiplier": round(avg_recipe_multiplier, 2),
+        "avg_overall_multiplier": round(avg_overall_multiplier, 2),
     }
     return summary, ingredient_totals, taste_totals, recipe_totals, scores
 

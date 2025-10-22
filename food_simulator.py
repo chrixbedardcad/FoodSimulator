@@ -86,6 +86,9 @@ taste_score = None
 REC_BY_NAME = {}
 REC_TRIO_KEYS = {}
 
+HAND_SIZE = 5
+TRIO_SIZE = 3
+
 def initialize_data():
     global INGREDIENTS, RECIPES, CHEFS, THEMES, taste_score, REC_BY_NAME, REC_TRIO_KEYS
     INGREDIENTS = load_ingredients(INGREDIENTS_JSON)
@@ -138,21 +141,59 @@ def build_market_deck(theme_pool:List[Tuple[str,int]], chef:Chef, deck_size:int=
             break
     return out
 
-def draw_cook(deck: List[Ingredient], chef:Chef, guarantee_prob:float=0.6):
+def _refill_hand(hand: List[Ingredient], deck: List[Ingredient], hand_size: int = HAND_SIZE) -> Tuple[List[Ingredient], List[Ingredient]]:
+    """Top up the player's hand from the draw pile until the desired size."""
+    while len(hand) < hand_size and deck:
+        hand.append(deck.pop())
+    return hand, deck
+
+
+def _select_trio_from_hand(
+    hand: List[Ingredient],
+    key_ingredients: set[str],
+    guarantee_prob: float = 0.6,
+) -> List[Ingredient]:
+    """Pick a trio from the current hand, favouring key ingredients when requested."""
+
+    if len(hand) < TRIO_SIZE:
+        return []
+
     trio: List[Ingredient] = []
-    if len(deck) < 3:
-        return [], deck
+
     if random.random() < guarantee_prob:
-        keys = [i for i in deck if i.name in chef_key_ingredients(chef)]
-        if keys:
-            pick = random.choice(keys)
+        key_cards = [card for card in hand if card.name in key_ingredients]
+        if key_cards:
+            pick = random.choice(key_cards)
             trio.append(pick)
-            deck.remove(pick)
-    while len(trio) < 3 and deck:
-        pick = deck.pop()
-        if pick not in trio:
-            trio.append(pick)
-    return trio, deck
+            hand.remove(pick)
+
+    while len(trio) < TRIO_SIZE and hand:
+        pick = random.choice(hand)
+        trio.append(pick)
+        hand.remove(pick)
+
+    return trio
+
+
+def draw_cook(
+    hand: List[Ingredient],
+    deck: List[Ingredient],
+    chef: Chef,
+    guarantee_prob: float = 0.6,
+    hand_size: int = HAND_SIZE,
+    key_ingredients: set[str] | None = None,
+) -> Tuple[List[Ingredient], List[Ingredient], List[Ingredient]]:
+    """Select a trio to cook and replenish the hand with only three new cards."""
+
+    hand, deck = _refill_hand(hand, deck, hand_size)
+    if len(hand) < TRIO_SIZE:
+        return [], hand, deck
+
+    keyset = key_ingredients if key_ingredients is not None else chef_key_ingredients(chef)
+    trio = _select_trio_from_hand(hand, keyset, guarantee_prob)
+
+    hand, deck = _refill_hand(hand, deck, hand_size)
+    return trio, hand, deck
 
 @dataclass
 class LearningState:
@@ -186,18 +227,31 @@ def simulate_run(theme_name:str="Mediterranean",
     recipe_counts = Counter()
 
     deck = build_market_deck(theme_pool, chef, deck_size, bias)
+    hand: List[Ingredient] = []
+    hand, deck = _refill_hand(hand, deck, HAND_SIZE)
+    current_keys = chef_key_ingredients(chef)
     draws = 0
 
     for _ in range(rounds):
         for _ in range(cooks):
-            if len(deck) < 3 or draws >= reshuffle_every:
+            if len(hand) < TRIO_SIZE:
+                if len(deck) < TRIO_SIZE:
+                    deck = build_market_deck(theme_pool, chef, deck_size, bias)
+                    draws = 0
+                hand, deck = _refill_hand(hand, deck, HAND_SIZE)
+                if len(hand) < TRIO_SIZE:
+                    break
+
+            if len(deck) < TRIO_SIZE or draws >= reshuffle_every:
                 deck = build_market_deck(theme_pool, chef, deck_size, bias)
                 draws = 0
-            trio, deck = draw_cook(deck, chef, guarantee_prob)
-            if len(trio) < 3:
+                hand, deck = _refill_hand(hand, deck, HAND_SIZE)
+
+            trio, hand, deck = draw_cook(hand, deck, chef, guarantee_prob, HAND_SIZE, current_keys)
+            if len(trio) < TRIO_SIZE:
                 break
 
-            chefkey_per_draw.append(sum(1 for i in trio if i.name in chef_key_ingredients(chef)))
+            chefkey_per_draw.append(sum(1 for i in trio if i.name in current_keys))
             for i in trio:
                 taste_counts[i.taste] += 1
                 ingredient_use[i.name] += 1
@@ -218,7 +272,10 @@ def simulate_run(theme_name:str="Mediterranean",
 
         if random.random() < 0.5:
             chef = random.choice(CHEFS)
+            current_keys = chef_key_ingredients(chef)
             deck = build_market_deck(theme_pool, chef, deck_size, bias)
+            hand = []
+            hand, deck = _refill_hand(hand, deck, HAND_SIZE)
             draws = 0
 
     return {

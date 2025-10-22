@@ -299,8 +299,12 @@ def simulate_run(
     hand, deck = _refill_hand(hand, deck, cfg.hand_size)
     current_keys = data.chef_key_ingredients(chef)
     draws = 0
+    round_scores: List[int] = []
+    cumulative_scores: List[int] = []
+    cumulative_total = 0
 
     for _ in range(cfg.rounds):
+        round_total = 0
         for _ in range(cfg.cooks):
             if len(hand) < TRIO_SIZE:
                 if len(deck) < TRIO_SIZE:
@@ -343,6 +347,7 @@ def simulate_run(
             total_multiplier = taste_multiplier * recipe_multiplier
             final_score = int(round(score * recipe_multiplier))
             total_score += final_score
+            round_total += final_score
 
             taste_multiplier_total += taste_multiplier
             recipe_multiplier_total += recipe_multiplier
@@ -354,6 +359,10 @@ def simulate_run(
                 learning = LearningState()
 
             draws += 1
+
+        round_scores.append(round_total)
+        cumulative_total += round_total
+        cumulative_scores.append(cumulative_total)
 
         if rng.random() < 0.5:
             chef = rng.choice(data.chefs)
@@ -374,6 +383,8 @@ def simulate_run(
         "recipe_multiplier_total": recipe_multiplier_total,
         "overall_multiplier_total": overall_multiplier_total,
         "multiplier_events": multiplier_events,
+        "round_scores": round_scores,
+        "cumulative_scores": cumulative_scores,
     }
 
 
@@ -419,6 +430,8 @@ def simulate_many(
     recipe_multiplier_total = 0.0
     overall_multiplier_total = 0.0
     multiplier_events = 0
+    round_score_totals: List[float] = [0.0] * cfg.rounds
+    cumulative_score_totals: List[float] = [0.0] * cfg.rounds
 
     for _ in range(n):
         result = simulate_run(data, theme_name=theme_name, config=cfg, rng=rng)
@@ -435,6 +448,16 @@ def simulate_many(
         recipe_multiplier_total += float(result.get("recipe_multiplier_total", 0.0))
         overall_multiplier_total += float(result.get("overall_multiplier_total", 0.0))
         multiplier_events += int(result.get("multiplier_events", 0))
+        round_scores = result.get("round_scores")
+        if isinstance(round_scores, (list, tuple)):
+            for idx, value in enumerate(round_scores):
+                if idx < len(round_score_totals):
+                    round_score_totals[idx] += float(value)
+        cumulative_scores = result.get("cumulative_scores")
+        if isinstance(cumulative_scores, (list, tuple)):
+            for idx, value in enumerate(cumulative_scores):
+                if idx < len(cumulative_score_totals):
+                    cumulative_score_totals[idx] += float(value)
 
     mean_val, std_val, p50, p90, p99 = summarize_scores(scores)
     total_ing = sum(ingredient_totals.values())
@@ -449,11 +472,20 @@ def simulate_many(
     avg_overall_multiplier = (
         overall_multiplier_total / multiplier_events if multiplier_events else 0.0
     )
+    average_round_scores = (
+        [round(total / n, 2) for total in round_score_totals] if n else []
+    )
+    average_cumulative_scores = (
+        [round(total / n, 2) for total in cumulative_score_totals] if n else []
+    )
+    average_points_per_round = round(mean_val / cfg.rounds, 2) if cfg.rounds else 0.0
 
     summary = {
         "runs": n,
         "theme": theme_name,
         "seed": seed,
+        "rounds": cfg.rounds,
+        "cooks_per_round": cfg.cooks,
         "average_score": round(mean_val, 2),
         "std_score": round(std_val, 2),
         "p50": round(p50, 2),
@@ -465,6 +497,9 @@ def simulate_many(
         "avg_taste_multiplier": round(avg_taste_multiplier, 2),
         "avg_recipe_multiplier": round(avg_recipe_multiplier, 2),
         "avg_overall_multiplier": round(avg_overall_multiplier, 2),
+        "average_round_scores": average_round_scores,
+        "average_cumulative_scores": average_cumulative_scores,
+        "average_points_per_round": average_points_per_round,
     }
     return summary, ingredient_totals, taste_totals, recipe_totals, scores
 

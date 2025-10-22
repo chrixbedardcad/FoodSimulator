@@ -23,6 +23,7 @@ Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, 
 
 ```
 FoodSimulator/
+├── food_api.py             ← Shared rules/data loader powering both entry points
 ├── food_simulator.py       ← Monte Carlo simulator with CLI & report writer
 ├── food_game.py            ← Interactive terminal harness for manual playtests
 ├── ingredients.json        ← Ingredient cards (taste tags + chip values)
@@ -44,6 +45,11 @@ FoodSimulator/
 
 ## 🚀 Running the Monte Carlo Simulator
 
+Both command-line interfaces lean on the shared `food_api.py` module for loading
+ingredients, applying chef perks, scoring trios, and writing reports. The
+simulator exposes several CLI flags so you can automate balance passes from the
+terminal:
+
 1. Ensure you're in the project root and initialize the dataset implicitly by running the script.
 2. Execute the simulator with Python:
 
@@ -51,6 +57,7 @@ FoodSimulator/
 python food_simulator.py --runs 300 --theme Mediterranean
 python food_simulator.py --runs 500 --theme Asian --out reports
 python food_simulator.py --runs 200 --theme Mediterranean --seed 42
+python food_simulator.py --help  # view every available option
 ```
 
 Key CLI flags:
@@ -75,7 +82,10 @@ Report files land in the requested output directory using the pattern `report_<t
 
 ## 🕹️ Interactive Terminal Prototype
 
-`food_game.py` mirrors the simulator rules but lets you choose trios manually:
+`food_game.py` mirrors the simulator rules but lets you choose trios manually.
+Launch it straight from the terminal to enter the interactive CLI loop powered
+by `food_api.py` (all configuration happens via on-screen prompts, so there are
+no additional flags to remember):
 
 ```bash
 python food_game.py

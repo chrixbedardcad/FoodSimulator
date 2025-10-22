@@ -181,6 +181,7 @@ def play_single_run(theme_name: str, chef: Chef, turns: int) -> int:
             break
         gained = score_trio(selected, chef)
         total_score += gained
+        print(f"Cumulative score: {total_score}\n")
         for ingredient in selected:
             hand.remove(ingredient)
     return total_score

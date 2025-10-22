@@ -1,6 +1,8 @@
 
 # 🍲 Food Deck Simulator — Core Balancing Prototype
 
+![Animated gameplay preview of Food Deck Simulator](Snakcrament.gif)
+
 A toolkit for experimenting with the Food Card Deck video game concept. The repository now ships with two complementary entry points:
 
 * `food_simulator.py` — a Monte Carlo batch simulator that stress tests balance across hundreds of automated runs and exports CSV/TXT reports.

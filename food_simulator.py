@@ -5,7 +5,7 @@ import csv
 import os
 from collections import Counter
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, Iterator, List, Tuple
 
 from food_api import (
     RULES_VERSION,
@@ -16,6 +16,37 @@ from food_api import (
     simulate_many,
 )
 from seed_utils import resolve_seed
+
+
+PRIMARY_SUMMARY_KEYS: Tuple[str, ...] = (
+    "runs",
+    "theme",
+    "seed",
+    "rounds",
+    "cooks_per_round",
+)
+
+MULTIPLIER_SUMMARY_KEYS = {
+    "avg_taste_multiplier",
+    "avg_recipe_multiplier",
+    "avg_overall_multiplier",
+}
+
+
+def iter_summary_items(summary: Dict[str, object]) -> Iterator[Tuple[str, object]]:
+    """Yield summary entries in a stable order for console and reports."""
+
+    seen: set[str] = set()
+    for key in PRIMARY_SUMMARY_KEYS:
+        if key in summary and key not in MULTIPLIER_SUMMARY_KEYS:
+            seen.add(key)
+            yield key, summary[key]
+
+    for key, value in summary.items():
+        if key in MULTIPLIER_SUMMARY_KEYS or key in seen:
+            continue
+        seen.add(key)
+        yield key, value
 
 
 def write_report_files(
@@ -178,6 +209,8 @@ if __name__ == "__main__":
     )
 
     summary = dict(summary)
+    summary.setdefault("rounds", sim_config.rounds)
+    summary.setdefault("cooks_per_round", sim_config.cooks)
     summary["rules_version"] = RULES_VERSION
 
     print(f"=== SUMMARY (Rules v{RULES_VERSION}) ===")

@@ -479,7 +479,7 @@ class CardView(ttk.Frame):
         marker_text: str,
         on_click,
     ) -> None:
-        super().__init__(master, style="Card.TFrame", padding=(14, 12))
+        super().__init__(master, style="Card.TFrame", padding=(10, 8))
         self.index = index
         self.on_click = on_click
         self.selected = False
@@ -487,29 +487,36 @@ class CardView(ttk.Frame):
         self.columnconfigure(0, weight=1)
 
         self.name_label = ttk.Label(
-            self, text=ingredient.name, style="CardTitle.TLabel"
+            self,
+            text=ingredient.name,
+            style="CardTitle.TLabel",
+            anchor="center",
+            justify="center",
         )
-        self.name_label.grid(row=0, column=0, sticky="w")
+        self.name_label.grid(row=0, column=0, sticky="ew")
+
+        separator = ttk.Separator(self, orient="horizontal")
+        separator.grid(row=1, column=0, sticky="ew", pady=(6, 8))
 
         self.taste_label = ttk.Label(
             self, text=f"Taste: {ingredient.taste}", style="CardBody.TLabel"
         )
-        self.taste_label.grid(row=0, column=1, sticky="w", padx=(16, 0))
+        self.taste_label.grid(row=2, column=0, sticky="w")
 
         self.chips_label = ttk.Label(
             self, text=f"Chips: {ingredient.chips}", style="CardBody.TLabel"
         )
-        self.chips_label.grid(row=0, column=2, sticky="w", padx=(16, 0))
+        self.chips_label.grid(row=3, column=0, sticky="w", pady=(2, 0))
 
         self.marker_label: Optional[ttk.Label]
         self.marker_label = None
         if marker_text:
             self.marker_label = ttk.Label(
                 self,
-                text=f"Chef Keys: {marker_text}",
+                text=f"Chef Key: {marker_text}",
                 style="CardMarker.TLabel",
             )
-            self.marker_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+            self.marker_label.grid(row=4, column=0, sticky="w", pady=(4, 0))
 
         self.bind("<Button-1>", self._handle_click)
         for child in self.winfo_children():

@@ -29,11 +29,7 @@ PRIMARY_SUMMARY_KEYS: Tuple[str, ...] = (
     "turns_per_run",
 )
 
-MULTIPLIER_SUMMARY_KEYS = {
-    "avg_taste_multiplier",
-    "avg_recipe_multiplier",
-    "avg_overall_multiplier",
-}
+MULTIPLIER_SUMMARY_KEYS = {"avg_recipe_multiplier"}
 
 
 def iter_summary_items(summary: Dict[str, object]) -> Iterator[Tuple[str, object]]:
@@ -72,20 +68,14 @@ def write_report_files(
     with open(txt_path, "w", encoding="utf-8") as handle:
         handle.write(format_report_header())
         handle.write("\n")
-        multiplier_keys = {
-            "avg_taste_multiplier",
-            "avg_recipe_multiplier",
-            "avg_overall_multiplier",
-        }
+        multiplier_keys = {"avg_recipe_multiplier"}
         for key, value in iter_summary_items(summary):
             if key in multiplier_keys:
                 continue
             handle.write(f"{key}: {format_summary_value(value)}\n")
 
         multiplier_sections = [
-            ("avg_taste_multiplier", "Taste multiplier"),
             ("avg_recipe_multiplier", "Recipe multiplier"),
-            ("avg_overall_multiplier", "Overall multiplier"),
         ]
         wrote_multiplier_header = False
         for key, label in multiplier_sections:
@@ -229,8 +219,8 @@ if __name__ == "__main__":
         raise SystemExit("--rounds must be a positive integer")
     if args.cooks_per_round <= 0:
         raise SystemExit("--cooks-per-round must be a positive integer")
-    if args.active_chefs <= 0:
-        raise SystemExit("--active-chefs must be a positive integer")
+    if args.active_chefs < 0:
+        raise SystemExit("--active-chefs cannot be negative")
     if args.hand_size <= 0:
         raise SystemExit("--hand-size must be a positive integer")
     if args.pick_size <= 0:

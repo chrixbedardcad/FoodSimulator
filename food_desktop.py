@@ -326,26 +326,37 @@ class CardView(ttk.Frame):
         marker_text: str,
         on_click,
     ) -> None:
-        super().__init__(master, style="Card.TFrame", padding=(12, 10))
+        super().__init__(master, style="Card.TFrame", padding=(14, 12))
         self.index = index
         self.on_click = on_click
         self.selected = False
 
-        name_label = ttk.Label(self, text=ingredient.name, style="CardTitle.TLabel")
-        name_label.pack(anchor="w")
+        self.columnconfigure(0, weight=1)
 
-        ttk.Label(
-            self,
-            text=f"Taste: {ingredient.taste}    Chips: {ingredient.chips}",
-            style="CardBody.TLabel",
-        ).pack(anchor="w", pady=(4, 0))
+        self.name_label = ttk.Label(
+            self, text=ingredient.name, style="CardTitle.TLabel"
+        )
+        self.name_label.grid(row=0, column=0, sticky="w")
 
+        self.taste_label = ttk.Label(
+            self, text=f"Taste: {ingredient.taste}", style="CardBody.TLabel"
+        )
+        self.taste_label.grid(row=0, column=1, sticky="w", padx=(16, 0))
+
+        self.chips_label = ttk.Label(
+            self, text=f"Chips: {ingredient.chips}", style="CardBody.TLabel"
+        )
+        self.chips_label.grid(row=0, column=2, sticky="w", padx=(16, 0))
+
+        self.marker_label: Optional[ttk.Label]
+        self.marker_label = None
         if marker_text:
-            ttk.Label(
+            self.marker_label = ttk.Label(
                 self,
                 text=f"Chef Keys: {marker_text}",
                 style="CardMarker.TLabel",
-            ).pack(anchor="w", pady=(6, 0))
+            )
+            self.marker_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
         self.bind("<Button-1>", self._handle_click)
         for child in self.winfo_children():
@@ -358,6 +369,16 @@ class CardView(ttk.Frame):
         self.selected = selected
         style = "CardSelected.TFrame" if selected else "Card.TFrame"
         self.configure(style=style)
+        title_style = "CardTitleSelected.TLabel" if selected else "CardTitle.TLabel"
+        body_style = "CardBodySelected.TLabel" if selected else "CardBody.TLabel"
+        marker_style = (
+            "CardMarkerSelected.TLabel" if selected else "CardMarker.TLabel"
+        )
+        self.name_label.configure(style=title_style)
+        self.taste_label.configure(style=body_style)
+        self.chips_label.configure(style=body_style)
+        if self.marker_label:
+            self.marker_label.configure(style=marker_style)
 
 
 class FoodGameApp:
@@ -383,15 +404,59 @@ class FoodGameApp:
         except tk.TclError:
             pass
 
-        style.configure("Card.TFrame", background="#222831", relief="raised")
-        style.configure("CardSelected.TFrame", background="#30475e", relief="sunken")
-        style.configure("CardTitle.TLabel", font=("Segoe UI", 12, "bold"), foreground="#ffd369")
-        style.configure("CardBody.TLabel", font=("Segoe UI", 10), foreground="#eeeeee")
-        style.configure("CardMarker.TLabel", font=("Segoe UI", 9, "italic"), foreground="#00adb5")
+        base_bg = "#f5f5f5"
+        selected_bg = "#e6edf7"
+        title_font = ("Helvetica", 12, "bold")
+        body_font = ("Helvetica", 10)
+        marker_font = ("Helvetica", 9, "italic")
 
-        style.configure("Info.TLabel", font=("Segoe UI", 10))
-        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"))
-        style.configure("Score.TLabel", font=("Segoe UI", 18, "bold"))
+        style.configure("Card.TFrame", background=base_bg, borderwidth=1, relief="solid")
+        style.configure(
+            "CardSelected.TFrame",
+            background=selected_bg,
+            borderwidth=2,
+            relief="solid",
+        )
+        style.configure(
+            "CardTitle.TLabel",
+            font=title_font,
+            foreground="#2f2f2f",
+            background=base_bg,
+        )
+        style.configure(
+            "CardBody.TLabel",
+            font=body_font,
+            foreground="#3a3a3a",
+            background=base_bg,
+        )
+        style.configure(
+            "CardMarker.TLabel",
+            font=marker_font,
+            foreground="#5a5a5a",
+            background=base_bg,
+        )
+        style.configure(
+            "CardTitleSelected.TLabel",
+            font=title_font,
+            foreground="#1f1f1f",
+            background=selected_bg,
+        )
+        style.configure(
+            "CardBodySelected.TLabel",
+            font=body_font,
+            foreground="#2d2d2d",
+            background=selected_bg,
+        )
+        style.configure(
+            "CardMarkerSelected.TLabel",
+            font=marker_font,
+            foreground="#4a4a4a",
+            background=selected_bg,
+        )
+
+        style.configure("Info.TLabel", font=("Helvetica", 10), foreground="#2f2f2f")
+        style.configure("Header.TLabel", font=("Helvetica", 14, "bold"), foreground="#1f1f1f")
+        style.configure("Score.TLabel", font=("Helvetica", 18, "bold"), foreground="#1f1f1f")
 
     def _build_layout(self) -> None:
         main = ttk.Frame(self.root, padding=16)
@@ -520,11 +585,13 @@ class FoodGameApp:
             self.game_frame,
             height=5,
             wrap="word",
-            background="#1f1f1f",
-            foreground="#eeeeee",
-            relief="flat",
+            background="#f8f8f8",
+            foreground="#242424",
+            relief="solid",
+            borderwidth=1,
             padx=10,
             pady=8,
+            font=("Helvetica", 10),
         )
         self.events_text.grid(row=1, column=0, sticky="ew", pady=(12, 12))
         self.events_text.configure(state="disabled")
@@ -538,10 +605,10 @@ class FoodGameApp:
         self.hand_canvas.grid(row=0, column=0, sticky="nsew")
 
         scrollbar = ttk.Scrollbar(
-            hand_container, orient="vertical", command=self.hand_canvas.yview
+            hand_container, orient="horizontal", command=self.hand_canvas.xview
         )
-        scrollbar.grid(row=0, column=1, sticky="ns")
-        self.hand_canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.grid(row=1, column=0, sticky="ew")
+        self.hand_canvas.configure(xscrollcommand=scrollbar.set)
 
         self.hand_frame = ttk.Frame(self.hand_canvas)
         self.hand_canvas.create_window((0, 0), window=self.hand_frame, anchor="nw")
@@ -566,11 +633,13 @@ class FoodGameApp:
             self.game_frame,
             height=12,
             wrap="word",
-            background="#101820",
-            foreground="#f1f1f1",
-            relief="flat",
+            background="#ffffff",
+            foreground="#202020",
+            relief="solid",
+            borderwidth=1,
             padx=12,
             pady=10,
+            font=("Helvetica", 10),
         )
         self.result_text.grid(row=4, column=0, sticky="ew", pady=(12, 0))
         self.result_text.configure(state="disabled")
@@ -656,7 +725,7 @@ class FoodGameApp:
                 marker_text=markers,
                 on_click=self.toggle_card,
             )
-            view.grid(row=index, column=0, sticky="ew", pady=8)
+            view.grid(row=0, column=index, sticky="nw", padx=8, pady=8)
             self.card_views.append(view)
 
         self.hand_frame.update_idletasks()

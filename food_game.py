@@ -14,7 +14,7 @@ Key features:
 from __future__ import annotations
 
 import random
-from typing import Iterable, List, Sequence, Tuple
+from typing import Collection, Iterable, List, Mapping, Sequence, Tuple
 
 from food_api import Chef, Ingredient, RULES_VERSION, GameData, build_market_deck
 from seed_utils import resolve_seed
@@ -125,21 +125,44 @@ def prompt_seed() -> Tuple[int, random.Random]:
         return resolve_seed(typed_seed)
 
 
-def describe_ingredient(ingredient: Ingredient, chef_key_set: Iterable[str]) -> str:
-    star = "*" if ingredient.name in chef_key_set else " "
-    return f"{star}{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
+def _chef_marker(chef: Chef) -> str:
+    """Return a single-letter marker representing the chef."""
+
+    parts = [part for part in chef.name.split() if part]
+    for part in parts:
+        if part.lower() != "chef":
+            return part[0].upper()
+    return parts[0][0].upper() if parts else "?"
+
+
+def describe_ingredient(
+    ingredient: Ingredient,
+    chefs: Sequence[Chef],
+    chef_key_map: Mapping[str, Collection[str]],
+) -> str:
+    markers = [
+        _chef_marker(chef)
+        for chef in chefs
+        if ingredient.name in chef_key_map.get(chef.name, ())
+    ]
+    marker_text = f"(*{''.join(markers)})" if markers else ""
+    prefix = f"{marker_text} " if marker_text else ""
+    return f"{prefix}{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
 
 
 def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
     print("\nYour hand:")
-    key_set = DATA.chefs_key_ingredients(chefs)
+    chef_key_map = {chef.name: DATA.chef_key_ingredients(chef) for chef in chefs}
     for idx, ingredient in enumerate(hand, start=1):
-        print(f"  {idx}. {describe_ingredient(ingredient, key_set)}")
+        print(f"  {idx}. {describe_ingredient(ingredient, chefs, chef_key_map)}")
     chef_names = ", ".join(chef.name for chef in chefs)
     print(
-        "  * indicates an ingredient that appears in at least one chef's signature recipes"
+        "  (*X) next to an ingredient indicates it appears in an active chef's signature recipes."
     )
-    print(f"    (Active chefs: {chef_names})")
+    if chefs:
+        legend = ", ".join(f"(*{_chef_marker(chef)}) {chef.name}" for chef in chefs)
+        print(f"    Legend: {legend}")
+    print(f"    Active chefs: {chef_names}")
 
 
 def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:

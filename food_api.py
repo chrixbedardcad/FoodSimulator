@@ -62,6 +62,7 @@ class GameData:
     recipe_by_name: Dict[str, Recipe] = field(init=False)
     recipe_trio_lookup: Dict[Tuple[str, str, str], str] = field(init=False)
     recipe_multipliers: Dict[str, float] = field(init=False)
+    ingredient_recipes: Dict[str, List[str]] = field(init=False)
 
     def __post_init__(self) -> None:
         self.recipe_by_name = {recipe.name: recipe for recipe in self.recipes}
@@ -69,9 +70,19 @@ class GameData:
             tuple(sorted(recipe.trio)): recipe.name for recipe in self.recipes
         }
         self.recipe_multipliers = self._build_recipe_multipliers()
+        self.ingredient_recipes = self._build_ingredient_recipes()
 
     def _build_recipe_multipliers(self) -> Dict[str, float]:
         return {recipe.name: float(recipe.base_multiplier) for recipe in self.recipes}
+
+    def _build_ingredient_recipes(self) -> Dict[str, List[str]]:
+        mapping: Dict[str, List[str]] = {}
+        for recipe in self.recipes:
+            for ingredient in recipe.trio:
+                mapping.setdefault(ingredient, []).append(recipe.name)
+        for names in mapping.values():
+            names.sort()
+        return mapping
 
     @classmethod
     def from_json(
@@ -118,6 +129,9 @@ class GameData:
     def which_recipe(self, ingredients: Sequence[Ingredient]) -> Optional[str]:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
         return self.recipe_trio_lookup.get(key)
+
+    def recipes_using_ingredient(self, ingredient_name: str) -> Sequence[str]:
+        return self.ingredient_recipes.get(ingredient_name, [])
 
     def recipe_multiplier(
         self,

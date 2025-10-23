@@ -317,6 +317,159 @@ class GameSession:
         return self.finished
 
 
+class ChefTile(ttk.Frame):
+    def __init__(self, master: tk.Widget, data: GameData) -> None:
+        super().__init__(master, style="Tile.TFrame", padding=(14, 12))
+        self.data = data
+        self.chef: Optional[Chef] = None
+        self.expanded = False
+        self._current_recipe_names: list[str] = []
+        self._recipe_buttons: list[ttk.Button] = []
+        self._empty_label: Optional[ttk.Label] = None
+
+        self.columnconfigure(0, weight=1)
+
+        self.name_var = tk.StringVar(value="Chef preview")
+        self.subtitle_var = tk.StringVar(
+            value="Select a chef from the list to preview their recipes."
+        )
+
+        self.header_button = ttk.Button(
+            self,
+            textvariable=self.name_var,
+            style="TileHeader.TButton",
+            command=self.toggle_recipes,
+        )
+        self.header_button.grid(row=0, column=0, sticky="ew")
+
+        self.subtitle_label = ttk.Label(
+            self,
+            textvariable=self.subtitle_var,
+            style="TileSub.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.subtitle_label.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+
+        self.recipe_container = ttk.Frame(self, style="TileBody.TFrame")
+        self.recipe_container.columnconfigure(0, weight=1)
+        self.recipe_container.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        self.recipe_container.grid_remove()
+
+        self.recipe_buttons_frame = ttk.Frame(
+            self.recipe_container, style="TileBody.TFrame"
+        )
+        self.recipe_buttons_frame.grid(row=0, column=0, sticky="ew")
+        self.recipe_buttons_frame.columnconfigure(0, weight=1)
+
+        self.ingredients_var = tk.StringVar(value="")
+        self.ingredients_label = ttk.Label(
+            self.recipe_container,
+            textvariable=self.ingredients_var,
+            style="TileInfo.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.ingredients_label.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+        self.set_chef(None)
+
+    def set_chef(self, chef: Optional[Chef]) -> None:
+        self.chef = chef
+        self.expanded = False
+        self._clear_recipe_buttons()
+        self.recipe_container.grid_remove()
+        self._current_recipe_names = []
+        self.ingredients_var.set("")
+
+        if not chef:
+            self.name_var.set("Chef preview")
+            self.subtitle_var.set(
+                "Select a chef from the list to preview their recipes."
+            )
+            self.header_button.state(["disabled"])
+            return
+
+        self.header_button.state(["!disabled"])
+        self.name_var.set(chef.name)
+        self._current_recipe_names = sorted(set(chef.recipe_names))
+        self._populate_recipe_buttons()
+        self._update_collapsed_hint()
+
+    def toggle_recipes(self) -> None:
+        if not self.chef:
+            return
+        if self.expanded:
+            self.recipe_container.grid_remove()
+            self.expanded = False
+            self._update_collapsed_hint()
+        else:
+            self.recipe_container.grid()
+            self.expanded = True
+            if self._current_recipe_names:
+                self.subtitle_var.set("Select a recipe to view its ingredients.")
+            else:
+                self.subtitle_var.set("No signature recipes for this chef.")
+
+    def show_ingredients(self, recipe_name: str) -> None:
+        if not self.chef:
+            return
+        recipe = self.data.recipe_by_name.get(recipe_name)
+        if not recipe:
+            self.ingredients_var.set("Recipe data unavailable.")
+            return
+        if not self.expanded:
+            self.toggle_recipes()
+        lines = "\n".join(f"• {ingredient}" for ingredient in recipe.trio)
+        self.ingredients_var.set(f"Ingredients:\n{lines}")
+        self.subtitle_var.set(f"{recipe_name} ingredients:")
+
+    def _clear_recipe_buttons(self) -> None:
+        for button in self._recipe_buttons:
+            button.destroy()
+        self._recipe_buttons.clear()
+        if self._empty_label:
+            self._empty_label.destroy()
+            self._empty_label = None
+
+    def _populate_recipe_buttons(self) -> None:
+        if not self.chef:
+            return
+        if not self._current_recipe_names:
+            self._empty_label = ttk.Label(
+                self.recipe_buttons_frame,
+                text="This chef does not host any signature recipes.",
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            self._empty_label.grid(row=0, column=0, sticky="ew")
+            return
+
+        for row, recipe_name in enumerate(self._current_recipe_names):
+            button = ttk.Button(
+                self.recipe_buttons_frame,
+                text=recipe_name,
+                style="TileRecipe.TButton",
+                command=lambda name=recipe_name: self.show_ingredients(name),
+            )
+            button.grid(row=row, column=0, sticky="ew", pady=2)
+            self._recipe_buttons.append(button)
+        self.ingredients_var.set("Select a recipe to view its ingredients.")
+
+    def _update_collapsed_hint(self) -> None:
+        if not self.chef:
+            self.subtitle_var.set(
+                "Select a chef from the list to preview their recipes."
+            )
+            return
+        count = len(self._current_recipe_names)
+        if count:
+            plural = "recipe" if count == 1 else "recipes"
+            self.subtitle_var.set(f"{count} {plural}. Click to view.")
+        else:
+            self.subtitle_var.set("No signature recipes for this chef.")
+
+
 class CardView(ttk.Frame):
     def __init__(
         self,
@@ -392,6 +545,7 @@ class FoodGameApp:
         self.card_views: List[CardView] = []
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
+        self.chef_tile: Optional[ChefTile] = None
 
         self._init_styles()
         self._build_layout()
@@ -409,6 +563,7 @@ class FoodGameApp:
         title_font = ("Helvetica", 12, "bold")
         body_font = ("Helvetica", 10)
         marker_font = ("Helvetica", 9, "italic")
+        tile_bg = "#ffffff"
 
         style.configure("Card.TFrame", background=base_bg, borderwidth=1, relief="solid")
         style.configure(
@@ -457,6 +612,37 @@ class FoodGameApp:
         style.configure("Info.TLabel", font=("Helvetica", 10), foreground="#2f2f2f")
         style.configure("Header.TLabel", font=("Helvetica", 14, "bold"), foreground="#1f1f1f")
         style.configure("Score.TLabel", font=("Helvetica", 18, "bold"), foreground="#1f1f1f")
+        style.configure(
+            "Tile.TFrame",
+            background=tile_bg,
+            borderwidth=1,
+            relief="ridge",
+        )
+        style.configure("TileBody.TFrame", background=tile_bg)
+        style.configure(
+            "TileHeader.TButton",
+            font=("Helvetica", 12, "bold"),
+            anchor="w",
+            padding=(8, 6),
+        )
+        style.configure(
+            "TileSub.TLabel",
+            font=("Helvetica", 10),
+            foreground="#3a3a3a",
+            background=tile_bg,
+        )
+        style.configure(
+            "TileInfo.TLabel",
+            font=("Helvetica", 10),
+            foreground="#2a2a2a",
+            background=tile_bg,
+        )
+        style.configure(
+            "TileRecipe.TButton",
+            font=("Helvetica", 10),
+            anchor="w",
+            padding=(6, 4),
+        )
 
     def _build_layout(self) -> None:
         main = ttk.Frame(self.root, padding=16)
@@ -502,6 +688,9 @@ class FoodGameApp:
         for chef in DATA.chefs:
             self.chef_list.insert("end", chef.name)
         self.chef_list.pack(anchor="w", pady=(4, 12))
+        self.chef_tile = ChefTile(self.control_frame, DATA)
+        self.chef_tile.pack(fill="x", pady=(0, 12))
+        self.chef_list.bind("<<ListboxSelect>>", self.on_chef_select)
 
         config_frame = ttk.Frame(self.control_frame)
         config_frame.pack(anchor="w", pady=(8, 0))
@@ -708,6 +897,23 @@ class FoodGameApp:
         for spin in self.spinboxes:
             spin.configure(state=state)
         self.start_button.configure(state="normal" if active else "disabled")
+
+    def on_chef_select(self, _event: Optional[tk.Event] = None) -> None:
+        if not self.chef_tile:
+            return
+        selection = self.chef_list.curselection()
+        chef: Optional[Chef] = None
+        if selection:
+            try:
+                active_index = int(self.chef_list.index("active"))
+            except (tk.TclError, ValueError):
+                active_index = selection[-1]
+            index = active_index if active_index in selection else selection[-1]
+            try:
+                chef = DATA.chefs[index]
+            except IndexError:
+                chef = None
+        self.chef_tile.set_chef(chef)
 
     # ----------------- UI updates -----------------
     def render_hand(self) -> None:

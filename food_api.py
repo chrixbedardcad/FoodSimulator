@@ -229,8 +229,8 @@ def _load_themes(path: str):
     return fixed
 
 
-DEFAULT_HAND_SIZE = 5
-DEFAULT_PICK_SIZE = 3
+DEFAULT_HAND_SIZE = 8
+DEFAULT_PICK_SIZE = 5
 TRIO_SIZE = 3
 
 

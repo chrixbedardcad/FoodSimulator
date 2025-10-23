@@ -9,7 +9,7 @@ Key features:
 * Lets the user select chefs and market themes.
 * Uses the same round → cook structure as the automated simulator so a "run"
   represents a full game composed of multiple rounds, each with several cooks.
-* Deals configurable hand sizes (default five cards), allows picking any trio size,
+* Deals configurable hand sizes (default eight cards), allows picking any trio size,
   and immediately shows score breakdowns and recipe hits.
 * Supports running multiple short sessions in a row to compare outcomes.
 """

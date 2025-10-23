@@ -61,7 +61,7 @@ terminal:
 python food_simulator.py --runs 300 --theme Mediterranean
 python food_simulator.py --runs 500 --theme Asian --out reports
 python food_simulator.py --runs 200 --theme Mediterranean --seed 42
-python food_simulator.py --runs 1 --seed 1 --active-chefs 3 --hand-size 5 --pick-size 3
+python food_simulator.py --runs 1 --seed 1 --active-chefs 3 --hand-size 8 --pick-size 5
 python food_simulator.py --help  # view every available option
 ```
 
@@ -77,8 +77,8 @@ Key CLI flags:
 | `--rounds` | Rounds per run; each round deals fresh hands (default `3`). |
 | `--cooks-per-round` | Cooking turns taken within each round (default `6`). |
 | `--active-chefs` | Active chefs per run, influencing deck bias and perks (default `3`). |
-| `--hand-size` | Number of ingredients drawn into your hand before each pick (default `5`). |
-| `--pick-size` | How many ingredients are cooked each turn (default `3`; must not exceed `--hand-size`). |
+| `--hand-size` | Number of ingredients drawn into your hand before each pick (default `8`). |
+| `--pick-size` | How many ingredients are cooked each turn (default `5`; must not exceed `--hand-size`). |
 
 `nbplay` × `runs` yields the total number of simulated runs; combined with `rounds` and
 `cooks-per-round` this mirrors the round/cook structure available in `food_game.py`.
@@ -125,7 +125,7 @@ During each session you can:
 2. Decide how many rounds to play, how many cooks happen within each round, and how
    many runs to chain back-to-back.
 3. (Optionally) set an RNG seed for reproducible decks.
-4. Review five-card hands, pick any trio, and instantly inspect chip totals, taste multipliers, chef key cards, and recipe completions.
+4. Review eight-card hands, pick any trio, and instantly inspect chip totals, taste multipliers, chef key cards, and recipe completions.
 
 Chef perks defined in `chefs.json` apply automatically—e.g., recipe-specific score multipliers—so designers can evaluate perk tuning without code changes.
 
@@ -142,7 +142,7 @@ python food_desktop.py
 Key highlights:
 
 - Pick a market theme and one or more chefs from dropdowns and multi-select lists.
-- See five-card hands rendered as colour-coded tiles that highlight chef key ingredients.
+- See eight-card hands rendered as colour-coded tiles that highlight chef key ingredients.
 - Click cards to build your trio (the UI enforces the pick limit) and review chip totals, taste synergy, recipe bonuses, and cumulative score in a side panel.
 - Track round/turn progress, deck refresh events, and active chefs without leaving the window.
 
@@ -154,7 +154,7 @@ Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak imm
 
 | Mechanic | Description |
 |----------|-------------|
-| **Trio draws** | Five-card hands are dealt from theme-driven decks; trios are cooked each turn. |
+| **Trio draws** | Eight-card hands are dealt from theme-driven decks; trios are cooked each turn. |
 | **Taste synergy** | Taste combinations look up multipliers in `taste_matrix.json` to scale chip totals. |
 | **Recipe mastery** | Cooking the same signature recipe twice in a row masters it and contributes to mastery rate metrics. |
 | **Chef bias** | Signature ingredients appear more frequently thanks to weighted deck construction. |

@@ -92,6 +92,12 @@ class GameData:
                 keys.update(recipe.trio)
         return keys
 
+    def chefs_key_ingredients(self, chefs: Iterable[Chef]) -> set[str]:
+        combined: set[str] = set()
+        for chef in chefs:
+            combined.update(self.chef_key_ingredients(chef))
+        return combined
+
     def trio_score(self, ingredients: Sequence[Ingredient]) -> Tuple[int, int, int, int]:
         a, b, c = ingredients
         chips = a.chips + b.chips + c.chips
@@ -155,14 +161,16 @@ TRIO_SIZE = 3
 def build_market_deck(
     data: GameData,
     theme_name: str,
-    chef: Chef,
+    chefs: Sequence[Chef],
     deck_size: int = 100,
     bias: float = 2.7,
     rng: Optional[random.Random] = None,
 ) -> List[Ingredient]:
     rng = rng or random
     theme_pool = data.themes[theme_name]
-    keyset = data.chef_key_ingredients(chef)
+    if not chefs:
+        raise ValueError("At least one chef is required to build a market deck.")
+    keyset = data.chefs_key_ingredients(chefs)
     weighted: List[Ingredient] = []
     for ingredient_name, copies in theme_pool:
         ingredient = data.ingredients.get(ingredient_name)
@@ -216,7 +224,7 @@ def draw_cook(
     data: GameData,
     hand: List[Ingredient],
     deck: List[Ingredient],
-    chef: Chef,
+    chefs: Sequence[Chef],
     guarantee_prob: float = 0.6,
     hand_size: int = DEFAULT_HAND_SIZE,
     key_ingredients: Optional[Iterable[str]] = None,
@@ -227,7 +235,13 @@ def draw_cook(
     if len(hand) < TRIO_SIZE:
         return [], hand, deck
 
-    keyset = set(key_ingredients) if key_ingredients is not None else data.chef_key_ingredients(chef)
+    if not chefs:
+        raise ValueError("draw_cook requires at least one active chef.")
+    keyset = (
+        set(key_ingredients)
+        if key_ingredients is not None
+        else data.chefs_key_ingredients(chefs)
+    )
     trio = _select_trio_from_hand(hand, keyset, guarantee_prob, rng)
     hand, deck = _refill_hand(hand, deck, hand_size)
     return trio, hand, deck
@@ -235,11 +249,10 @@ def draw_cook(
 
 @dataclass
 class LearningState:
-    recipe_name: Optional[str] = None
-    hits: int = 0
+    hits: Counter[str] = field(default_factory=Counter)
 
 
-def _recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
+def _chef_recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
     if not recipe_name:
         return 1.0
     multipliers = chef.perks.get("recipe_multipliers", {})
@@ -249,14 +262,20 @@ def _recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
         return 1.0
 
 
-def update_learning(state: LearningState, chef: Chef, recipe_name: Optional[str]) -> LearningState:
-    if recipe_name and recipe_name in chef.recipe_names:
-        if state.recipe_name == recipe_name:
-            state.hits += 1
-        elif state.recipe_name is None:
-            state.recipe_name, state.hits = recipe_name, 1
-        elif state.hits < 2:
-            state.recipe_name, state.hits = recipe_name, 1
+def _recipe_multiplier(chefs: Sequence[Chef], recipe_name: Optional[str]) -> float:
+    if not recipe_name:
+        return 1.0
+    multiplier = 1.0
+    for chef in chefs:
+        multiplier *= _chef_recipe_multiplier(chef, recipe_name)
+    return multiplier
+
+
+def update_learning(
+    state: LearningState, chefs: Sequence[Chef], recipe_name: Optional[str]
+) -> LearningState:
+    if recipe_name and any(recipe_name in chef.recipe_names for chef in chefs):
+        state.hits[recipe_name] += 1
     return state
 
 
@@ -274,13 +293,15 @@ class SimulationConfig:
 def simulate_run(
     data: GameData,
     theme_name: str = "Mediterranean",
-    start_chef: Optional[Chef] = None,
+    start_chefs: Optional[Sequence[Chef]] = None,
     config: Optional[SimulationConfig] = None,
     rng: Optional[random.Random] = None,
 ) -> Dict[str, object]:
     rng = rng or random
     cfg = config or SimulationConfig()
-    chef = start_chef or rng.choice(data.chefs)
+    active_chefs = list(start_chefs) if start_chefs else [rng.choice(data.chefs)]
+    if not active_chefs:
+        active_chefs.append(rng.choice(data.chefs))
     learning = LearningState()
     mastered: set[str] = set()
     total_score = 0
@@ -294,10 +315,10 @@ def simulate_run(
     ingredient_use: Counter[str] = Counter()
     recipe_counts: Counter[str] = Counter()
 
-    deck = build_market_deck(data, theme_name, chef, cfg.deck_size, cfg.bias, rng)
+    deck = build_market_deck(data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng)
     hand: List[Ingredient] = []
     hand, deck = _refill_hand(hand, deck, cfg.hand_size)
-    current_keys = data.chef_key_ingredients(chef)
+    current_keys = data.chefs_key_ingredients(active_chefs)
     draws = 0
     round_scores: List[int] = []
     cumulative_scores: List[int] = []
@@ -308,14 +329,18 @@ def simulate_run(
         for _ in range(cfg.cooks):
             if len(hand) < TRIO_SIZE:
                 if len(deck) < TRIO_SIZE:
-                    deck = build_market_deck(data, theme_name, chef, cfg.deck_size, cfg.bias, rng)
+                    deck = build_market_deck(
+                        data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
+                    )
                     draws = 0
                 hand, deck = _refill_hand(hand, deck, cfg.hand_size)
                 if len(hand) < TRIO_SIZE:
                     break
 
             if len(deck) < TRIO_SIZE or draws >= cfg.reshuffle_every:
-                deck = build_market_deck(data, theme_name, chef, cfg.deck_size, cfg.bias, rng)
+                deck = build_market_deck(
+                    data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
+                )
                 draws = 0
                 hand, deck = _refill_hand(hand, deck, cfg.hand_size)
 
@@ -323,7 +348,7 @@ def simulate_run(
                 data,
                 hand,
                 deck,
-                chef,
+                active_chefs,
                 cfg.guarantee_prob,
                 cfg.hand_size,
                 current_keys,
@@ -340,10 +365,10 @@ def simulate_run(
             recipe_name = data.which_recipe(trio)
             if recipe_name:
                 recipe_counts[recipe_name] += 1
-            learning = update_learning(learning, chef, recipe_name)
+            learning = update_learning(learning, active_chefs, recipe_name)
 
             score, _, _, taste_multiplier = data.trio_score(trio)
-            recipe_multiplier = _recipe_multiplier(chef, recipe_name)
+            recipe_multiplier = _recipe_multiplier(active_chefs, recipe_name)
             total_multiplier = taste_multiplier * recipe_multiplier
             final_score = int(round(score * recipe_multiplier))
             total_score += final_score
@@ -354,9 +379,10 @@ def simulate_run(
             overall_multiplier_total += total_multiplier
             multiplier_events += 1
 
-            if learning.recipe_name and learning.hits >= 2:
-                mastered.add(learning.recipe_name)
-                learning = LearningState()
+            for mastered_recipe, hits in list(learning.hits.items()):
+                if hits >= 2:
+                    mastered.add(mastered_recipe)
+                    del learning.hits[mastered_recipe]
 
             draws += 1
 
@@ -364,13 +390,11 @@ def simulate_run(
         cumulative_total += round_total
         cumulative_scores.append(cumulative_total)
 
-        if rng.random() < 0.5:
-            chef = rng.choice(data.chefs)
-            current_keys = data.chef_key_ingredients(chef)
-            deck = build_market_deck(data, theme_name, chef, cfg.deck_size, cfg.bias, rng)
-            hand = []
-            hand, deck = _refill_hand(hand, deck, cfg.hand_size)
-            draws = 0
+        deck = build_market_deck(data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng)
+        hand = []
+        hand, deck = _refill_hand(hand, deck, cfg.hand_size)
+        current_keys = data.chefs_key_ingredients(active_chefs)
+        draws = 0
 
     return {
         "score": total_score,

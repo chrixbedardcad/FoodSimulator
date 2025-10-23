@@ -557,6 +557,7 @@ class FoodGameApp:
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
         self.chef_tile: Optional[ChefTile] = None
+        self.active_popup: Optional[tk.Toplevel] = None
 
         self._init_styles()
         self._build_layout()
@@ -853,6 +854,9 @@ class FoodGameApp:
 
     # ----------------- Session management -----------------
     def start_run(self) -> None:
+        if self.active_popup and self.active_popup.winfo_exists():
+            self.active_popup.destroy()
+        self.active_popup = None
         try:
             theme = self.theme_var.get()
             if not theme:
@@ -895,6 +899,9 @@ class FoodGameApp:
         self.write_result("Run started. Select ingredients and press COOK!")
 
     def reset_session(self) -> None:
+        if self.active_popup and self.active_popup.winfo_exists():
+            self.active_popup.destroy()
+        self.active_popup = None
         self.session = None
         self.selected_indices.clear()
         self.update_selection_label()
@@ -1068,6 +1075,7 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.append_events(self.session.consume_events())
+        self.show_turn_summary_popup(outcome)
 
         if self.session.is_finished():
             self.cook_button.configure(state="disabled")
@@ -1076,6 +1084,187 @@ class FoodGameApp:
                 "Run complete",
                 f"Final score: {self.session.get_total_score()}",
             )
+
+    @staticmethod
+    def _format_multiplier(multiplier: float) -> str:
+        if math.isclose(multiplier, round(multiplier)):
+            return f"x{int(round(multiplier))}"
+        return f"x{multiplier:.2f}"
+
+    def show_turn_summary_popup(self, outcome: TurnOutcome) -> None:
+        if self.active_popup and self.active_popup.winfo_exists():
+            self.active_popup.destroy()
+        self.active_popup = None
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Turn Summary")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+        popup.configure(bg="#10151a")
+
+        def close_popup() -> None:
+            if popup.winfo_exists():
+                popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
+
+        popup.protocol("WM_DELETE_WINDOW", close_popup)
+        popup.bind("<Escape>", lambda _e: close_popup())
+
+        glow_frame = tk.Frame(popup, bg="#edf1f7", padx=12, pady=12)
+        glow_frame.pack(fill="both", expand=True)
+
+        base_bg = "#ffffff"
+        content = tk.Frame(glow_frame, bg=base_bg, padx=18, pady=16)
+        content.pack(fill="both", expand=True)
+
+        heading = tk.Label(
+            content,
+            text=(
+                f"Turn {outcome.turn_number}/{outcome.total_turns}"
+                f"  •  Round {outcome.round_index}/{outcome.total_rounds}"
+                f"  •  Cook {outcome.cook_number}/{outcome.cooks_per_round}"
+            ),
+            font=("Helvetica", 15, "bold"),
+            fg="#15202b",
+            bg=base_bg,
+            justify="left",
+            anchor="w",
+        )
+        heading.pack(anchor="w", pady=(0, 8))
+
+        if outcome.recipe_name:
+            recipe_banner = tk.Label(
+                content,
+                text=f"✨ Recipe completed: {outcome.recipe_name}! ✨",
+                font=("Helvetica", 12, "bold"),
+                fg="#a35d00",
+                bg=base_bg,
+                anchor="w",
+                justify="left",
+            )
+            recipe_banner.pack(anchor="w", pady=(0, 8))
+
+        ingredient_lines = [
+            f"• {ingredient.name} — Taste {ingredient.taste}, Chips {ingredient.chips}"
+            for ingredient in outcome.selected
+        ]
+        ingredients_text = "\n".join(ingredient_lines) or "• —"
+
+        tk.Label(
+            content,
+            text="Cooked ingredients:",
+            font=("Helvetica", 11, "bold"),
+            fg="#1d2730",
+            bg=base_bg,
+            anchor="w",
+        ).pack(anchor="w")
+
+        tk.Label(
+            content,
+            text=ingredients_text,
+            font=("Helvetica", 10),
+            fg="#26313a",
+            bg=base_bg,
+            justify="left",
+            anchor="w",
+        ).pack(anchor="w", fill="x", pady=(0, 10))
+
+        points_lines = [
+            f"Chips: {outcome.chips}",
+            f"Taste sum: {outcome.taste_sum}",
+            f"Taste multiplier: {self._format_multiplier(outcome.taste_multiplier)}",
+            f"Recipe multiplier: {self._format_multiplier(outcome.recipe_multiplier)}",
+            f"Total multiplier: {self._format_multiplier(outcome.total_multiplier)}",
+            f"Base score (Taste × Chips): {outcome.base_score}",
+            f"Score gained this turn: {outcome.final_score}",
+        ]
+
+        if outcome.contributions:
+            points_lines.append("")
+            points_lines.append("Recipe bonus breakdown:")
+            for name, multiplier in outcome.contributions:
+                points_lines.append(
+                    f"  • {name}: {self._format_multiplier(multiplier)}"
+                )
+
+        chef_hits = (
+            f"Chef key ingredients used: {outcome.chef_hits}/"
+            f"{max(len(outcome.selected), 1)}"
+        )
+        points_lines.append(chef_hits)
+
+        if outcome.deck_refreshed:
+            points_lines.append("Deck refreshed for the next hand!")
+
+        total_score = self.session.get_total_score() if self.session else outcome.final_score
+        points_lines.append(f"Cumulative score: {total_score}")
+
+        tk.Label(
+            content,
+            text="Points breakdown:",
+            font=("Helvetica", 11, "bold"),
+            fg="#1d2730",
+            bg=base_bg,
+            anchor="w",
+        ).pack(anchor="w")
+
+        tk.Label(
+            content,
+            text="\n".join(points_lines),
+            font=("Helvetica", 10),
+            fg="#26313a",
+            bg=base_bg,
+            justify="left",
+            anchor="w",
+        ).pack(anchor="w", fill="x", pady=(0, 12))
+
+        ttk.Separator(content, orient="horizontal").pack(fill="x", pady=(0, 10))
+
+        footer = tk.Frame(content, bg=base_bg)
+        footer.pack(fill="x")
+
+        ttk.Button(footer, text="Close", command=close_popup).pack(
+            side="right", pady=(6, 0)
+        )
+
+        popup.update_idletasks()
+        self._center_popup(popup)
+
+        if outcome.recipe_name:
+            glow_colors = ["#ffe8a8", "#ffd56f", "#fff3c4", "#ffdba0"]
+            self._animate_popup_highlight(glow_frame, glow_colors, cycles=10, delay=120)
+
+        self.active_popup = popup
+
+    def _center_popup(self, popup: tk.Toplevel) -> None:
+        popup.update_idletasks()
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_w = self.root.winfo_width()
+        root_h = self.root.winfo_height()
+        popup_w = popup.winfo_width()
+        popup_h = popup.winfo_height()
+        x = root_x + (root_w - popup_w) // 2
+        y = root_y + (root_h - popup_h) // 2
+        popup.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    def _animate_popup_highlight(
+        self, widget: tk.Widget, colors: Sequence[str], *, cycles: int = 6, delay: int = 140
+    ) -> None:
+        if not colors:
+            return
+
+        def step(index: int) -> None:
+            if not widget.winfo_exists():
+                return
+            widget.configure(bg=colors[index % len(colors)])
+            if index < cycles:
+                widget.after(delay, lambda: step(index + 1))
+            else:
+                widget.configure(bg="#edf1f7")
+
+        step(0)
 
     def _format_outcome(self, outcome: TurnOutcome) -> str:
         parts = [

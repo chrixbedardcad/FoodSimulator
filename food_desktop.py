@@ -71,6 +71,7 @@ class TurnOutcome:
     recipe_name: Optional[str]
     recipe_multiplier: float
     final_score: int
+    times_cooked_total: int
     base_score: int
     chef_hits: int
     round_index: int
@@ -138,18 +139,24 @@ class GameSession:
         self.cooks_completed_in_round = 0
         self.total_score = 0
         self.finished = False
+        self.pending_new_chef_offer = False
 
         self.hand: List[Ingredient] = []
         self.deck: List[Ingredient] = []
         self._events: List[str] = []
 
-        self._chef_key_map = {
-            chef.name: data.chef_key_ingredients(chef) for chef in self.chefs
-        }
-        self._chef_key_set = data.chefs_key_ingredients(self.chefs)
+        self._cookbook_ingredients: set[str] = set()
+
+        self._refresh_chef_data()
         self.cookbook: Dict[str, CookbookEntry] = {}
 
         self._start_next_round(initial=True)
+
+    def _refresh_chef_data(self) -> None:
+        self._chef_key_map = {
+            chef.name: self.data.chef_key_ingredients(chef) for chef in self.chefs
+        }
+        self._chef_key_set = self.data.chefs_key_ingredients(self.chefs)
 
     # ----------------- Event helpers -----------------
     def _push_event(self, message: str) -> None:
@@ -187,9 +194,15 @@ class GameSession:
         )
         self.rng.shuffle(self.deck)
         self.hand.clear()
+        self.pending_new_chef_offer = False
         self._push_event(
             f"Round {self.round_index}/{self.rounds} begins. Deck shuffled for the team."
         )
+        if not initial and self.available_chefs():
+            self.pending_new_chef_offer = True
+            self._push_event(
+                "You may recruit an additional chef before drawing the next hand."
+            )
         self._refill_hand()
 
     def _refill_hand(self) -> bool:
@@ -219,6 +232,28 @@ class GameSession:
             self._push_event("Not enough cards to continue this run.")
         return deck_refreshed
 
+    def _rebuild_deck_for_new_chef(self) -> None:
+        if self.finished:
+            return
+        self.deck = build_market_deck(
+            self.data,
+            self.theme_name,
+            self.chefs,
+            deck_size=self.deck_size,
+            bias=self.bias,
+            rng=self.rng,
+        )
+        self.rng.shuffle(self.deck)
+        self.hand.clear()
+        self._push_event("Deck refreshed to reflect your expanded chef lineup.")
+        self._refill_hand()
+
+    def _times_cooked(self, recipe_name: Optional[str]) -> int:
+        if not recipe_name:
+            return 0
+        entry = self.cookbook.get(recipe_name)
+        return entry.count if entry else 0
+
     # ----------------- Public API -----------------
     def get_hand(self) -> Sequence[Ingredient]:
         return list(self.hand)
@@ -229,13 +264,48 @@ class GameSession:
     def get_cookbook(self) -> Dict[str, CookbookEntry]:
         return {name: entry.clone() for name, entry in self.cookbook.items()}
 
-    def get_selection_markers(self, ingredient: Ingredient) -> str:
+    def available_chefs(self) -> List[Chef]:
+        active_names = {chef.name for chef in self.chefs}
+        return [chef for chef in self.data.chefs if chef.name not in active_names]
+
+    def can_recruit_chef(self) -> bool:
+        return (
+            not self.finished
+            and self.pending_new_chef_offer
+            and bool(self.available_chefs())
+        )
+
+    def add_chef(self, chef: Chef) -> None:
+        if any(existing.name == chef.name for existing in self.chefs):
+            raise ValueError(f"{chef.name} is already on your team.")
+        if self.finished:
+            raise RuntimeError("Cannot add chefs after the run has finished.")
+        self.chefs.append(chef)
+        self._refresh_chef_data()
+        self.pending_new_chef_offer = False
+        self._push_event(f"{chef.name} joins the team! New key ingredients unlocked.")
+        self._rebuild_deck_for_new_chef()
+
+    def skip_chef_recruitment(self) -> None:
+        if self.pending_new_chef_offer:
+            self.pending_new_chef_offer = False
+            self._push_event("You continue without recruiting an additional chef this round.")
+
+    def preview_recipe_multiplier(self, recipe_name: Optional[str]) -> float:
+        return self.data.recipe_multiplier(
+            recipe_name,
+            chefs=self.chefs,
+            times_cooked=self._times_cooked(recipe_name),
+        )
+
+    def get_selection_markers(self, ingredient: Ingredient) -> Tuple[str, bool]:
         markers = [
             chef_marker(chef)
             for chef in self.chefs
             if ingredient.name in self._chef_key_map.get(chef.name, set())
         ]
-        return "".join(markers)
+        in_cookbook = ingredient.name in self._cookbook_ingredients
+        return "".join(markers), in_cookbook
 
     def play_turn(self, indices: Sequence[int]) -> TurnOutcome:
         if self.finished:
@@ -257,11 +327,17 @@ class GameSession:
         selected = [self.hand[index] for index in unique]
         chips = sum(card.chips for card in selected)
         recipe_name = self.data.which_recipe(selected)
-        recipe_multiplier = self.data.recipe_multiplier(recipe_name)
+        times_cooked_before = self._times_cooked(recipe_name)
+        recipe_multiplier = self.data.recipe_multiplier(
+            recipe_name,
+            chefs=self.chefs,
+            times_cooked=times_cooked_before,
+        )
         final_score = int(round(chips * recipe_multiplier))
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
+        times_cooked_total = 0
         if recipe_name:
             recipe = self.data.recipe_by_name.get(recipe_name)
             if recipe:
@@ -271,9 +347,12 @@ class GameSession:
             entry = self.cookbook.get(recipe_name)
             if entry:
                 entry.count += 1
+                times_cooked_total = entry.count
             else:
                 self.cookbook[recipe_name] = CookbookEntry(combo, 1)
+                times_cooked_total = 1
                 discovered = True
+                self._cookbook_ingredients.update(combo)
 
         current_round = self.round_index
         current_cook = self.cooks_completed_in_round + 1
@@ -301,6 +380,7 @@ class GameSession:
             recipe_name=recipe_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
+            times_cooked_total=times_cooked_total,
             base_score=chips,
             chef_hits=chef_hits,
             round_index=current_round,
@@ -591,18 +671,20 @@ class CardView(ttk.Frame):
         index: int,
         ingredient: Ingredient,
         marker_text: str,
+        cookbook_hint: bool,
         on_click,
     ) -> None:
         super().__init__(master, style="Card.TFrame", padding=(10, 8))
         self.index = index
         self.on_click = on_click
         self.selected = False
+        self.cookbook_hint = cookbook_hint
 
         self.columnconfigure(0, weight=1)
 
         self.name_label = ttk.Label(
             self,
-            text=ingredient.name,
+            text=f"{ingredient.name}{' 📖' if cookbook_hint else ''}",
             style="CardTitle.TLabel",
             anchor="center",
             justify="center",
@@ -669,6 +751,7 @@ class FoodGameApp:
         self.chef_tile: Optional[ChefTile] = None
         self.cookbook_tile: Optional[CookbookTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
+        self.recruit_dialog: Optional[tk.Toplevel] = None
 
         self._init_styles()
         self._build_layout()
@@ -971,6 +1054,7 @@ class FoodGameApp:
         if self.active_popup and self.active_popup.winfo_exists():
             self.active_popup.destroy()
         self.active_popup = None
+        self._close_recruit_dialog()
         try:
             theme = self.theme_var.get()
             if not theme:
@@ -1018,6 +1102,7 @@ class FoodGameApp:
         if self.active_popup and self.active_popup.winfo_exists():
             self.active_popup.destroy()
         self.active_popup = None
+        self._close_recruit_dialog()
         self.session = None
         self.selected_indices.clear()
         self.update_selection_label()
@@ -1066,12 +1151,13 @@ class FoodGameApp:
 
         hand = self.session.get_hand()
         for index, ingredient in enumerate(hand):
-            markers = self.session.get_selection_markers(ingredient)
+            markers, cookbook_hint = self.session.get_selection_markers(ingredient)
             view = CardView(
                 self.hand_frame,
                 index=index,
                 ingredient=ingredient,
                 marker_text=markers,
+                cookbook_hint=cookbook_hint,
                 on_click=self.toggle_card,
             )
             view.grid(row=0, column=index, sticky="nw", padx=8, pady=8)
@@ -1126,7 +1212,7 @@ class FoodGameApp:
 
         chips = sum(card.chips for card in selected)
         recipe_name = self.session.data.which_recipe(selected)
-        multiplier = self.session.data.recipe_multiplier(recipe_name)
+        multiplier = self.session.preview_recipe_multiplier(recipe_name)
         total = int(round(chips * multiplier))
         if recipe_name:
             summary = (
@@ -1166,12 +1252,22 @@ class FoodGameApp:
         self.events_text.delete("1.0", "end")
         self.events_text.configure(state="disabled")
 
+    def _close_recruit_dialog(self) -> None:
+        if self.recruit_dialog and self.recruit_dialog.winfo_exists():
+            self.recruit_dialog.destroy()
+        self.recruit_dialog = None
+
     def log_turn_points(self, outcome: TurnOutcome) -> None:
         recipe_note = ""
         if outcome.recipe_name:
-            recipe_note = f" (recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f})"
+            parts = [
+                f"recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f}"
+            ]
             if outcome.discovered_recipe:
-                recipe_note += " [new]"
+                parts.append("new recipe")
+            if outcome.times_cooked_total:
+                parts.append(f"total cooks {outcome.times_cooked_total}")
+            recipe_note = " (" + "; ".join(parts) + ")"
         entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{recipe_note}"
         self.events_text.configure(state="normal")
         self.events_text.insert("end", f"{entry}\n")
@@ -1239,10 +1335,12 @@ class FoodGameApp:
         self.log_turn_points(outcome)
         self.append_events(self.session.consume_events())
         self.show_turn_summary_popup(outcome)
+        self.maybe_prompt_new_chef()
 
         if self.session.is_finished():
             self.cook_button.configure(state="disabled")
             self._set_controls_active(True)
+            self._close_recruit_dialog()
             messagebox.showinfo(
                 "Run complete",
                 f"Final score: {self.session.get_total_score()}",
@@ -1359,6 +1457,10 @@ class FoodGameApp:
             )
             if outcome.discovered_recipe:
                 points_lines.append("New recipe added to your cookbook!")
+            if outcome.times_cooked_total:
+                points_lines.append(
+                    f"Cooked {outcome.recipe_name} {outcome.times_cooked_total} time(s) total."
+                )
         else:
             points_lines.append("No recipe bonus this turn.")
         points_lines.append(f"Score gained this turn: {outcome.final_score}")
@@ -1441,6 +1543,135 @@ class FoodGameApp:
 
         step(0)
 
+    def maybe_prompt_new_chef(self) -> None:
+        if not self.session or self.session.is_finished():
+            return
+        if not self.session.can_recruit_chef():
+            return
+        if self.recruit_dialog and self.recruit_dialog.winfo_exists():
+            return
+        self.show_recruit_dialog()
+
+    def show_recruit_dialog(self) -> None:
+        if not self.session:
+            return
+        available = self.session.available_chefs()
+        if not available:
+            self.session.skip_chef_recruitment()
+            self.append_events(self.session.consume_events())
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Recruit a Chef")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        self.recruit_dialog = dialog
+
+        frame = ttk.Frame(dialog, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text="Recruit a new chef to join your team this round:",
+            justify="left",
+        ).grid(row=0, column=0, sticky="w")
+
+        listbox = tk.Listbox(
+            frame,
+            height=min(len(available), 8),
+            exportselection=False,
+        )
+        for chef in available:
+            listbox.insert("end", chef.name)
+        listbox.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+
+        frame.rowconfigure(1, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        detail_var = tk.StringVar(value="Select a chef to preview their specialties.")
+        detail_label = ttk.Label(
+            frame,
+            textvariable=detail_var,
+            wraplength=320,
+            justify="left",
+        )
+        detail_label.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=3, column=0, sticky="e", pady=(12, 0))
+
+        def close_dialog() -> None:
+            if dialog.winfo_exists():
+                dialog.destroy()
+            if self.recruit_dialog is dialog:
+                self.recruit_dialog = None
+
+        def format_details(chef: Chef) -> str:
+            recipes = ", ".join(chef.recipe_names) if chef.recipe_names else "None"
+            lines = [f"Signature recipes: {recipes}"]
+            perks = chef.perks.get("recipe_multipliers")
+            if isinstance(perks, Mapping) and perks:
+                bonus_parts: List[str] = []
+                for name, value in perks.items():
+                    try:
+                        bonus_parts.append(f"{name} x{float(value):.2f}")
+                    except (TypeError, ValueError):
+                        continue
+                if bonus_parts:
+                    lines.append("Favorite multipliers: " + ", ".join(bonus_parts))
+            return "\n".join(lines)
+
+        def update_details(_event: Optional[tk.Event] = None) -> None:
+            selection = listbox.curselection()
+            if not selection:
+                detail_var.set("Select a chef to preview their specialties.")
+                return
+            detail_var.set(format_details(available[selection[0]]))
+
+        def on_skip() -> None:
+            if self.session:
+                self.session.skip_chef_recruitment()
+                self.append_events(self.session.consume_events())
+            close_dialog()
+
+        def on_recruit() -> None:
+            selection = listbox.curselection()
+            if not selection:
+                messagebox.showinfo(
+                    "Recruit a Chef", "Select a chef before recruiting."
+                )
+                return
+            chef = available[selection[0]]
+            try:
+                self.session.add_chef(chef)
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Cannot recruit chef", str(exc))
+                close_dialog()
+                return
+            close_dialog()
+            self.selected_indices.clear()
+            self.update_selection_label()
+            self.render_hand()
+            self.update_status()
+            self.append_events(self.session.consume_events())
+            if self.cookbook_tile:
+                self.cookbook_tile.set_entries(self.session.get_cookbook())
+
+        recruit_button = ttk.Button(button_frame, text="Recruit", command=on_recruit)
+        recruit_button.grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(button_frame, text="Skip", command=on_skip).grid(row=0, column=1)
+
+        listbox.bind("<<ListboxSelect>>", update_details)
+        if available:
+            listbox.selection_set(0)
+            update_details()
+
+        dialog.protocol("WM_DELETE_WINDOW", on_skip)
+        dialog.bind("<Escape>", lambda _e: on_skip())
+        dialog.grab_set()
+        listbox.focus_set()
+        self._center_popup(dialog)
+
     def _format_outcome(self, outcome: TurnOutcome) -> str:
         parts = [
             f"Turn {outcome.turn_number}/{outcome.total_turns} — "
@@ -1461,6 +1692,10 @@ class FoodGameApp:
             )
             if outcome.discovered_recipe:
                 parts.append("New recipe added to your cookbook!")
+            if outcome.times_cooked_total:
+                parts.append(
+                    f"Total times cooked: {outcome.times_cooked_total}"
+                )
         else:
             parts.append("No recipe completed this turn.")
         parts.append(

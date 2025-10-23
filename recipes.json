@@ -5,7 +5,9 @@
       "Tomato",
       "Parmesan",
       "Basil"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "Carbonara",
@@ -13,7 +15,9 @@
       "Pasta",
       "Egg",
       "Bacon"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "Risotto",
@@ -21,7 +25,9 @@
       "Rice",
       "Parmesan",
       "Butter"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "Sushi",
@@ -29,7 +35,9 @@
       "Rice",
       "Fish",
       "Seaweed"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "Mousse",
@@ -37,7 +45,9 @@
       "Chocolate",
       "Cream",
       "Egg"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "LemonTart",
@@ -45,7 +55,9 @@
       "Lemon",
       "Sugar",
       "Butter"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   },
   {
     "name": "BeefStew",
@@ -53,6 +65,8 @@
       "Beef",
       "Onion",
       "Bread"
-    ]
+    ],
+    "base_multiplier": 2.0,
+    "delta_multiplier": 0.5
   }
 ]

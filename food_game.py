@@ -16,6 +16,7 @@ Key features:
 from __future__ import annotations
 
 import random
+from collections import Counter
 from typing import Collection, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
 from food_api import (
@@ -205,6 +206,7 @@ def describe_ingredient(
     ingredient: Ingredient,
     chefs: Sequence[Chef],
     chef_key_map: Mapping[str, Collection[str]],
+    cookbook_ingredients: Collection[str],
 ) -> str:
     markers = [
         _chef_marker(chef)
@@ -213,16 +215,26 @@ def describe_ingredient(
     ]
     marker_text = f"(*{''.join(markers)})" if markers else ""
     suffix = f" {marker_text}" if marker_text else ""
+    book = " 📖" if ingredient.name in cookbook_ingredients else ""
     return (
-        f"{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips}){suffix}"
+        f"{ingredient.name}{book} (Taste: {ingredient.taste}, Chips: {ingredient.chips}){suffix}"
     )
 
 
-def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
+def display_hand(
+    hand: Sequence[Ingredient], chefs: Sequence[Chef], cookbook: Mapping[str, Sequence[str]]
+) -> None:
     print("\nYour hand:")
     chef_key_map = {chef.name: DATA.chef_key_ingredients(chef) for chef in chefs}
+    cookbook_ingredients = {
+        ingredient
+        for combo in cookbook.values()
+        for ingredient in combo
+    }
     for idx, ingredient in enumerate(hand, start=1):
-        print(f"  {idx}. {describe_ingredient(ingredient, chefs, chef_key_map)}")
+        print(
+            f"  {idx}. {describe_ingredient(ingredient, chefs, chef_key_map, cookbook_ingredients)}"
+        )
     chef_names = ", ".join(chef.name for chef in chefs)
     print(
         "  (*X) at the end of an ingredient indicates it appears in an active chef's signature recipes."
@@ -234,7 +246,9 @@ def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
 
 
 def print_cookbook(
-    cookbook: Mapping[str, Sequence[str]], title: str = "Cookbook"
+    cookbook: Mapping[str, Sequence[str]],
+    counts: Mapping[str, int] | None = None,
+    title: str = "Cookbook",
 ) -> None:
     print(f"\n=== {title} ===")
     if not cookbook:
@@ -242,7 +256,13 @@ def print_cookbook(
         return
     for recipe_name in sorted(cookbook):
         ingredients = ", ".join(cookbook[recipe_name])
-        print(f"  {recipe_name}: {ingredients}")
+        count_text = ""
+        if counts:
+            cooked = counts.get(recipe_name, 0)
+            if cooked:
+                times = "time" if cooked == 1 else "times"
+                count_text = f" (cooked {cooked} {times})"
+        print(f"  {recipe_name}: {ingredients}{count_text}")
 
 
 def prompt_trio(hand: Sequence[Ingredient], pick_size: int) -> List[Ingredient] | None:
@@ -275,20 +295,29 @@ def score_trio(
     chefs: Sequence[Chef],
     pick_size: int,
     cookbook: MutableMapping[str, Tuple[str, ...]],
+    recipe_counts: MutableMapping[str, int],
 ) -> int:
     chips = sum(ingredient.chips for ingredient in selected)
     recipe_name = DATA.which_recipe(list(selected))
-    recipe_multiplier = DATA.recipe_multiplier(recipe_name)
+    times_cooked_before = recipe_counts.get(recipe_name, 0) if recipe_name else 0
+    recipe_multiplier = DATA.recipe_multiplier(
+        recipe_name,
+        chefs=chefs,
+        times_cooked=times_cooked_before,
+    )
     final_score = int(round(chips * recipe_multiplier))
     key_set = DATA.chefs_key_ingredients(chefs)
     chef_hits = sum(1 for ing in selected if ing.name in key_set)
 
     discovered = False
+    total_cooked = 0
     if recipe_name:
         combo = tuple(sorted(ingredient.name for ingredient in selected))
         if recipe_name not in cookbook:
             cookbook[recipe_name] = combo
             discovered = True
+        recipe_counts[recipe_name] = times_cooked_before + 1
+        total_cooked = recipe_counts[recipe_name]
 
     print("\n--- Trio Result ---")
     for ing in selected:
@@ -299,6 +328,9 @@ def score_trio(
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
         if discovered:
             print("  -> New recipe added to your cookbook!")
+        if total_cooked:
+            times = "time" if total_cooked == 1 else "times"
+            print(f"Cooked {recipe_name} {total_cooked} {times} so far.")
     else:
         print("No recipe completed this turn.")
     print(f"Score gained: {final_score} (base chips: {chips})")
@@ -311,13 +343,13 @@ def score_trio(
 
 def play_single_run(
     theme_name: str,
-    chefs: Sequence[Chef],
+    chefs: List[Chef],
     rounds: int,
     cooks_per_round: int,
     hand_size: int,
     pick_size: int,
     rng: random.Random,
-) -> Tuple[int, Dict[str, Tuple[str, ...]]]:
+) -> Tuple[int, Dict[str, Tuple[str, ...]], Counter[str]]:
     if rounds <= 0:
         raise ValueError("rounds must be a positive integer")
     if cooks_per_round <= 0:
@@ -331,6 +363,7 @@ def play_single_run(
 
     total_score = 0
     cookbook: Dict[str, Tuple[str, ...]] = {}
+    recipe_counts: Counter[str] = Counter()
     active_names = ", ".join(chef.name for chef in chefs) or "None"
     print("\nActive chefs this run: " + active_names)
 
@@ -371,19 +404,32 @@ def play_single_run(
                 f"\nTurn {turn_number}/{total_turns} "
                 f"(Cook {cook_index}/{cooks_per_round})"
             )
-            display_hand(hand, chefs)
+            display_hand(hand, chefs, cookbook)
             selected = prompt_trio(hand, pick_size)
             if selected is None:
                 print("Run ended early by player choice.\n")
-                return total_score, cookbook
+                return total_score, cookbook, recipe_counts
 
-            gained = score_trio(selected, chefs, pick_size, cookbook)
+            gained = score_trio(selected, chefs, pick_size, cookbook, recipe_counts)
             total_score += gained
             print(f"Cumulative score: {total_score}\n")
             for ingredient in selected:
                 hand.remove(ingredient)
 
-    return total_score, cookbook
+        if round_index < rounds and len(chefs) < len(DATA.chefs):
+            add_choice = input(
+                "Recruit a new chef before the next round? (y/N): "
+            ).strip().lower()
+            if add_choice in {"y", "yes"}:
+                new_chef = choose_additional_chef([c.name for c in chefs], rng)
+                if new_chef and all(c.name != new_chef.name for c in chefs):
+                    chefs.append(new_chef)
+                    print(
+                        f"Chef {new_chef.name} joins your lineup! "
+                        "Future draws will favor their signature ingredients."
+                    )
+
+    return total_score, cookbook, recipe_counts
 
 
 def main() -> None:
@@ -432,7 +478,7 @@ def main() -> None:
                 f"({rounds} rounds × {cooks_per_round} cooks, hand {hand_size}, pick {pick_size}) "
                 f"[{total_turns} total turns] <<<"
             )
-            score, run_cookbook = play_single_run(
+            score, run_cookbook, run_counts = play_single_run(
                 theme,
                 roster,
                 rounds,
@@ -444,7 +490,9 @@ def main() -> None:
             print(f"Final score for run {run_index}: {score}\n")
 
             if run_cookbook:
-                print_cookbook(run_cookbook, title=f"Run {run_index} Cookbook")
+                print_cookbook(
+                    run_cookbook, run_counts, title=f"Run {run_index} Cookbook"
+                )
             else:
                 print("No recipes discovered this run.")
 

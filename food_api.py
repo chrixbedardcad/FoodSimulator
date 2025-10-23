@@ -6,7 +6,7 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Iterable, List, MutableMapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 try:
     import numpy as np  # type: ignore
@@ -41,6 +41,8 @@ class Ingredient:
 class Recipe:
     name: str
     trio: Tuple[str, str, str]
+    base_multiplier: float = 1.0
+    delta_multiplier: float = 0.0
 
 
 @dataclass
@@ -69,20 +71,7 @@ class GameData:
         self.recipe_multipliers = self._build_recipe_multipliers()
 
     def _build_recipe_multipliers(self) -> Dict[str, float]:
-        multipliers: Dict[str, float] = {}
-        for chef in self.chefs:
-            perks = chef.perks.get("recipe_multipliers", {})
-            if not isinstance(perks, MutableMapping):
-                continue
-            for recipe_name, value in perks.items():
-                try:
-                    numeric = float(value)
-                except (TypeError, ValueError):
-                    continue
-                multipliers[recipe_name] = max(multipliers.get(recipe_name, 1.0), numeric)
-        for recipe in self.recipes:
-            multipliers.setdefault(recipe.name, 1.0)
-        return multipliers
+        return {recipe.name: float(recipe.base_multiplier) for recipe in self.recipes}
 
     @classmethod
     def from_json(
@@ -130,10 +119,40 @@ class GameData:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
         return self.recipe_trio_lookup.get(key)
 
-    def recipe_multiplier(self, recipe_name: Optional[str]) -> float:
+    def recipe_multiplier(
+        self,
+        recipe_name: Optional[str],
+        *,
+        chefs: Optional[Sequence[Chef]] = None,
+        times_cooked: int = 0,
+    ) -> float:
         if not recipe_name:
             return 1.0
-        return float(self.recipe_multipliers.get(recipe_name, 1.0))
+        recipe = self.recipe_by_name.get(recipe_name)
+        if not recipe:
+            return 1.0
+
+        cooked = max(int(times_cooked), 0)
+        base_multiplier = recipe.base_multiplier + (recipe.delta_multiplier * cooked)
+        if base_multiplier < 0:
+            base_multiplier = 0.0
+
+        chef_multiplier = 1.0
+        if chefs:
+            for chef in chefs:
+                perks = chef.perks.get("recipe_multipliers")
+                if not isinstance(perks, Mapping):
+                    continue
+                value = perks.get(recipe_name)
+                if value is None:
+                    continue
+                try:
+                    chef_multiplier *= float(value)
+                except (TypeError, ValueError):
+                    continue
+
+        total = base_multiplier * chef_multiplier
+        return total if total > 0 else 0.0
 
 
 def _load_ingredients(path: str) -> Dict[str, Ingredient]:
@@ -146,7 +165,27 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
 
 def _load_recipes(path: str) -> List[Recipe]:
     raw = load_json(path)
-    return [Recipe(entry["name"], tuple(entry["trio"])) for entry in raw]
+    recipes: List[Recipe] = []
+    for entry in raw:
+        base = entry.get("base_multiplier", 1.0)
+        delta = entry.get("delta_multiplier", 0.0)
+        try:
+            base_val = float(base)
+        except (TypeError, ValueError):
+            base_val = 1.0
+        try:
+            delta_val = float(delta)
+        except (TypeError, ValueError):
+            delta_val = 0.0
+        recipes.append(
+            Recipe(
+                entry["name"],
+                tuple(entry["trio"]),
+                base_multiplier=base_val,
+                delta_multiplier=delta_val,
+            )
+        )
+    return recipes
 
 
 def _load_chefs(path: str) -> List[Chef]:
@@ -385,8 +424,9 @@ def simulate_run(
                 ingredient_use[ingredient.name] += 1
 
             recipe_name = data.which_recipe(trio)
+            times_cooked_before = recipe_counts.get(recipe_name, 0) if recipe_name else 0
             if recipe_name:
-                recipe_counts[recipe_name] += 1
+                recipe_counts[recipe_name] = times_cooked_before + 1
                 cookbook.setdefault(
                     recipe_name,
                     tuple(sorted(ingredient.name for ingredient in trio)),
@@ -394,7 +434,11 @@ def simulate_run(
             learning = update_learning(learning, active_chefs, recipe_name)
 
             score, _, _, _ = data.trio_score(trio)
-            recipe_multiplier = data.recipe_multiplier(recipe_name)
+            recipe_multiplier = data.recipe_multiplier(
+                recipe_name,
+                chefs=active_chefs,
+                times_cooked=times_cooked_before,
+            )
             final_score = int(round(score * recipe_multiplier))
             total_score += final_score
             round_total += final_score

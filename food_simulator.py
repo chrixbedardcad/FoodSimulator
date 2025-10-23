@@ -181,6 +181,24 @@ if __name__ == "__main__":
         default=default_config.cooks,
         help=f"Number of cooking turns per round (default={default_config.cooks})",
     )
+    parser.add_argument(
+        "--active-chefs",
+        type=int,
+        default=default_config.active_chefs,
+        help=f"Number of active chefs per run (default={default_config.active_chefs})",
+    )
+    parser.add_argument(
+        "--hand-size",
+        type=int,
+        default=default_config.hand_size,
+        help=f"Number of ingredients in hand (default={default_config.hand_size})",
+    )
+    parser.add_argument(
+        "--pick-size",
+        type=int,
+        default=default_config.pick_size,
+        help=f"Number of ingredients picked each cook (default={default_config.pick_size})",
+    )
     args = parser.parse_args()
 
     data = GameData.from_json()
@@ -194,11 +212,25 @@ if __name__ == "__main__":
         raise SystemExit("--rounds must be a positive integer")
     if args.cooks_per_round <= 0:
         raise SystemExit("--cooks-per-round must be a positive integer")
+    if args.active_chefs <= 0:
+        raise SystemExit("--active-chefs must be a positive integer")
+    if args.hand_size <= 0:
+        raise SystemExit("--hand-size must be a positive integer")
+    if args.pick_size <= 0:
+        raise SystemExit("--pick-size must be a positive integer")
+    if args.pick_size > args.hand_size:
+        raise SystemExit("--pick-size cannot exceed --hand-size")
 
     seed_used, _ = resolve_seed(args.seed)
     print(f"Using RNG seed: {seed_used}")
 
-    sim_config = SimulationConfig(rounds=args.rounds, cooks=args.cooks_per_round)
+    sim_config = SimulationConfig(
+        rounds=args.rounds,
+        cooks=args.cooks_per_round,
+        active_chefs=args.active_chefs,
+        hand_size=args.hand_size,
+        pick_size=args.pick_size,
+    )
 
     summary, ingredient_totals, taste_totals, recipe_totals, scores = simulate_many(
         data,
@@ -211,6 +243,9 @@ if __name__ == "__main__":
     summary = dict(summary)
     summary.setdefault("rounds", sim_config.rounds)
     summary.setdefault("cooks_per_round", sim_config.cooks)
+    summary.setdefault("active_chefs", sim_config.active_chefs)
+    summary.setdefault("hand_size", sim_config.hand_size)
+    summary.setdefault("pick_size", sim_config.pick_size)
     summary["rules_version"] = RULES_VERSION
 
     print(f"=== SUMMARY (Rules v{RULES_VERSION}) ===")

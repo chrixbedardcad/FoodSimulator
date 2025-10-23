@@ -15,7 +15,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from tkinter import ttk
 
@@ -68,12 +68,8 @@ def chef_marker(chef: Chef) -> str:
 class TurnOutcome:
     selected: Sequence[Ingredient]
     chips: int
-    taste_sum: int
-    taste_multiplier: int
     recipe_name: Optional[str]
     recipe_multiplier: float
-    contributions: List[Tuple[str, float]]
-    total_multiplier: float
     final_score: int
     base_score: int
     chef_hits: int
@@ -84,6 +80,7 @@ class TurnOutcome:
     turn_number: int
     total_turns: int
     deck_refreshed: bool
+    discovered_recipe: bool
 
 
 class GameSession:
@@ -102,8 +99,6 @@ class GameSession:
         bias: float = DEFAULT_BIAS,
         rng: Optional[random.Random] = None,
     ) -> None:
-        if not chefs:
-            raise ValueError("At least one chef must be selected for a run.")
         if rounds <= 0:
             raise ValueError("rounds must be positive")
         if cooks_per_round <= 0:
@@ -141,6 +136,7 @@ class GameSession:
             chef.name: data.chef_key_ingredients(chef) for chef in self.chefs
         }
         self._chef_key_set = data.chefs_key_ingredients(self.chefs)
+        self.cookbook: Dict[str, Tuple[str, ...]] = {}
 
         self._start_next_round(initial=True)
 
@@ -219,6 +215,9 @@ class GameSession:
     def get_total_score(self) -> int:
         return self.total_score
 
+    def get_cookbook(self) -> Dict[str, Tuple[str, ...]]:
+        return dict(self.cookbook)
+
     def get_selection_markers(self, ingredient: Ingredient) -> str:
         markers = [
             chef_marker(chef)
@@ -245,12 +244,18 @@ class GameSession:
             raise IndexError("Selection index out of range for the current hand.")
 
         selected = [self.hand[index] for index in unique]
-        base_score, chips, taste_sum, taste_multiplier = self.data.trio_score(selected)
+        chips = sum(card.chips for card in selected)
         recipe_name = self.data.which_recipe(selected)
-        recipe_multiplier, contributions = self._team_recipe_multiplier(recipe_name)
-        total_multiplier = taste_multiplier * recipe_multiplier
-        final_score = int(round(base_score * recipe_multiplier))
+        recipe_multiplier = self.data.recipe_multiplier(recipe_name)
+        final_score = int(round(chips * recipe_multiplier))
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
+
+        discovered = False
+        if recipe_name:
+            combo = tuple(sorted(ingredient.name for ingredient in selected))
+            if recipe_name not in self.cookbook:
+                self.cookbook[recipe_name] = combo
+                discovered = True
 
         current_round = self.round_index
         current_cook = self.cooks_completed_in_round + 1
@@ -275,14 +280,10 @@ class GameSession:
         return TurnOutcome(
             selected=selected,
             chips=chips,
-            taste_sum=taste_sum,
-            taste_multiplier=taste_multiplier,
             recipe_name=recipe_name,
             recipe_multiplier=recipe_multiplier,
-            contributions=contributions,
-            total_multiplier=total_multiplier,
             final_score=final_score,
-            base_score=base_score,
+            base_score=chips,
             chef_hits=chef_hits,
             round_index=current_round,
             total_rounds=self.rounds,
@@ -291,31 +292,8 @@ class GameSession:
             turn_number=current_turn,
             total_turns=self.total_turns,
             deck_refreshed=deck_refreshed,
+            discovered_recipe=discovered,
         )
-
-    def _team_recipe_multiplier(
-        self, recipe_name: Optional[str]
-    ) -> Tuple[float, List[Tuple[str, float]]]:
-        if not recipe_name:
-            return 1.0, []
-        total = 1.0
-        contributions: List[Tuple[str, float]] = []
-        for chef in self.chefs:
-            multiplier = self._chef_recipe_multiplier(chef, recipe_name)
-            total *= multiplier
-            if not math.isclose(multiplier, 1.0):
-                contributions.append((chef.name, multiplier))
-        return total, contributions
-
-    @staticmethod
-    def _chef_recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
-        if not recipe_name:
-            return 1.0
-        multipliers = chef.perks.get("recipe_multipliers", {})
-        try:
-            return float(multipliers.get(recipe_name, 1.0))
-        except (TypeError, ValueError):
-            return 1.0
 
     def is_finished(self) -> bool:
         return self.finished
@@ -689,7 +667,7 @@ class FoodGameApp:
             self.theme_combo.current(0)
         self.theme_combo.pack(anchor="w", pady=(4, 12))
 
-        ttk.Label(self.control_frame, text="Chefs", style="Header.TLabel").pack(anchor="w")
+        ttk.Label(self.control_frame, text="Chefs (optional)", style="Header.TLabel").pack(anchor="w")
         self.chef_list = tk.Listbox(
             self.control_frame,
             selectmode="multiple",
@@ -729,7 +707,7 @@ class FoodGameApp:
 
         ttk.Label(
             self.control_frame,
-            text="Hold Ctrl/Cmd to select multiple chefs.",
+            text="Hold Ctrl/Cmd to select multiple chefs or leave empty for none.",
             style="Info.TLabel",
         ).pack(anchor="w", pady=(12, 0))
 
@@ -777,7 +755,7 @@ class FoodGameApp:
             row=2, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
-        self.selection_summary_var = tk.StringVar(value="TASTE X CHIPS = POINTS")
+        self.selection_summary_var = tk.StringVar(value="CHIPS × RECIPE = POINTS")
         ttk.Label(
             score_frame,
             textvariable=self.selection_summary_var,
@@ -863,8 +841,6 @@ class FoodGameApp:
                 raise ValueError("Select a theme before starting a run.")
 
             selected_indices = list(self.chef_list.curselection())
-            if not selected_indices:
-                raise ValueError("Select at least one chef (Ctrl/Cmd + click for multiples).")
             chefs = [DATA.chefs[index] for index in selected_indices]
 
             rounds = int(self.round_var.get())
@@ -995,7 +971,7 @@ class FoodGameApp:
         self.update_selection_summary()
 
     def update_selection_summary(self) -> None:
-        default_text = "TASTE X CHIPS = POINTS"
+        default_text = "CHIPS × RECIPE = POINTS"
         if not self.session or not self.selected_indices:
             self.selection_summary_var.set(default_text)
             return
@@ -1007,10 +983,16 @@ class FoodGameApp:
             self.selection_summary_var.set(default_text)
             return
 
-        base_score, chips, _taste_sum, taste_multiplier = self.session.data.trio_score(
-            selected
-        )
-        summary = f"TASTE {taste_multiplier} X CHIPS {chips} = {base_score}"
+        chips = sum(card.chips for card in selected)
+        recipe_name = self.session.data.which_recipe(selected)
+        multiplier = self.session.data.recipe_multiplier(recipe_name)
+        total = int(round(chips * multiplier))
+        if recipe_name:
+            summary = (
+                f"CHIPS {chips} × RECIPE {recipe_name} (x{multiplier:.2f}) = {total}"
+            )
+        else:
+            summary = f"CHIPS {chips} × RECIPE x1 = {total}"
         self.selection_summary_var.set(summary)
 
     def update_status(self) -> None:
@@ -1026,7 +1008,7 @@ class FoodGameApp:
         )
         self.progress_var.set(f"{round_text} — {turn_text}")
         self.score_var.set(str(self.session.get_total_score()))
-        chef_names = ", ".join(chef.name for chef in self.session.chefs)
+        chef_names = ", ".join(chef.name for chef in self.session.chefs) or "None"
         self.chefs_var.set(f"Active chefs: {chef_names}")
 
     def append_events(self, messages: Iterable[str]) -> None:
@@ -1044,14 +1026,38 @@ class FoodGameApp:
         self.events_text.configure(state="disabled")
 
     def log_turn_points(self, outcome: TurnOutcome) -> None:
-        recipe_note = f" (recipe {outcome.recipe_name})" if outcome.recipe_name else ""
+        recipe_note = ""
+        if outcome.recipe_name:
+            recipe_note = f" (recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f})"
+            if outcome.discovered_recipe:
+                recipe_note += " [new]"
         entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{recipe_note}"
         self.events_text.configure(state="normal")
         self.events_text.insert("end", f"{entry}\n")
         self.events_text.see("end")
         self.events_text.configure(state="disabled")
 
+    def _cookbook_summary_text(self) -> str:
+        if not self.session:
+            return ""
+        entries = self.session.get_cookbook()
+        if not entries:
+            return "Cookbook:\n  (No recipes discovered yet.)"
+        lines = [
+            f"  {name}: {', '.join(combo)}" for name, combo in sorted(entries.items())
+        ]
+        return "Cookbook:\n" + "\n".join(lines)
+
+    def _final_summary_text(self) -> str:
+        if not self.session:
+            return ""
+        total = self.session.get_total_score()
+        return f"Run complete!\nFinal score: {total}"
+
     def write_result(self, text: str) -> None:
+        extra = self._cookbook_summary_text()
+        if extra:
+            text = f"{text}\n\n{extra}"
         self.result_text.configure(state="normal")
         self.result_text.delete("1.0", "end")
         self.result_text.insert("1.0", text)
@@ -1094,6 +1100,9 @@ class FoodGameApp:
                 "Run complete",
                 f"Final score: {self.session.get_total_score()}",
             )
+            summary_text = self._final_summary_text()
+            if summary_text:
+                self.write_result(summary_text)
 
     @staticmethod
     def _format_multiplier(multiplier: float) -> str:
@@ -1157,9 +1166,12 @@ class FoodGameApp:
         score_highlight.pack(fill="x", pady=(0, 12))
 
         if outcome.recipe_name:
+            banner_text = f"✨ Recipe completed: {outcome.recipe_name}! ✨"
+            if outcome.discovered_recipe:
+                banner_text += " Added to your cookbook."
             recipe_banner = tk.Label(
                 content,
-                text=f"✨ Recipe completed: {outcome.recipe_name}! ✨",
+                text=banner_text,
                 font=("Helvetica", 12, "bold"),
                 fg="#a35d00",
                 bg=base_bg,
@@ -1193,23 +1205,16 @@ class FoodGameApp:
             anchor="w",
         ).pack(anchor="w", fill="x", pady=(0, 10))
 
-        points_lines = [
-            f"Chips: {outcome.chips}",
-            f"Taste sum: {outcome.taste_sum}",
-            f"Taste multiplier: {self._format_multiplier(outcome.taste_multiplier)}",
-            f"Recipe multiplier: {self._format_multiplier(outcome.recipe_multiplier)}",
-            f"Total multiplier: {self._format_multiplier(outcome.total_multiplier)}",
-            f"Base score (Taste × Chips): {outcome.base_score}",
-            f"Score gained this turn: {outcome.final_score}",
-        ]
-
-        if outcome.contributions:
-            points_lines.append("")
-            points_lines.append("Recipe bonus breakdown:")
-            for name, multiplier in outcome.contributions:
-                points_lines.append(
-                    f"  • {name}: {self._format_multiplier(multiplier)}"
-                )
+        points_lines = [f"Chips: {outcome.chips}"]
+        if outcome.recipe_name:
+            points_lines.append(
+                f"Recipe multiplier: {self._format_multiplier(outcome.recipe_multiplier)}"
+            )
+            if outcome.discovered_recipe:
+                points_lines.append("New recipe added to your cookbook!")
+        else:
+            points_lines.append("No recipe bonus this turn.")
+        points_lines.append(f"Score gained this turn: {outcome.final_score}")
 
         chef_hits = (
             f"Chef key ingredients used: {outcome.chef_hits}/"
@@ -1254,7 +1259,7 @@ class FoodGameApp:
         popup.update_idletasks()
         self._center_popup(popup)
 
-        if outcome.recipe_name:
+        if outcome.recipe_name and outcome.discovered_recipe:
             glow_colors = ["#ffe8a8", "#ffd56f", "#fff3c4", "#ffdba0"]
             self._animate_popup_highlight(glow_frame, glow_colors, cycles=10, delay=120)
 
@@ -1301,24 +1306,18 @@ class FoodGameApp:
             parts.append(
                 f"  • {ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
             )
-        parts.extend(
-            [
-                "",
-                f"Total chips: {outcome.chips}",
-                f"Taste synergy sum: {outcome.taste_sum}",
-                f"Taste multiplier: x{outcome.taste_multiplier}",
-                (
-                    "TASTE X CHIPS = "
-                    f"{outcome.taste_multiplier} X {outcome.chips} = {outcome.base_score}"
-                ),
-            ]
-        )
+        parts.append("")
+        parts.append(f"Total chips: {outcome.chips}")
         if outcome.recipe_name:
-            parts.append(f"Recipe completed: {outcome.recipe_name}")
+            parts.append(
+                f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
+            )
+            if outcome.discovered_recipe:
+                parts.append("New recipe added to your cookbook!")
         else:
             parts.append("No recipe completed this turn.")
         parts.append(
-            f"Score gained: {outcome.final_score} (base before recipe bonus: {outcome.base_score})"
+            f"Score gained: {outcome.final_score} (base chips: {outcome.base_score})"
         )
         parts.append(
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"

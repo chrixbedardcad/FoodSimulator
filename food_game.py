@@ -16,7 +16,7 @@ Key features:
 from __future__ import annotations
 
 import random
-from typing import Collection, Iterable, List, Mapping, Sequence, Tuple
+from typing import Collection, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
 from food_api import (
     Chef,
@@ -230,7 +230,19 @@ def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
     if chefs:
         legend = ", ".join(f"(*{_chef_marker(chef)}) {chef.name}" for chef in chefs)
         print(f"    Legend: {legend}")
-    print(f"    Active chefs: {chef_names}")
+    print(f"    Active chefs: {chef_names or 'None'}")
+
+
+def print_cookbook(
+    cookbook: Mapping[str, Sequence[str]], title: str = "Cookbook"
+) -> None:
+    print(f"\n=== {title} ===")
+    if not cookbook:
+        print("  No recipes discovered yet.")
+        return
+    for recipe_name in sorted(cookbook):
+        ingredients = ", ".join(cookbook[recipe_name])
+        print(f"  {recipe_name}: {ingredients}")
 
 
 def prompt_trio(hand: Sequence[Ingredient], pick_size: int) -> List[Ingredient] | None:
@@ -258,60 +270,39 @@ def prompt_trio(hand: Sequence[Ingredient], pick_size: int) -> List[Ingredient] 
         return [hand[p - 1] for p in picks]
 
 
-def _chef_recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
-    if not recipe_name:
-        return 1.0
-    multipliers = chef.perks.get("recipe_multipliers", {})
-    try:
-        return float(multipliers.get(recipe_name, 1.0))
-    except (TypeError, ValueError):
-        return 1.0
-
-
-def _team_recipe_multiplier(
-    chefs: Sequence[Chef], recipe_name: str | None
-) -> Tuple[float, List[Tuple[str, float]]]:
-    if not recipe_name:
-        return 1.0, []
-    contributions: List[Tuple[str, float]] = []
-    total = 1.0
-    for chef in chefs:
-        multiplier = _chef_recipe_multiplier(chef, recipe_name)
-        total *= multiplier
-        if multiplier != 1.0:
-            contributions.append((chef.name, multiplier))
-    return total, contributions
-
-
 def score_trio(
-    selected: Sequence[Ingredient], chefs: Sequence[Chef], pick_size: int
+    selected: Sequence[Ingredient],
+    chefs: Sequence[Chef],
+    pick_size: int,
+    cookbook: MutableMapping[str, Tuple[str, ...]],
 ) -> int:
-    base_score, chips, taste_sum, taste_multiplier = DATA.trio_score(list(selected))
+    chips = sum(ingredient.chips for ingredient in selected)
     recipe_name = DATA.which_recipe(list(selected))
-    recipe_multiplier, contributions = _team_recipe_multiplier(chefs, recipe_name)
-    total_multiplier = taste_multiplier * recipe_multiplier
-    final_score = int(round(base_score * recipe_multiplier))
+    recipe_multiplier = DATA.recipe_multiplier(recipe_name)
+    final_score = int(round(chips * recipe_multiplier))
     key_set = DATA.chefs_key_ingredients(chefs)
     chef_hits = sum(1 for ing in selected if ing.name in key_set)
+
+    discovered = False
+    if recipe_name:
+        combo = tuple(sorted(ingredient.name for ingredient in selected))
+        if recipe_name not in cookbook:
+            cookbook[recipe_name] = combo
+            discovered = True
 
     print("\n--- Trio Result ---")
     for ing in selected:
         print(f"  {ing.name} (Taste: {ing.taste}, Chips: {ing.chips})")
     print(f"Total chips: {chips}")
-    print(f"Taste synergy sum: {taste_sum}")
-    print(f"Taste multiplier: x{taste_multiplier}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
+        print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
+        if discovered:
+            print("  -> New recipe added to your cookbook!")
     else:
         print("No recipe completed this turn.")
-    if contributions:
-        breakdown = ", ".join(f"{name}: x{mult:.2f}" for name, mult in contributions)
-        print(f"Recipe multiplier: x{recipe_multiplier:.2f} ({breakdown})")
-    else:
-        print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
-    print(f"Total multiplier: x{total_multiplier:.2f}")
-    print(f"Score gained: {final_score} (base score before recipe bonus: {base_score})")
-    active_names = ", ".join(chef.name for chef in chefs)
+    print(f"Score gained: {final_score} (base chips: {chips})")
+    active_names = ", ".join(chef.name for chef in chefs) if chefs else "None"
     print(
         f"Chef key ingredients used: {chef_hits}/{pick_size} (Active: {active_names})\n"
     )
@@ -326,7 +317,7 @@ def play_single_run(
     hand_size: int,
     pick_size: int,
     rng: random.Random,
-) -> int:
+) -> Tuple[int, Dict[str, Tuple[str, ...]]]:
     if rounds <= 0:
         raise ValueError("rounds must be a positive integer")
     if cooks_per_round <= 0:
@@ -337,11 +328,11 @@ def play_single_run(
         raise ValueError("pick_size must be a positive integer")
     if pick_size > hand_size:
         raise ValueError("pick_size cannot exceed hand_size")
-    if not chefs:
-        raise ValueError("At least one chef must be active for a run.")
 
     total_score = 0
-    print("\nActive chefs this run: " + ", ".join(chef.name for chef in chefs))
+    cookbook: Dict[str, Tuple[str, ...]] = {}
+    active_names = ", ".join(chef.name for chef in chefs) or "None"
+    print("\nActive chefs this run: " + active_names)
 
     total_turns = rounds * cooks_per_round
     turn_number = 0
@@ -384,15 +375,15 @@ def play_single_run(
             selected = prompt_trio(hand, pick_size)
             if selected is None:
                 print("Run ended early by player choice.\n")
-                return total_score
+                return total_score, cookbook
 
-            gained = score_trio(selected, chefs, pick_size)
+            gained = score_trio(selected, chefs, pick_size, cookbook)
             total_score += gained
             print(f"Cumulative score: {total_score}\n")
             for ingredient in selected:
                 hand.remove(ingredient)
 
-    return total_score
+    return total_score, cookbook
 
 
 def main() -> None:
@@ -419,23 +410,29 @@ def main() -> None:
         )
 
         theme = choose_theme(rng)
-        chef = choose_chef(rng)
+        roster: List[Chef] = []
+        start_with_chef = input(
+            "Begin with a chef? (Y/n, blank for yes): "
+        ).strip().lower()
+        if start_with_chef not in {"n", "no"}:
+            chef = choose_chef(rng)
+            roster.append(chef)
         rounds = prompt_round_count()
         cooks_per_round = prompt_cooks_per_round()
         hand_size = prompt_hand_size()
         pick_size = prompt_pick_size(hand_size)
         runs = prompt_run_count()
         total_turns = rounds * cooks_per_round
-        roster: List[Chef] = [chef]
+        overall_cookbook: Dict[str, Tuple[str, ...]] = {}
 
         for run_index in range(1, runs + 1):
-            chef_names = ", ".join(c.name for c in roster)
+            chef_names = ", ".join(c.name for c in roster) or "None"
             print(
                 f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} "
                 f"({rounds} rounds × {cooks_per_round} cooks, hand {hand_size}, pick {pick_size}) "
                 f"[{total_turns} total turns] <<<"
             )
-            score = play_single_run(
+            score, run_cookbook = play_single_run(
                 theme,
                 roster,
                 rounds,
@@ -445,6 +442,14 @@ def main() -> None:
                 rng,
             )
             print(f"Final score for run {run_index}: {score}\n")
+
+            if run_cookbook:
+                print_cookbook(run_cookbook, title=f"Run {run_index} Cookbook")
+            else:
+                print("No recipes discovered this run.")
+
+            for name, combo in run_cookbook.items():
+                overall_cookbook.setdefault(name, combo)
 
             if len(roster) < len(DATA.chefs):
                 add_choice = input(
@@ -457,6 +462,11 @@ def main() -> None:
                         print(
                             f"Chef {new_chef.name} has joined your team for future runs."
                         )
+
+        if overall_cookbook:
+            print_cookbook(overall_cookbook, title="Combined Cookbook (all runs)")
+        else:
+            print("No recipes were discovered across these runs.")
 
         again = input("Play another configuration? (y/N): ").strip().lower()
         if again not in {"y", "yes"}:

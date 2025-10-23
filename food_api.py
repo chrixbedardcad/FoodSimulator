@@ -59,12 +59,30 @@ class GameData:
     taste_matrix: MutableMapping[str, MutableMapping[str, int]]
     recipe_by_name: Dict[str, Recipe] = field(init=False)
     recipe_trio_lookup: Dict[Tuple[str, str, str], str] = field(init=False)
+    recipe_multipliers: Dict[str, float] = field(init=False)
 
     def __post_init__(self) -> None:
         self.recipe_by_name = {recipe.name: recipe for recipe in self.recipes}
         self.recipe_trio_lookup = {
             tuple(sorted(recipe.trio)): recipe.name for recipe in self.recipes
         }
+        self.recipe_multipliers = self._build_recipe_multipliers()
+
+    def _build_recipe_multipliers(self) -> Dict[str, float]:
+        multipliers: Dict[str, float] = {}
+        for chef in self.chefs:
+            perks = chef.perks.get("recipe_multipliers", {})
+            if not isinstance(perks, MutableMapping):
+                continue
+            for recipe_name, value in perks.items():
+                try:
+                    numeric = float(value)
+                except (TypeError, ValueError):
+                    continue
+                multipliers[recipe_name] = max(multipliers.get(recipe_name, 1.0), numeric)
+        for recipe in self.recipes:
+            multipliers.setdefault(recipe.name, 1.0)
+        return multipliers
 
     @classmethod
     def from_json(
@@ -103,17 +121,19 @@ class GameData:
             return 0, 0, 0, 1
 
         chips = sum(ingredient.chips for ingredient in ingredients)
+        # Taste synergy no longer affects scoring but is retained for reference.
         taste_sum = 0
-        for idx, first in enumerate(ingredients):
-            for second in ingredients[idx + 1 :]:
-                taste_sum += self.taste_matrix[first.taste][second.taste]
-
-        multiplier = max(1, taste_sum)
-        return chips * multiplier, chips, taste_sum, multiplier
+        multiplier = 1
+        return chips, chips, taste_sum, multiplier
 
     def which_recipe(self, ingredients: Sequence[Ingredient]) -> Optional[str]:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
         return self.recipe_trio_lookup.get(key)
+
+    def recipe_multiplier(self, recipe_name: Optional[str]) -> float:
+        if not recipe_name:
+            return 1.0
+        return float(self.recipe_multipliers.get(recipe_name, 1.0))
 
 
 def _load_ingredients(path: str) -> Dict[str, Ingredient]:
@@ -171,8 +191,6 @@ def build_market_deck(
 ) -> List[Ingredient]:
     rng = rng or random
     theme_pool = data.themes[theme_name]
-    if not chefs:
-        raise ValueError("At least one chef is required to build a market deck.")
     keyset = data.chefs_key_ingredients(chefs)
     weighted: List[Ingredient] = []
     for ingredient_name, copies in theme_pool:
@@ -242,8 +260,6 @@ def draw_cook(
     if len(hand) < pick_size or pick_size <= 0:
         return [], hand, deck
 
-    if not chefs:
-        raise ValueError("draw_cook requires at least one active chef.")
     keyset = (
         set(key_ingredients)
         if key_ingredients is not None
@@ -258,30 +274,10 @@ def draw_cook(
 class LearningState:
     hits: Counter[str] = field(default_factory=Counter)
 
-
-def _chef_recipe_multiplier(chef: Chef, recipe_name: Optional[str]) -> float:
-    if not recipe_name:
-        return 1.0
-    multipliers = chef.perks.get("recipe_multipliers", {})
-    try:
-        return float(multipliers.get(recipe_name, 1.0))
-    except (TypeError, ValueError):
-        return 1.0
-
-
-def _recipe_multiplier(chefs: Sequence[Chef], recipe_name: Optional[str]) -> float:
-    if not recipe_name:
-        return 1.0
-    multiplier = 1.0
-    for chef in chefs:
-        multiplier *= _chef_recipe_multiplier(chef, recipe_name)
-    return multiplier
-
-
 def update_learning(
     state: LearningState, chefs: Sequence[Chef], recipe_name: Optional[str]
 ) -> LearningState:
-    if recipe_name and any(recipe_name in chef.recipe_names for chef in chefs):
+    if recipe_name:
         state.hits[recipe_name] += 1
     return state
 
@@ -314,13 +310,11 @@ def simulate_run(
         raise ValueError("SimulationConfig.pick_size must be a positive integer")
     if cfg.pick_size > cfg.hand_size:
         raise ValueError("SimulationConfig.pick_size cannot exceed hand_size")
-    if cfg.active_chefs <= 0:
-        raise ValueError("SimulationConfig.active_chefs must be a positive integer")
+    if cfg.active_chefs < 0:
+        raise ValueError("SimulationConfig.active_chefs cannot be negative")
 
     if start_chefs is not None:
         active_chefs = list(start_chefs)
-        if not active_chefs:
-            raise ValueError("start_chefs must contain at least one chef")
     else:
         available_chefs = list(data.chefs)
         if not available_chefs:
@@ -331,15 +325,14 @@ def simulate_run(
     learning = LearningState()
     mastered: set[str] = set()
     total_score = 0
-    taste_multiplier_total = 0.0
     recipe_multiplier_total = 0.0
-    overall_multiplier_total = 0.0
-    multiplier_events = 0
+    recipe_multiplier_events = 0
 
     chefkey_per_draw: List[int] = []
     taste_counts: Counter[str] = Counter()
     ingredient_use: Counter[str] = Counter()
     recipe_counts: Counter[str] = Counter()
+    cookbook: Dict[str, Tuple[str, ...]] = {}
 
     deck = build_market_deck(data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng)
     hand: List[Ingredient] = []
@@ -394,19 +387,21 @@ def simulate_run(
             recipe_name = data.which_recipe(trio)
             if recipe_name:
                 recipe_counts[recipe_name] += 1
+                cookbook.setdefault(
+                    recipe_name,
+                    tuple(sorted(ingredient.name for ingredient in trio)),
+                )
             learning = update_learning(learning, active_chefs, recipe_name)
 
-            score, _, _, taste_multiplier = data.trio_score(trio)
-            recipe_multiplier = _recipe_multiplier(active_chefs, recipe_name)
-            total_multiplier = taste_multiplier * recipe_multiplier
+            score, _, _, _ = data.trio_score(trio)
+            recipe_multiplier = data.recipe_multiplier(recipe_name)
             final_score = int(round(score * recipe_multiplier))
             total_score += final_score
             round_total += final_score
 
-            taste_multiplier_total += taste_multiplier
-            recipe_multiplier_total += recipe_multiplier
-            overall_multiplier_total += total_multiplier
-            multiplier_events += 1
+            if recipe_name:
+                recipe_multiplier_total += recipe_multiplier
+                recipe_multiplier_events += 1
 
             for mastered_recipe, hits in list(learning.hits.items()):
                 if hits >= 2:
@@ -432,12 +427,11 @@ def simulate_run(
         "taste_counts": taste_counts,
         "chefkey_per_draw": chefkey_per_draw,
         "recipe_counts": recipe_counts,
-        "taste_multiplier_total": taste_multiplier_total,
         "recipe_multiplier_total": recipe_multiplier_total,
-        "overall_multiplier_total": overall_multiplier_total,
-        "multiplier_events": multiplier_events,
+        "recipe_multiplier_events": recipe_multiplier_events,
         "round_scores": round_scores,
         "cumulative_scores": cumulative_scores,
+        "cookbook": cookbook,
     }
 
 
@@ -479,10 +473,8 @@ def simulate_many(
     taste_totals: Counter[str] = Counter()
     chefkey_all: List[int] = []
     recipe_totals: Counter[str] = Counter()
-    taste_multiplier_total = 0.0
     recipe_multiplier_total = 0.0
-    overall_multiplier_total = 0.0
-    multiplier_events = 0
+    recipe_multiplier_events = 0
     round_score_totals: List[float] = [0.0] * cfg.rounds
     cumulative_score_totals: List[float] = [0.0] * cfg.rounds
 
@@ -497,10 +489,8 @@ def simulate_many(
         taste_totals.update(result["taste_counts"])  # type: ignore[arg-type]
         chefkey_all.extend(result["chefkey_per_draw"])  # type: ignore[arg-type]
         recipe_totals.update(result["recipe_counts"])  # type: ignore[arg-type]
-        taste_multiplier_total += float(result.get("taste_multiplier_total", 0.0))
         recipe_multiplier_total += float(result.get("recipe_multiplier_total", 0.0))
-        overall_multiplier_total += float(result.get("overall_multiplier_total", 0.0))
-        multiplier_events += int(result.get("multiplier_events", 0))
+        recipe_multiplier_events += int(result.get("recipe_multiplier_events", 0))
         round_scores = result.get("round_scores")
         if isinstance(round_scores, (list, tuple)):
             for idx, value in enumerate(round_scores):
@@ -516,14 +506,10 @@ def simulate_many(
     total_ing = sum(ingredient_totals.values())
     hhi = sum((count / total_ing) ** 2 for count in ingredient_totals.values()) if total_ing else 0.0
     avg_chef_keys = (sum(chefkey_all) / len(chefkey_all)) if chefkey_all else 0.0
-    avg_taste_multiplier = (
-        taste_multiplier_total / multiplier_events if multiplier_events else 0.0
-    )
     avg_recipe_multiplier = (
-        recipe_multiplier_total / multiplier_events if multiplier_events else 0.0
-    )
-    avg_overall_multiplier = (
-        overall_multiplier_total / multiplier_events if multiplier_events else 0.0
+        recipe_multiplier_total / recipe_multiplier_events
+        if recipe_multiplier_events
+        else 0.0
     )
     average_round_scores = (
         [round(total / n, 2) for total in round_score_totals] if n else []
@@ -550,9 +536,7 @@ def simulate_many(
         "mastery_rate_pct": round(100.0 * mastered_any / n, 1) if n else 0.0,
         "avg_chef_key_per_draw": round(avg_chef_keys, 2),
         "ingredient_hhi": round(hhi, 4),
-        "avg_taste_multiplier": round(avg_taste_multiplier, 2),
         "avg_recipe_multiplier": round(avg_recipe_multiplier, 2),
-        "avg_overall_multiplier": round(avg_overall_multiplier, 2),
         "average_round_scores": average_round_scores,
         "average_cumulative_scores": average_cumulative_scores,
         "average_points_per_round": average_points_per_round,

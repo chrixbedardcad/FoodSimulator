@@ -207,7 +207,7 @@ class GameSession:
                 return deck_refreshed
             self.hand.append(self.deck.pop())
             needed -= 1
-        if len(self.hand) < self.pick_size:
+        if len(self.hand) == 0:
             self.finished = True
             self._push_event("Not enough cards to continue this run.")
         return deck_refreshed
@@ -230,8 +230,12 @@ class GameSession:
     def play_turn(self, indices: Sequence[int]) -> TurnOutcome:
         if self.finished:
             raise RuntimeError("The session has already finished.")
-        if len(indices) != self.pick_size:
-            raise ValueError(f"You must select exactly {self.pick_size} cards.")
+        if not indices:
+            raise ValueError("You must select at least one card to cook.")
+        if len(indices) > self.pick_size:
+            raise ValueError(
+                f"You may select up to {self.pick_size} cards for a single cook."
+            )
 
         unique = sorted(set(indices))
         if len(unique) != len(indices):
@@ -772,9 +776,16 @@ class FoodGameApp:
             row=2, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
+        self.selection_summary_var = tk.StringVar(value="TASTE X CHIPS = POINTS")
+        ttk.Label(
+            score_frame,
+            textvariable=self.selection_summary_var,
+            style="Info.TLabel",
+        ).grid(row=3, column=0, columnspan=2, sticky="w")
+
         self.chefs_var = tk.StringVar(value="Active chefs: —")
         ttk.Label(score_frame, textvariable=self.chefs_var, style="Info.TLabel").grid(
-            row=3, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            row=4, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
         self.events_text = tk.Text(
@@ -819,7 +830,7 @@ class FoodGameApp:
 
         self.cook_button = ttk.Button(
             action_frame,
-            text="Cook Selected Trio",
+            text="COOK",
             command=self.cook_selected,
             state="disabled",
         )
@@ -881,7 +892,7 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.append_events(self.session.consume_events())
-        self.write_result("Run started. Select ingredients to cook a trio!")
+        self.write_result("Run started. Select ingredients and press COOK!")
 
     def reset_session(self) -> None:
         self.session = None
@@ -973,6 +984,26 @@ class FoodGameApp:
             self.selection_var.set(f"Selection: {count} / {limit}")
         else:
             self.selection_var.set(f"Selection: {count}")
+        self.update_selection_summary()
+
+    def update_selection_summary(self) -> None:
+        default_text = "TASTE X CHIPS = POINTS"
+        if not self.session or not self.selected_indices:
+            self.selection_summary_var.set(default_text)
+            return
+
+        hand = self.session.get_hand()
+        try:
+            selected = [hand[index] for index in sorted(self.selected_indices)]
+        except IndexError:
+            self.selection_summary_var.set(default_text)
+            return
+
+        base_score, chips, _taste_sum, taste_multiplier = self.session.data.trio_score(
+            selected
+        )
+        summary = f"TASTE {taste_multiplier} X CHIPS {chips} = {base_score}"
+        self.selection_summary_var.set(summary)
 
     def update_status(self) -> None:
         if not self.session:
@@ -1014,10 +1045,10 @@ class FoodGameApp:
     def cook_selected(self) -> None:
         if not self.session:
             return
-        if len(self.selected_indices) != self.session.pick_size:
+        if not self.selected_indices:
             messagebox.showwarning(
                 "Incomplete selection",
-                f"Select exactly {self.session.pick_size} cards before cooking.",
+                "Select at least one ingredient before cooking.",
             )
             return
 
@@ -1025,7 +1056,7 @@ class FoodGameApp:
             indices = sorted(self.selected_indices)
             outcome = self.session.play_turn(indices)
         except Exception as exc:  # pragma: no cover - user feedback path
-            messagebox.showerror("Unable to cook trio", str(exc))
+            messagebox.showerror("Unable to cook selection", str(exc))
             return
 
         self.selected_indices.clear()
@@ -1053,7 +1084,7 @@ class FoodGameApp:
             f"Cook {outcome.cook_number}/{outcome.cooks_per_round}",
             "",
         ]
-        parts.append("Cooked trio:")
+        parts.append("Cooked selection:")
         for ingredient in outcome.selected:
             parts.append(
                 f"  • {ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
@@ -1064,29 +1095,21 @@ class FoodGameApp:
                 f"Total chips: {outcome.chips}",
                 f"Taste synergy sum: {outcome.taste_sum}",
                 f"Taste multiplier: x{outcome.taste_multiplier}",
+                (
+                    "TASTE X CHIPS = "
+                    f"{outcome.taste_multiplier} X {outcome.chips} = {outcome.base_score}"
+                ),
             ]
         )
         if outcome.recipe_name:
             parts.append(f"Recipe completed: {outcome.recipe_name}")
         else:
             parts.append("No recipe completed this turn.")
-
-        if outcome.contributions:
-            breakdown = ", ".join(
-                f"{name}: x{multiplier:.2f}" for name, multiplier in outcome.contributions
-            )
-            parts.append(
-                f"Recipe multiplier: x{outcome.recipe_multiplier:.2f} ({breakdown})"
-            )
-        else:
-            parts.append(f"Recipe multiplier: x{outcome.recipe_multiplier:.2f}")
-
-        parts.append(f"Total multiplier: x{outcome.total_multiplier:.2f}")
         parts.append(
             f"Score gained: {outcome.final_score} (base before recipe bonus: {outcome.base_score})"
         )
         parts.append(
-            f"Chef key ingredients used: {outcome.chef_hits}/{self.session.pick_size}"
+            f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"
         )
         if outcome.deck_refreshed:
             parts.append("Deck refreshed for the next turn.")

@@ -7,6 +7,8 @@ implementing a richer front end (e.g., in Unreal Engine).
 Key features:
 * Shares the JSON-driven data sets (ingredients, recipes, chefs, themes).
 * Lets the user select chefs and market themes.
+* Uses the same round → cook structure as the automated simulator so a "run"
+  represents a full game composed of multiple rounds, each with several cooks.
 * Deals five-card hands, allows picking any trio, and immediately shows score
   breakdowns and recipe hits.
 * Supports running multiple short sessions in a row to compare outcomes.
@@ -16,17 +18,26 @@ from __future__ import annotations
 import random
 from typing import Collection, Iterable, List, Mapping, Sequence, Tuple
 
-from food_api import Chef, Ingredient, RULES_VERSION, GameData, build_market_deck
+from food_api import (
+    Chef,
+    Ingredient,
+    RULES_VERSION,
+    GameData,
+    SimulationConfig,
+    build_market_deck,
+)
 from seed_utils import resolve_seed
 
 DATA = GameData.from_json()
 
-# Default gameplay knobs – tweak freely for experimentation.
-HAND_SIZE = 5
-TRIO_SIZE = 3
-DEFAULT_TURNS = 5
-DEFAULT_DECK_SIZE = 60
-DEFAULT_BIAS = 2.7
+# Default gameplay knobs – shared with the simulator for consistent semantics.
+DEFAULT_CONFIG = SimulationConfig()
+HAND_SIZE = DEFAULT_CONFIG.hand_size
+TRIO_SIZE = DEFAULT_CONFIG.pick_size
+DEFAULT_ROUNDS = DEFAULT_CONFIG.rounds
+DEFAULT_COOKS_PER_ROUND = DEFAULT_CONFIG.cooks
+DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
+DEFAULT_BIAS = DEFAULT_CONFIG.bias
 
 
 def _prompt_selection(prompt: str, options: Sequence[str], rng: random.Random) -> str:
@@ -88,13 +99,26 @@ def choose_additional_chef(
     raise RuntimeError("Selected chef not found; data set may be inconsistent.")
 
 
-def prompt_turn_count() -> int:
+def prompt_round_count() -> int:
     while True:
         raw = input(
-            f"How many turns this run? (default {DEFAULT_TURNS}, blank to accept): "
+            f"How many rounds per run? (default {DEFAULT_ROUNDS}, blank to accept): "
         ).strip()
         if not raw:
-            return DEFAULT_TURNS
+            return DEFAULT_ROUNDS
+        if raw.isdigit() and int(raw) > 0:
+            return int(raw)
+        print("Please enter a positive integer.")
+
+
+def prompt_cooks_per_round() -> int:
+    while True:
+        raw = input(
+            "How many cooks in each round? "
+            f"(default {DEFAULT_COOKS_PER_ROUND}, blank to accept): "
+        ).strip()
+        if not raw:
+            return DEFAULT_COOKS_PER_ROUND
         if raw.isdigit() and int(raw) > 0:
             return int(raw)
         print("Please enter a positive integer.")
@@ -249,48 +273,71 @@ def score_trio(selected: Sequence[Ingredient], chefs: Sequence[Chef]) -> int:
 
 
 def play_single_run(
-    theme_name: str, chefs: Sequence[Chef], turns: int, rng: random.Random
+    theme_name: str,
+    chefs: Sequence[Chef],
+    rounds: int,
+    cooks_per_round: int,
+    rng: random.Random,
 ) -> int:
-    total_score = 0
-    hand: List[Ingredient] = []
+    if rounds <= 0:
+        raise ValueError("rounds must be a positive integer")
+    if cooks_per_round <= 0:
+        raise ValueError("cooks_per_round must be a positive integer")
     if not chefs:
         raise ValueError("At least one chef must be active for a run.")
-    deck = build_market_deck(
-        DATA,
-        theme_name,
-        chefs,
-        deck_size=DEFAULT_DECK_SIZE,
-        bias=DEFAULT_BIAS,
-        rng=rng,
-    )
-    rng.shuffle(deck)
+
+    total_score = 0
     print("\nActive chefs this run: " + ", ".join(chef.name for chef in chefs))
-    for turn in range(1, turns + 1):
-        needed = HAND_SIZE - len(hand)
-        if needed > 0:
-            if len(deck) < needed:
-                deck = build_market_deck(
-                    DATA,
-                    theme_name,
-                    chefs,
-                    deck_size=DEFAULT_DECK_SIZE,
-                    bias=DEFAULT_BIAS,
-                    rng=rng,
-                )
-                rng.shuffle(deck)
-                print("\n-- Deck refreshed for the team --")
-            hand.extend(deck.pop() for _ in range(needed))
-        print(f"\n=== Turn {turn}/{turns} ===")
-        display_hand(hand, chefs)
-        selected = prompt_trio(hand)
-        if selected is None:
-            print("Run ended early by player choice.\n")
-            break
-        gained = score_trio(selected, chefs)
-        total_score += gained
-        print(f"Cumulative score: {total_score}\n")
-        for ingredient in selected:
-            hand.remove(ingredient)
+
+    total_turns = rounds * cooks_per_round
+    turn_number = 0
+
+    for round_index in range(1, rounds + 1):
+        deck = build_market_deck(
+            DATA,
+            theme_name,
+            chefs,
+            deck_size=DEFAULT_DECK_SIZE,
+            bias=DEFAULT_BIAS,
+            rng=rng,
+        )
+        rng.shuffle(deck)
+        hand: List[Ingredient] = []
+        print(f"\n=== Round {round_index}/{rounds} ===")
+
+        for cook_index in range(1, cooks_per_round + 1):
+            turn_number += 1
+            needed = HAND_SIZE - len(hand)
+            if needed > 0:
+                if len(deck) < needed:
+                    deck = build_market_deck(
+                        DATA,
+                        theme_name,
+                        chefs,
+                        deck_size=DEFAULT_DECK_SIZE,
+                        bias=DEFAULT_BIAS,
+                        rng=rng,
+                    )
+                    rng.shuffle(deck)
+                    print("\n-- Deck refreshed for the team --")
+                hand.extend(deck.pop() for _ in range(needed))
+
+            print(
+                f"\nTurn {turn_number}/{total_turns} "
+                f"(Cook {cook_index}/{cooks_per_round})"
+            )
+            display_hand(hand, chefs)
+            selected = prompt_trio(hand)
+            if selected is None:
+                print("Run ended early by player choice.\n")
+                return total_score
+
+            gained = score_trio(selected, chefs)
+            total_score += gained
+            print(f"Cumulative score: {total_score}\n")
+            for ingredient in selected:
+                hand.remove(ingredient)
+
     return total_score
 
 
@@ -302,10 +349,10 @@ def main() -> None:
  Version: {RULES_VERSION}
 -----------------------------------------------
  * Data shared with food_simulator.py (JSON-driven).
- * Pick a chef and theme, draw 5 ingredients per turn,
-   and choose any 3 to cook a trio.
+ * Pick a chef and theme, configure rounds and cooks per round,
+   then draw 5 ingredients per cook and choose any 3 to form a trio.
  * Scores are computed using the same trio scoring model.
- * Enter 'q' during a turn to stop the current run early.
+ * Enter 'q' during a cook to stop the current run early.
 ===============================================
 """
     )
@@ -319,16 +366,20 @@ def main() -> None:
 
         theme = choose_theme(rng)
         chef = choose_chef(rng)
-        turns = prompt_turn_count()
+        rounds = prompt_round_count()
+        cooks_per_round = prompt_cooks_per_round()
         runs = prompt_run_count()
+        total_turns = rounds * cooks_per_round
         roster: List[Chef] = [chef]
 
         for run_index in range(1, runs + 1):
             chef_names = ", ".join(c.name for c in roster)
             print(
-                f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} <<<"
+                f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} "
+                f"({rounds} rounds × {cooks_per_round} cooks) "
+                f"[{total_turns} total turns] <<<"
             )
-            score = play_single_run(theme, roster, turns, rng)
+            score = play_single_run(theme, roster, rounds, cooks_per_round, rng)
             print(f"Final score for run {run_index}: {score}\n")
 
             if len(roster) < len(DATA.chefs):

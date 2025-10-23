@@ -88,30 +88,6 @@ def choose_additional_chef(
     raise RuntimeError("Selected chef not found; data set may be inconsistent.")
 
 
-def select_round_chef(
-    available_chefs: Sequence[Chef], current: Chef, rng: random.Random
-) -> Chef:
-    """Allow the user to keep or change the chef for the current round."""
-
-    if len(available_chefs) == 1:
-        sole_chef = available_chefs[0]
-        print(f"\nChef {sole_chef.name} will cook this round.")
-        return sole_chef
-
-    print(f"\nCurrent chef: {current.name}")
-    change = input("Switch chefs for this round? (y/N): ").strip().lower()
-    if change not in {"y", "yes"}:
-        return current
-
-    print("\n=== Select the chef for this round ===")
-    options = [chef.name for chef in available_chefs]
-    selected_name = _prompt_selection("Round Chef", options, rng)
-    for chef in available_chefs:
-        if chef.name == selected_name:
-            return chef
-    raise RuntimeError("Selected chef not found; data set may be inconsistent.")
-
-
 def prompt_turn_count() -> int:
     while True:
         raw = input(
@@ -154,12 +130,16 @@ def describe_ingredient(ingredient: Ingredient, chef_key_set: Iterable[str]) -> 
     return f"{star}{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
 
 
-def display_hand(hand: Sequence[Ingredient], chef: Chef) -> None:
+def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
     print("\nYour hand:")
-    key_set = DATA.chef_key_ingredients(chef)
+    key_set = DATA.chefs_key_ingredients(chefs)
     for idx, ingredient in enumerate(hand, start=1):
         print(f"  {idx}. {describe_ingredient(ingredient, key_set)}")
-    print("  * indicates an ingredient that appears in the chef's signature recipes.")
+    chef_names = ", ".join(chef.name for chef in chefs)
+    print(
+        "  * indicates an ingredient that appears in at least one chef's signature recipes"
+    )
+    print(f"    (Active chefs: {chef_names})")
 
 
 def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:
@@ -187,7 +167,7 @@ def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:
         return [hand[p - 1] for p in picks]
 
 
-def _recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
+def _chef_recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
     if not recipe_name:
         return 1.0
     multipliers = chef.perks.get("recipe_multipliers", {})
@@ -197,13 +177,29 @@ def _recipe_multiplier(chef: Chef, recipe_name: str | None) -> float:
         return 1.0
 
 
-def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
+def _team_recipe_multiplier(
+    chefs: Sequence[Chef], recipe_name: str | None
+) -> Tuple[float, List[Tuple[str, float]]]:
+    if not recipe_name:
+        return 1.0, []
+    contributions: List[Tuple[str, float]] = []
+    total = 1.0
+    for chef in chefs:
+        multiplier = _chef_recipe_multiplier(chef, recipe_name)
+        total *= multiplier
+        if multiplier != 1.0:
+            contributions.append((chef.name, multiplier))
+    return total, contributions
+
+
+def score_trio(selected: Sequence[Ingredient], chefs: Sequence[Chef]) -> int:
     base_score, chips, taste_sum, taste_multiplier = DATA.trio_score(list(selected))
     recipe_name = DATA.which_recipe(list(selected))
-    recipe_multiplier = _recipe_multiplier(chef, recipe_name)
+    recipe_multiplier, contributions = _team_recipe_multiplier(chefs, recipe_name)
     total_multiplier = taste_multiplier * recipe_multiplier
     final_score = int(round(base_score * recipe_multiplier))
-    chef_hits = sum(1 for ing in selected if ing.name in DATA.chef_key_ingredients(chef))
+    key_set = DATA.chefs_key_ingredients(chefs)
+    chef_hits = sum(1 for ing in selected if ing.name in key_set)
 
     print("\n--- Trio Result ---")
     for ing in selected:
@@ -215,64 +211,57 @@ def score_trio(selected: Sequence[Ingredient], chef: Chef) -> int:
         print(f"Recipe completed: {recipe_name}")
     else:
         print("No recipe completed this turn.")
-    print(f"Recipe multiplier: x{recipe_multiplier}")
+    if contributions:
+        breakdown = ", ".join(f"{name}: x{mult:.2f}" for name, mult in contributions)
+        print(f"Recipe multiplier: x{recipe_multiplier:.2f} ({breakdown})")
+    else:
+        print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
     print(f"Total multiplier: x{total_multiplier:.2f}")
     print(f"Score gained: {final_score} (base score before recipe bonus: {base_score})")
-    print(f"Chef key ingredients used: {chef_hits}/{TRIO_SIZE}\n")
+    active_names = ", ".join(chef.name for chef in chefs)
+    print(f"Chef key ingredients used: {chef_hits}/{TRIO_SIZE} (Active: {active_names})\n")
     return final_score
 
 
-def play_single_run(theme_name: str, chef: Chef, turns: int, rng: random.Random) -> int:
-    decks: dict[str, List[Ingredient]] = {}
+def play_single_run(
+    theme_name: str, chefs: Sequence[Chef], turns: int, rng: random.Random
+) -> int:
     total_score = 0
     hand: List[Ingredient] = []
-    roster: List[Chef] = [chef]
-    active_chef = chef
-
+    if not chefs:
+        raise ValueError("At least one chef must be active for a run.")
+    deck = build_market_deck(
+        DATA,
+        theme_name,
+        chefs,
+        deck_size=DEFAULT_DECK_SIZE,
+        bias=DEFAULT_BIAS,
+        rng=rng,
+    )
+    rng.shuffle(deck)
+    print("\nActive chefs this run: " + ", ".join(chef.name for chef in chefs))
     for turn in range(1, turns + 1):
-        if len(roster) < len(DATA.chefs):
-            add_choice = input("Add a new chef to your lineup this round? (y/N): ").strip().lower()
-            if add_choice in {"y", "yes"}:
-                new_chef = choose_additional_chef([chef.name for chef in roster], rng)
-                if new_chef and new_chef not in roster:
-                    roster.append(new_chef)
-                    print(f"Chef {new_chef.name} has joined your team.")
-        active_chef = select_round_chef(roster, active_chef, rng)
-
         needed = HAND_SIZE - len(hand)
         if needed > 0:
-            deck = decks.get(active_chef.name)
-            if deck is None:
-                deck = build_market_deck(
-                    DATA,
-                    theme_name,
-                    active_chef,
-                    deck_size=DEFAULT_DECK_SIZE,
-                    bias=DEFAULT_BIAS,
-                    rng=rng,
-                )
-                rng.shuffle(deck)
-                decks[active_chef.name] = deck
             if len(deck) < needed:
                 deck = build_market_deck(
                     DATA,
                     theme_name,
-                    active_chef,
+                    chefs,
                     deck_size=DEFAULT_DECK_SIZE,
                     bias=DEFAULT_BIAS,
                     rng=rng,
                 )
                 rng.shuffle(deck)
-                decks[active_chef.name] = deck
-                print(f"\n-- Deck refreshed for Chef {active_chef.name} --")
+                print("\n-- Deck refreshed for the team --")
             hand.extend(deck.pop() for _ in range(needed))
         print(f"\n=== Turn {turn}/{turns} ===")
-        display_hand(hand, active_chef)
+        display_hand(hand, chefs)
         selected = prompt_trio(hand)
         if selected is None:
             print("Run ended early by player choice.\n")
             break
-        gained = score_trio(selected, active_chef)
+        gained = score_trio(selected, chefs)
         total_score += gained
         print(f"Cumulative score: {total_score}\n")
         for ingredient in selected:
@@ -307,11 +296,27 @@ def main() -> None:
         chef = choose_chef(rng)
         turns = prompt_turn_count()
         runs = prompt_run_count()
+        roster: List[Chef] = [chef]
 
         for run_index in range(1, runs + 1):
-            print(f"\n>>> Starting run {run_index}/{runs} with Chef {chef.name} in {theme} <<<")
-            score = play_single_run(theme, chef, turns, rng)
+            chef_names = ", ".join(c.name for c in roster)
+            print(
+                f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} <<<"
+            )
+            score = play_single_run(theme, roster, turns, rng)
             print(f"Final score for run {run_index}: {score}\n")
+
+            if len(roster) < len(DATA.chefs):
+                add_choice = input(
+                    "Add a new chef to your lineup for the next run? (y/N): "
+                ).strip().lower()
+                if add_choice in {"y", "yes"}:
+                    new_chef = choose_additional_chef([c.name for c in roster], rng)
+                    if new_chef and new_chef not in roster:
+                        roster.append(new_chef)
+                        print(
+                            f"Chef {new_chef.name} has joined your team for future runs."
+                        )
 
         again = input("Play another configuration? (y/N): ").strip().lower()
         if again not in {"y", "yes"}:

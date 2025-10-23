@@ -19,11 +19,14 @@ from seed_utils import resolve_seed
 
 
 PRIMARY_SUMMARY_KEYS: Tuple[str, ...] = (
+    "nbplay",
+    "runs_per_play",
     "runs",
     "theme",
     "seed",
     "rounds",
     "cooks_per_round",
+    "turns_per_run",
 )
 
 MULTIPLIER_SUMMARY_KEYS = {
@@ -61,8 +64,9 @@ def write_report_files(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed = summary.get("seed")
     theme = summary.get("theme")
+    plays = summary.get("nbplay")
     runs = summary.get("runs")
-    base_name = f"report_{theme}_runs{runs}_seed{seed}_{timestamp}"
+    base_name = f"report_{theme}_plays{plays}_runs{runs}_seed{seed}_{timestamp}"
 
     txt_path = os.path.join(out_dir, base_name + ".txt")
     with open(txt_path, "w", encoding="utf-8") as handle:
@@ -73,7 +77,7 @@ def write_report_files(
             "avg_recipe_multiplier",
             "avg_overall_multiplier",
         }
-        for key, value in summary.items():
+        for key, value in iter_summary_items(summary):
             if key in multiplier_keys:
                 continue
             handle.write(f"{key}: {format_summary_value(value)}\n")
@@ -149,7 +153,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Food Deck Simulator")
     default_config = SimulationConfig()
     parser.add_argument(
-        "--runs", type=int, default=200, help="Number of Monte Carlo runs (default=200)"
+        "--nbplay",
+        type=int,
+        default=1,
+        help="Number of full game plays to simulate (default=1)",
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=200,
+        help="Number of Monte Carlo runs executed per play (default=200)",
     )
     parser.add_argument(
         "--theme",
@@ -208,6 +221,10 @@ if __name__ == "__main__":
         print(f"Theme '{args.theme}' not found. Available: {available}")
         raise SystemExit(1)
 
+    if args.nbplay <= 0:
+        raise SystemExit("--nbplay must be a positive integer")
+    if args.runs <= 0:
+        raise SystemExit("--runs must be a positive integer")
     if args.rounds <= 0:
         raise SystemExit("--rounds must be a positive integer")
     if args.cooks_per_round <= 0:
@@ -232,24 +249,36 @@ if __name__ == "__main__":
         pick_size=args.pick_size,
     )
 
+    plays = args.nbplay
+    runs_per_play = args.runs
+    total_simulated_runs = plays * runs_per_play
+    turns_per_run = sim_config.rounds * sim_config.cooks
+    total_rounds = total_simulated_runs * sim_config.rounds
+    total_cooks = total_simulated_runs * turns_per_run
+
     summary, ingredient_totals, taste_totals, recipe_totals, scores = simulate_many(
         data,
-        n=args.runs,
+        n=total_simulated_runs,
         theme_name=args.theme,
         seed=seed_used,
         config=sim_config,
     )
 
     summary = dict(summary)
+    summary["nbplay"] = plays
+    summary["runs_per_play"] = runs_per_play
     summary.setdefault("rounds", sim_config.rounds)
     summary.setdefault("cooks_per_round", sim_config.cooks)
     summary.setdefault("active_chefs", sim_config.active_chefs)
     summary.setdefault("hand_size", sim_config.hand_size)
     summary.setdefault("pick_size", sim_config.pick_size)
+    summary["turns_per_run"] = turns_per_run
+    summary["total_rounds"] = total_rounds
+    summary["total_cooks"] = total_cooks
     summary["rules_version"] = RULES_VERSION
 
     print(f"=== SUMMARY (Rules v{RULES_VERSION}) ===")
-    for key, value in summary.items():
+    for key, value in iter_summary_items(summary):
         print(f"{key}: {format_summary_value(value)}")
 
     paths = write_report_files(args.out, summary, ingredient_totals, taste_totals, recipe_totals, scores)

@@ -67,7 +67,8 @@ Key CLI flags:
 
 | Flag | Description |
 |------|-------------|
-| `--runs` | Number of simulated runs to execute (default `200`). |
+| `--nbplay` | Number of full game plays to simulate; each play chains `--runs` runs (default `1`). |
+| `--runs` | Number of runs executed within each play (default `200`). |
 | `--theme` | Market/theme name drawn from `themes.json` (default `Mediterranean`). |
 | `--out` | Output directory for generated reports (default `reports/`). |
 | `--seed` | RNG seed. When omitted a random seed is chosen and printed for reproducibility. |
@@ -77,6 +78,9 @@ Key CLI flags:
 | `--hand-size` | Number of ingredients drawn into your hand before each pick (default `5`). |
 | `--pick-size` | How many ingredients are cooked each turn (default `3`; must not exceed `--hand-size`). |
 
+`nbplay` × `runs` yields the total number of simulated runs; combined with `rounds` and
+`cooks-per-round` this mirrors the round/cook structure available in `food_game.py`.
+
 After each batch completes the script prints a console summary including:
 
 - Average score, standard deviation, and p50/p90/p99 percentiles.
@@ -84,7 +88,7 @@ After each batch completes the script prints a console summary including:
 - Average count of chef-favoured ingredients per trio.
 - Ingredient Herfindahl–Hirschman Index (HHI) to gauge draw diversity.
 
-Report files land in the requested output directory using the pattern `report_<theme>_runs<runs>_seed<seed>_<timestamp>.*`.
+Report files land in the requested output directory using the pattern `report_<theme>_plays<nbplay>_runs<runs>_seed<seed>_<timestamp>.*`.
 
 ---
 
@@ -102,7 +106,8 @@ python food_game.py
 During each session you can:
 
 1. Pick a market theme and chef (or opt for random selection).
-2. Decide how many turns to play and how many runs to chain back-to-back.
+2. Decide how many rounds to play, how many cooks happen within each round, and how
+   many runs to chain back-to-back.
 3. (Optionally) set an RNG seed for reproducible decks.
 4. Review five-card hands, pick any trio, and instantly inspect chip totals, taste multipliers, chef key cards, and recipe completions.
 

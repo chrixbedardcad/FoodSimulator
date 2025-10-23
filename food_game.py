@@ -146,8 +146,10 @@ def describe_ingredient(
         if ingredient.name in chef_key_map.get(chef.name, ())
     ]
     marker_text = f"(*{''.join(markers)})" if markers else ""
-    prefix = f"{marker_text} " if marker_text else ""
-    return f"{prefix}{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
+    suffix = f" {marker_text}" if marker_text else ""
+    return (
+        f"{ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips}){suffix}"
+    )
 
 
 def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
@@ -157,7 +159,7 @@ def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
         print(f"  {idx}. {describe_ingredient(ingredient, chefs, chef_key_map)}")
     chef_names = ", ".join(chef.name for chef in chefs)
     print(
-        "  (*X) next to an ingredient indicates it appears in an active chef's signature recipes."
+        "  (*X) at the end of an ingredient indicates it appears in an active chef's signature recipes."
     )
     if chefs:
         legend = ", ".join(f"(*{_chef_marker(chef)}) {chef.name}" for chef in chefs)

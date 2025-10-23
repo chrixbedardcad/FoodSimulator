@@ -16,7 +16,7 @@ except Exception:  # pragma: no cover - numpy is optional
 
     HAVE_NUMPY = False
 
-RULES_VERSION = "1.0.0"
+RULES_VERSION = "1.0.1"
 
 DEFAULT_INGREDIENTS_JSON = "ingredients.json"
 DEFAULT_TASTE_JSON = "taste_matrix.json"

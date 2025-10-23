@@ -895,6 +895,7 @@ class FoodGameApp:
         self.update_selection_label()
         self.render_hand()
         self.update_status()
+        self.clear_events()
         self.append_events(self.session.consume_events())
         self.write_result("Run started. Select ingredients and press COOK!")
 
@@ -1042,6 +1043,14 @@ class FoodGameApp:
         self.events_text.delete("1.0", "end")
         self.events_text.configure(state="disabled")
 
+    def log_turn_points(self, outcome: TurnOutcome) -> None:
+        recipe_note = f" (recipe {outcome.recipe_name})" if outcome.recipe_name else ""
+        entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{recipe_note}"
+        self.events_text.configure(state="normal")
+        self.events_text.insert("end", f"{entry}\n")
+        self.events_text.see("end")
+        self.events_text.configure(state="disabled")
+
     def write_result(self, text: str) -> None:
         self.result_text.configure(state="normal")
         self.result_text.delete("1.0", "end")
@@ -1074,6 +1083,7 @@ class FoodGameApp:
 
         self.render_hand()
         self.update_status()
+        self.log_turn_points(outcome)
         self.append_events(self.session.consume_events())
         self.show_turn_summary_popup(outcome)
 
@@ -1132,6 +1142,19 @@ class FoodGameApp:
             anchor="w",
         )
         heading.pack(anchor="w", pady=(0, 8))
+
+        score_highlight = tk.Label(
+            content,
+            text=f"+{outcome.final_score} pts this turn",
+            font=("Helvetica", 22, "bold"),
+            fg="#1e2a33",
+            bg="#ffe9a8",
+            padx=24,
+            pady=16,
+            anchor="center",
+            justify="center",
+        )
+        score_highlight.pack(fill="x", pady=(0, 12))
 
         if outcome.recipe_name:
             recipe_banner = tk.Label(

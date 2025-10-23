@@ -59,6 +59,7 @@ terminal:
 python food_simulator.py --runs 300 --theme Mediterranean
 python food_simulator.py --runs 500 --theme Asian --out reports
 python food_simulator.py --runs 200 --theme Mediterranean --seed 42
+python food_simulator.py --runs 1 --seed 1 --active-chefs 3 --hand-size 5 --pick-size 3
 python food_simulator.py --help  # view every available option
 ```
 
@@ -70,6 +71,11 @@ Key CLI flags:
 | `--theme` | Market/theme name drawn from `themes.json` (default `Mediterranean`). |
 | `--out` | Output directory for generated reports (default `reports/`). |
 | `--seed` | RNG seed. When omitted a random seed is chosen and printed for reproducibility. |
+| `--rounds` | Rounds per run; each round deals fresh hands (default `3`). |
+| `--cooks-per-round` | Cooking turns taken within each round (default `6`). |
+| `--active-chefs` | Active chefs per run, influencing deck bias and perks (default `3`). |
+| `--hand-size` | Number of ingredients drawn into your hand before each pick (default `5`). |
+| `--pick-size` | How many ingredients are cooked each turn (default `3`; must not exceed `--hand-size`). |
 
 After each batch completes the script prints a console summary including:
 

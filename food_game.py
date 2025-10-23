@@ -340,12 +340,16 @@ def score_trio(
     chef_hits = sum(1 for ing in selected if ing.name in key_set)
 
     discovered = False
+    personal_discovery = False
+    chef_has_recipe = False
     total_cooked = 0
     if recipe_name:
         combo = tuple(sorted(ingredient.name for ingredient in selected))
+        chef_has_recipe = any(recipe_name in chef.recipe_names for chef in chefs)
         if recipe_name not in cookbook:
             cookbook[recipe_name] = combo
             discovered = True
+            personal_discovery = not chef_has_recipe
         recipe_counts[recipe_name] = times_cooked_before + 1
         total_cooked = recipe_counts[recipe_name]
 
@@ -357,7 +361,18 @@ def score_trio(
         print(f"Recipe completed: {recipe_name}")
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
         if discovered:
-            print("  -> New recipe added to your cookbook!")
+            if personal_discovery:
+                base = DATA.recipe_by_name.get(recipe_name)
+                base_text = (
+                    f" Base multiplier recorded as {format_multiplier(base.base_multiplier)}."
+                    if base
+                    else ""
+                )
+                print(
+                    "  -> Personal discovery! Recipe added to your cookbook." + base_text
+                )
+            else:
+                print("  -> New recipe added to your cookbook!")
         if total_cooked:
             times = "time" if total_cooked == 1 else "times"
             print(f"Cooked {recipe_name} {total_cooked} {times} so far.")

@@ -82,6 +82,7 @@ class TurnOutcome:
     total_turns: int
     deck_refreshed: bool
     discovered_recipe: bool
+    personal_discovery: bool
 
 
 @dataclass
@@ -91,9 +92,15 @@ class CookbookEntry:
     ingredients: Tuple[str, ...]
     count: int = 0
     multiplier: float = 1.0
+    personal_discovery: bool = False
 
     def clone(self) -> "CookbookEntry":
-        return CookbookEntry(self.ingredients, self.count, self.multiplier)
+        return CookbookEntry(
+            self.ingredients,
+            self.count,
+            self.multiplier,
+            self.personal_discovery,
+        )
 
 
 class GameSession:
@@ -358,6 +365,7 @@ class GameSession:
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
+        personal_discovery = False
         times_cooked_total = 0
         if recipe_name:
             recipe = self.data.recipe_by_name.get(recipe_name)
@@ -366,18 +374,37 @@ class GameSession:
             else:
                 combo = tuple(sorted(ingredient.name for ingredient in selected))
             entry = self.cookbook.get(recipe_name)
+            chef_has_recipe = any(
+                recipe_name in chef.recipe_names for chef in self.chefs
+            )
             if not entry:
                 entry = CookbookEntry(combo, 0)
+                entry.personal_discovery = not chef_has_recipe
                 self.cookbook[recipe_name] = entry
                 discovered = True
+                personal_discovery = entry.personal_discovery
                 self._cookbook_ingredients.update(combo)
+            else:
+                personal_discovery = False
             entry.count += 1
             times_cooked_total = entry.count
+            display_times = entry.count
+            if entry.personal_discovery and not chef_has_recipe:
+                display_times = max(entry.count - 1, 0)
             entry.multiplier = self.data.recipe_multiplier(
                 recipe_name,
                 chefs=self.chefs,
-                times_cooked=entry.count,
+                times_cooked=display_times,
             )
+            if discovered:
+                if personal_discovery:
+                    self._push_event(
+                        f"You personally discovered {recipe_name}! Added to your cookbook."
+                    )
+                else:
+                    self._push_event(
+                        f"{recipe_name} added to your cookbook thanks to your chef team."
+                    )
 
         current_round = self.round_index
         current_cook = self.cooks_completed_in_round + 1
@@ -416,6 +443,7 @@ class GameSession:
             total_turns=self.total_turns,
             deck_refreshed=deck_refreshed,
             discovered_recipe=discovered,
+            personal_discovery=personal_discovery,
         )
 
     def is_finished(self) -> bool:
@@ -658,9 +686,13 @@ class CookbookTile(ttk.Frame):
         for row, (name, entry) in enumerate(sorted(self.entries.items())):
             times = "time" if entry.count == 1 else "times"
             multiplier_text = format_multiplier(entry.multiplier)
+            source_note = " (Personal discovery)" if entry.personal_discovery else ""
             header = ttk.Label(
                 self.entries_frame,
-                text=f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}",
+                text=(
+                    f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}"
+                    f"{source_note}"
+                ),
                 style="TileInfo.TLabel",
                 wraplength=260,
                 justify="left",
@@ -1430,7 +1462,10 @@ class FoodGameApp:
                 f"recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f}"
             ]
             if outcome.discovered_recipe:
-                parts.append("new recipe")
+                if outcome.personal_discovery:
+                    parts.append("personal discovery")
+                else:
+                    parts.append("new recipe")
             if outcome.times_cooked_total:
                 parts.append(f"total cooks {outcome.times_cooked_total}")
             recipe_note = " (" + "; ".join(parts) + ")"
@@ -1571,9 +1606,15 @@ class FoodGameApp:
         score_highlight.pack(fill="x", pady=(0, 12))
 
         if outcome.recipe_name:
-            banner_text = f"✨ Recipe completed: {outcome.recipe_name}! ✨"
-            if outcome.discovered_recipe:
-                banner_text += " Added to your cookbook."
+            if outcome.discovered_recipe and outcome.personal_discovery:
+                banner_text = (
+                    f"✨ Personal discovery: {outcome.recipe_name}! ✨"
+                    " Added to your cookbook."
+                )
+            else:
+                banner_text = f"✨ Recipe completed: {outcome.recipe_name}! ✨"
+                if outcome.discovered_recipe:
+                    banner_text += " Added to your cookbook."
             recipe_banner = tk.Label(
                 content,
                 text=banner_text,
@@ -1616,7 +1657,18 @@ class FoodGameApp:
                 f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
             )
             if outcome.discovered_recipe:
-                points_lines.append("New recipe added to your cookbook!")
+                if outcome.personal_discovery:
+                    base_text = ""
+                    if self.session and outcome.recipe_name in self.session.data.recipe_by_name:
+                        recipe = self.session.data.recipe_by_name[outcome.recipe_name]
+                        base_text = (
+                            f" Base multiplier starts at {format_multiplier(recipe.base_multiplier)}."
+                        )
+                    points_lines.append(
+                        "Personal discovery! Recipe added to your cookbook." + base_text
+                    )
+                else:
+                    points_lines.append("New recipe added to your cookbook!")
             if outcome.times_cooked_total:
                 points_lines.append(
                     f"Cooked {outcome.recipe_name} {outcome.times_cooked_total} time(s) total."
@@ -1853,7 +1905,10 @@ class FoodGameApp:
                 f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
             )
             if outcome.discovered_recipe:
-                parts.append("New recipe added to your cookbook!")
+                if outcome.personal_discovery:
+                    parts.append("Personal discovery added to your cookbook!")
+                else:
+                    parts.append("New recipe added to your cookbook!")
             if outcome.times_cooked_total:
                 parts.append(
                     f"Total times cooked: {outcome.times_cooked_total}"

@@ -9,8 +9,8 @@ Key features:
 * Lets the user select chefs and market themes.
 * Uses the same round → cook structure as the automated simulator so a "run"
   represents a full game composed of multiple rounds, each with several cooks.
-* Deals five-card hands, allows picking any trio, and immediately shows score
-  breakdowns and recipe hits.
+* Deals configurable hand sizes (default five cards), allows picking any trio size,
+  and immediately shows score breakdowns and recipe hits.
 * Supports running multiple short sessions in a row to compare outcomes.
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ DATA = GameData.from_json()
 
 # Default gameplay knobs – shared with the simulator for consistent semantics.
 DEFAULT_CONFIG = SimulationConfig()
-HAND_SIZE = DEFAULT_CONFIG.hand_size
-TRIO_SIZE = DEFAULT_CONFIG.pick_size
+DEFAULT_HAND_SIZE = DEFAULT_CONFIG.hand_size
+DEFAULT_PICK_SIZE = DEFAULT_CONFIG.pick_size
 DEFAULT_ROUNDS = DEFAULT_CONFIG.rounds
 DEFAULT_COOKS_PER_ROUND = DEFAULT_CONFIG.cooks
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
@@ -134,6 +134,48 @@ def prompt_run_count() -> int:
         print("Please enter a positive integer.")
 
 
+def prompt_hand_size() -> int:
+    while True:
+        raw = input(
+            "How many cards per hand? "
+            f"(default {DEFAULT_HAND_SIZE}, blank to accept): "
+        ).strip()
+        if not raw:
+            if DEFAULT_HAND_SIZE <= 0:
+                print("Hand size must be a positive integer.")
+                continue
+            return DEFAULT_HAND_SIZE
+        if raw.isdigit() and int(raw) > 0:
+            return int(raw)
+        print("Please enter a positive integer.")
+
+
+def prompt_pick_size(hand_size: int) -> int:
+    while True:
+        raw = input(
+            "How many cards should be selected each turn? "
+            f"(default {DEFAULT_PICK_SIZE}, blank to accept): "
+        ).strip()
+        if not raw:
+            pick_size = DEFAULT_PICK_SIZE
+            if pick_size > hand_size:
+                print(
+                    "Default pick size exceeds the chosen hand size; "
+                    f"using {hand_size} instead."
+                )
+                pick_size = hand_size
+        elif raw.isdigit() and int(raw) > 0:
+            pick_size = int(raw)
+        else:
+            print("Please enter a positive integer.")
+            continue
+
+        if pick_size > hand_size:
+            print("Pick size cannot exceed the hand size. Please choose a smaller number.")
+            continue
+        return pick_size
+
+
 def prompt_seed() -> Tuple[int, random.Random]:
     """Prompt the user for a reproducible RNG seed."""
 
@@ -191,16 +233,16 @@ def display_hand(hand: Sequence[Ingredient], chefs: Sequence[Chef]) -> None:
     print(f"    Active chefs: {chef_names}")
 
 
-def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:
+def prompt_trio(hand: Sequence[Ingredient], pick_size: int) -> List[Ingredient] | None:
     while True:
         raw = input(
-            "Select three cards by number (e.g., 1 3 4). Enter 'q' to end the run: "
+            f"Select {pick_size} cards by number (e.g., 1 3 4). Enter 'q' to end the run: "
         ).strip()
         if raw.lower() == "q":
             return None
         tokens = [token for token in raw.replace(",", " ").split(" ") if token]
-        if len(tokens) != TRIO_SIZE:
-            print(f"Please choose exactly {TRIO_SIZE} distinct cards.")
+        if len(tokens) != pick_size:
+            print(f"Please choose exactly {pick_size} distinct cards.")
             continue
         try:
             picks = [int(token) for token in tokens]
@@ -210,7 +252,7 @@ def prompt_trio(hand: Sequence[Ingredient]) -> List[Ingredient] | None:
         if any(p < 1 or p > len(hand) for p in picks):
             print("One or more selections are out of range.")
             continue
-        if len(set(picks)) != TRIO_SIZE:
+        if len(set(picks)) != pick_size:
             print("Please avoid duplicate selections.")
             continue
         return [hand[p - 1] for p in picks]
@@ -241,7 +283,9 @@ def _team_recipe_multiplier(
     return total, contributions
 
 
-def score_trio(selected: Sequence[Ingredient], chefs: Sequence[Chef]) -> int:
+def score_trio(
+    selected: Sequence[Ingredient], chefs: Sequence[Chef], pick_size: int
+) -> int:
     base_score, chips, taste_sum, taste_multiplier = DATA.trio_score(list(selected))
     recipe_name = DATA.which_recipe(list(selected))
     recipe_multiplier, contributions = _team_recipe_multiplier(chefs, recipe_name)
@@ -268,7 +312,9 @@ def score_trio(selected: Sequence[Ingredient], chefs: Sequence[Chef]) -> int:
     print(f"Total multiplier: x{total_multiplier:.2f}")
     print(f"Score gained: {final_score} (base score before recipe bonus: {base_score})")
     active_names = ", ".join(chef.name for chef in chefs)
-    print(f"Chef key ingredients used: {chef_hits}/{TRIO_SIZE} (Active: {active_names})\n")
+    print(
+        f"Chef key ingredients used: {chef_hits}/{pick_size} (Active: {active_names})\n"
+    )
     return final_score
 
 
@@ -277,12 +323,20 @@ def play_single_run(
     chefs: Sequence[Chef],
     rounds: int,
     cooks_per_round: int,
+    hand_size: int,
+    pick_size: int,
     rng: random.Random,
 ) -> int:
     if rounds <= 0:
         raise ValueError("rounds must be a positive integer")
     if cooks_per_round <= 0:
         raise ValueError("cooks_per_round must be a positive integer")
+    if hand_size <= 0:
+        raise ValueError("hand_size must be a positive integer")
+    if pick_size <= 0:
+        raise ValueError("pick_size must be a positive integer")
+    if pick_size > hand_size:
+        raise ValueError("pick_size cannot exceed hand_size")
     if not chefs:
         raise ValueError("At least one chef must be active for a run.")
 
@@ -307,7 +361,7 @@ def play_single_run(
 
         for cook_index in range(1, cooks_per_round + 1):
             turn_number += 1
-            needed = HAND_SIZE - len(hand)
+            needed = hand_size - len(hand)
             if needed > 0:
                 if len(deck) < needed:
                     deck = build_market_deck(
@@ -327,12 +381,12 @@ def play_single_run(
                 f"(Cook {cook_index}/{cooks_per_round})"
             )
             display_hand(hand, chefs)
-            selected = prompt_trio(hand)
+            selected = prompt_trio(hand, pick_size)
             if selected is None:
                 print("Run ended early by player choice.\n")
                 return total_score
 
-            gained = score_trio(selected, chefs)
+            gained = score_trio(selected, chefs, pick_size)
             total_score += gained
             print(f"Cumulative score: {total_score}\n")
             for ingredient in selected:
@@ -349,8 +403,8 @@ def main() -> None:
  Version: {RULES_VERSION}
 -----------------------------------------------
  * Data shared with food_simulator.py (JSON-driven).
- * Pick a chef and theme, configure rounds and cooks per round,
-   then draw 5 ingredients per cook and choose any 3 to form a trio.
+ * Pick a chef and theme, configure rounds, cooks per round, hand size, and
+   how many ingredients to keep each cook.
  * Scores are computed using the same trio scoring model.
  * Enter 'q' during a cook to stop the current run early.
 ===============================================
@@ -368,6 +422,8 @@ def main() -> None:
         chef = choose_chef(rng)
         rounds = prompt_round_count()
         cooks_per_round = prompt_cooks_per_round()
+        hand_size = prompt_hand_size()
+        pick_size = prompt_pick_size(hand_size)
         runs = prompt_run_count()
         total_turns = rounds * cooks_per_round
         roster: List[Chef] = [chef]
@@ -376,10 +432,18 @@ def main() -> None:
             chef_names = ", ".join(c.name for c in roster)
             print(
                 f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} "
-                f"({rounds} rounds × {cooks_per_round} cooks) "
+                f"({rounds} rounds × {cooks_per_round} cooks, hand {hand_size}, pick {pick_size}) "
                 f"[{total_turns} total turns] <<<"
             )
-            score = play_single_run(theme, roster, rounds, cooks_per_round, rng)
+            score = play_single_run(
+                theme,
+                roster,
+                rounds,
+                cooks_per_round,
+                hand_size,
+                pick_size,
+                rng,
+            )
             print(f"Final score for run {run_index}: {score}\n")
 
             if len(roster) < len(DATA.chefs):

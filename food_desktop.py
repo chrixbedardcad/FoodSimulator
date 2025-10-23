@@ -15,7 +15,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from tkinter import ttk
 
@@ -83,6 +83,17 @@ class TurnOutcome:
     discovered_recipe: bool
 
 
+@dataclass
+class CookbookEntry:
+    """Track a discovered recipe and how often it has been cooked."""
+
+    ingredients: Tuple[str, ...]
+    count: int = 0
+
+    def clone(self) -> "CookbookEntry":
+        return CookbookEntry(self.ingredients, self.count)
+
+
 class GameSession:
     """Manage deck, hand, and scoring for a single run."""
 
@@ -136,7 +147,7 @@ class GameSession:
             chef.name: data.chef_key_ingredients(chef) for chef in self.chefs
         }
         self._chef_key_set = data.chefs_key_ingredients(self.chefs)
-        self.cookbook: Dict[str, Tuple[str, ...]] = {}
+        self.cookbook: Dict[str, CookbookEntry] = {}
 
         self._start_next_round(initial=True)
 
@@ -215,8 +226,8 @@ class GameSession:
     def get_total_score(self) -> int:
         return self.total_score
 
-    def get_cookbook(self) -> Dict[str, Tuple[str, ...]]:
-        return dict(self.cookbook)
+    def get_cookbook(self) -> Dict[str, CookbookEntry]:
+        return {name: entry.clone() for name, entry in self.cookbook.items()}
 
     def get_selection_markers(self, ingredient: Ingredient) -> str:
         markers = [
@@ -252,9 +263,16 @@ class GameSession:
 
         discovered = False
         if recipe_name:
-            combo = tuple(sorted(ingredient.name for ingredient in selected))
-            if recipe_name not in self.cookbook:
-                self.cookbook[recipe_name] = combo
+            recipe = self.data.recipe_by_name.get(recipe_name)
+            if recipe:
+                combo: Tuple[str, ...] = tuple(recipe.trio)
+            else:
+                combo = tuple(sorted(ingredient.name for ingredient in selected))
+            entry = self.cookbook.get(recipe_name)
+            if entry:
+                entry.count += 1
+            else:
+                self.cookbook[recipe_name] = CookbookEntry(combo, 1)
                 discovered = True
 
         current_round = self.round_index
@@ -452,6 +470,120 @@ class ChefTile(ttk.Frame):
             self.subtitle_var.set("No signature recipes for this chef.")
 
 
+class CookbookTile(ttk.Frame):
+    def __init__(self, master: tk.Widget) -> None:
+        super().__init__(master, style="Tile.TFrame", padding=(14, 12))
+        self.entries: Dict[str, CookbookEntry] = {}
+        self.expanded = False
+        self._entry_widgets: list[tk.Widget] = []
+        self._empty_label: Optional[ttk.Label] = None
+
+        self.columnconfigure(0, weight=1)
+
+        self.header_var = tk.StringVar(value="📖 Cookbook")
+        self.header_button = ttk.Button(
+            self,
+            textvariable=self.header_var,
+            style="TileHeader.TButton",
+            command=self.toggle,
+        )
+        self.header_button.grid(row=0, column=0, sticky="ew")
+
+        self.subtitle_var = tk.StringVar(value="No recipes unlocked yet.")
+        self.subtitle_label = ttk.Label(
+            self,
+            textvariable=self.subtitle_var,
+            style="TileSub.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.subtitle_label.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+
+        self.body_frame = ttk.Frame(self, style="TileBody.TFrame")
+        self.body_frame.columnconfigure(0, weight=1)
+        self.body_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        self.body_frame.grid_remove()
+
+        self.entries_frame = ttk.Frame(self.body_frame, style="TileBody.TFrame")
+        self.entries_frame.grid(row=0, column=0, sticky="ew")
+        self.entries_frame.columnconfigure(0, weight=1)
+
+    def toggle(self) -> None:
+        if self.expanded:
+            self.body_frame.grid_remove()
+            self.expanded = False
+        else:
+            self.body_frame.grid()
+            self.expanded = True
+        self._refresh_entries()
+        self._update_subtitle()
+
+    def set_entries(self, entries: Mapping[str, CookbookEntry]) -> None:
+        self.entries = {name: entry.clone() for name, entry in entries.items()}
+        self._refresh_entries()
+        self._update_subtitle()
+
+    def clear(self) -> None:
+        self.entries.clear()
+        self._refresh_entries()
+        self._update_subtitle()
+
+    def _refresh_entries(self) -> None:
+        for widget in self._entry_widgets:
+            widget.destroy()
+        self._entry_widgets.clear()
+        if self._empty_label:
+            self._empty_label.destroy()
+            self._empty_label = None
+
+        if not self.expanded:
+            return
+
+        if not self.entries:
+            self._empty_label = ttk.Label(
+                self.entries_frame,
+                text="No recipes unlocked yet.",
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            self._empty_label.grid(row=0, column=0, sticky="w")
+            return
+
+        for row, (name, entry) in enumerate(sorted(self.entries.items())):
+            times = "time" if entry.count == 1 else "times"
+            header = ttk.Label(
+                self.entries_frame,
+                text=f"{name} — cooked {entry.count} {times}",
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            header.grid(row=row * 2, column=0, sticky="w")
+            self._entry_widgets.append(header)
+
+            ingredients = ttk.Label(
+                self.entries_frame,
+                text="Ingredients: " + ", ".join(entry.ingredients),
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            ingredients.grid(row=row * 2 + 1, column=0, sticky="w", pady=(0, 8))
+            self._entry_widgets.append(ingredients)
+
+    def _update_subtitle(self) -> None:
+        if not self.entries:
+            self.subtitle_var.set("No recipes unlocked yet.")
+            return
+        count = len(self.entries)
+        plural = "recipe" if count == 1 else "recipes"
+        if self.expanded:
+            self.subtitle_var.set("Unlocked recipes:")
+        else:
+            self.subtitle_var.set(f"{count} {plural} discovered. Click to view details.")
+
+
 class CardView(ttk.Frame):
     def __init__(
         self,
@@ -535,6 +667,7 @@ class FoodGameApp:
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
         self.chef_tile: Optional[ChefTile] = None
+        self.cookbook_tile: Optional[CookbookTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
 
         self._init_styles()
@@ -681,6 +814,9 @@ class FoodGameApp:
         self.chef_tile = ChefTile(self.control_frame, DATA)
         self.chef_tile.pack(fill="x", pady=(0, 12))
         self.chef_list.bind("<<ListboxSelect>>", self.on_chef_select)
+
+        self.cookbook_tile = CookbookTile(self.control_frame)
+        self.cookbook_tile.pack(fill="x", pady=(0, 12))
 
         config_frame = ttk.Frame(self.control_frame)
         config_frame.pack(anchor="w", pady=(8, 0))
@@ -864,6 +1000,9 @@ class FoodGameApp:
             messagebox.showerror("Cannot start run", str(exc))
             return
 
+        if self.cookbook_tile:
+            self.cookbook_tile.set_entries(self.session.get_cookbook())
+
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
         self.reset_button.configure(state="normal")
@@ -891,6 +1030,8 @@ class FoodGameApp:
         self.clear_hand()
         self.clear_events()
         self.write_result("Session reset. Configure options and start a new run.")
+        if self.cookbook_tile:
+            self.cookbook_tile.clear()
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
@@ -1043,9 +1184,12 @@ class FoodGameApp:
         entries = self.session.get_cookbook()
         if not entries:
             return "Cookbook:\n  (No recipes discovered yet.)"
-        lines = [
-            f"  {name}: {', '.join(combo)}" for name, combo in sorted(entries.items())
-        ]
+        lines = []
+        for name, entry in sorted(entries.items()):
+            times = "time" if entry.count == 1 else "times"
+            lines.append(
+                f"  {name} — cooked {entry.count} {times}: {', '.join(entry.ingredients)}"
+            )
         return "Cookbook:\n" + "\n".join(lines)
 
     def _final_summary_text(self) -> str:
@@ -1086,6 +1230,9 @@ class FoodGameApp:
 
         summary = self._format_outcome(outcome)
         self.write_result(summary)
+
+        if self.cookbook_tile:
+            self.cookbook_tile.set_entries(self.session.get_cookbook())
 
         self.render_hand()
         self.update_status()

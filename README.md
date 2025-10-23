@@ -81,6 +81,20 @@ Key CLI flags:
 `nbplay` × `runs` yields the total number of simulated runs; combined with `rounds` and
 `cooks-per-round` this mirrors the round/cook structure available in `food_game.py`.
 
+### How rounds and cooks shape a run
+
+Every simulated run (and every interactive session) uses the same nested loop:
+
+1. Play through the configured number of rounds.
+2. Within each round, take `cooks-per-round` cook turns.
+3. Each cook turn draws a hand, lets you pick a trio, scores it, then advances to the next cook.
+
+This means a single run always contains `rounds × cooks-per-round` cook turns. For example,
+the default configuration of three rounds with six cooks per round produces 18 cook turns per
+run. Dropping the cooks per round to four would yield 12 turns instead, while increasing rounds
+to five would expand the total to 30 turns. Because `food_simulator.py` and `food_game.py`
+share this loop, their statistics and hands-on experience stay aligned.
+
 After each batch completes the script prints a console summary including:
 
 - Average score, standard deviation, and p50/p90/p99 percentiles.

@@ -37,6 +37,7 @@ from food_api import (
 DEFAULT_CONFIG = SimulationConfig()
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
 DEFAULT_BIAS = DEFAULT_CONFIG.bias
+DEFAULT_MAX_CHEFS = DEFAULT_CONFIG.active_chefs
 
 ASSET_DIR = Path(__file__).resolve().parent
 
@@ -56,12 +57,11 @@ def _load_game_data() -> GameData:
 DATA = _load_game_data()
 
 
-def chef_marker(chef: Chef) -> str:
-    parts = [part for part in chef.name.split() if part]
-    for part in parts:
-        if part.lower() != "chef":
-            return part[0].upper()
-    return parts[0][0].upper() if parts else "?"
+def format_multiplier(multiplier: float) -> str:
+    rounded = round(multiplier)
+    if math.isclose(multiplier, rounded):
+        return f"x{int(rounded)}"
+    return f"x{multiplier:.2f}"
 
 
 @dataclass
@@ -90,9 +90,10 @@ class CookbookEntry:
 
     ingredients: Tuple[str, ...]
     count: int = 0
+    multiplier: float = 1.0
 
     def clone(self) -> "CookbookEntry":
-        return CookbookEntry(self.ingredients, self.count)
+        return CookbookEntry(self.ingredients, self.count, self.multiplier)
 
 
 class GameSession:
@@ -109,6 +110,7 @@ class GameSession:
         pick_size: int,
         deck_size: int = DEFAULT_DECK_SIZE,
         bias: float = DEFAULT_BIAS,
+        max_chefs: int = DEFAULT_MAX_CHEFS,
         rng: Optional[random.Random] = None,
     ) -> None:
         if rounds <= 0:
@@ -121,6 +123,10 @@ class GameSession:
             raise ValueError("pick_size must be positive")
         if pick_size > hand_size:
             raise ValueError("pick_size cannot exceed hand_size")
+        if max_chefs <= 0:
+            raise ValueError("max_chefs must be positive")
+        if len(chefs) > max_chefs:
+            raise ValueError("Initial chef roster exceeds the configured maximum")
 
         self.data = data
         self.theme_name = theme_name
@@ -131,6 +137,7 @@ class GameSession:
         self.pick_size = pick_size
         self.deck_size = deck_size
         self.bias = bias
+        self.max_chefs = max_chefs
         self.rng = rng or random.Random()
 
         self.total_turns = rounds * cooks_per_round
@@ -146,6 +153,10 @@ class GameSession:
         self._events: List[str] = []
 
         self._cookbook_ingredients: set[str] = set()
+        self._ingredient_recipe_map = {
+            name: tuple(recipes)
+            for name, recipes in self.data.ingredient_recipes.items()
+        }
 
         self._refresh_chef_data()
         self.cookbook: Dict[str, CookbookEntry] = {}
@@ -265,6 +276,8 @@ class GameSession:
         return {name: entry.clone() for name, entry in self.cookbook.items()}
 
     def available_chefs(self) -> List[Chef]:
+        if len(self.chefs) >= self.max_chefs:
+            return []
         active_names = {chef.name for chef in self.chefs}
         return [chef for chef in self.data.chefs if chef.name not in active_names]
 
@@ -280,10 +293,15 @@ class GameSession:
             raise ValueError(f"{chef.name} is already on your team.")
         if self.finished:
             raise RuntimeError("Cannot add chefs after the run has finished.")
+        if len(self.chefs) >= self.max_chefs:
+            raise ValueError("Your chef roster is already at the maximum size.")
         self.chefs.append(chef)
         self._refresh_chef_data()
         self.pending_new_chef_offer = False
-        self._push_event(f"{chef.name} joins the team! New key ingredients unlocked.")
+        self._push_event(
+            f"{chef.name} joins the team! New key ingredients unlocked. "
+            f"Roster {len(self.chefs)}/{self.max_chefs}."
+        )
         self._rebuild_deck_for_new_chef()
 
     def skip_chef_recruitment(self) -> None:
@@ -298,14 +316,17 @@ class GameSession:
             times_cooked=self._times_cooked(recipe_name),
         )
 
-    def get_selection_markers(self, ingredient: Ingredient) -> Tuple[str, bool]:
+    def get_selection_markers(self, ingredient: Ingredient) -> Tuple[List[str], bool]:
         markers = [
-            chef_marker(chef)
+            chef.name
             for chef in self.chefs
             if ingredient.name in self._chef_key_map.get(chef.name, set())
         ]
         in_cookbook = ingredient.name in self._cookbook_ingredients
-        return "".join(markers), in_cookbook
+        return markers, in_cookbook
+
+    def get_recipe_hints(self, ingredient: Ingredient) -> List[str]:
+        return list(self._ingredient_recipe_map.get(ingredient.name, ()))
 
     def play_turn(self, indices: Sequence[int]) -> TurnOutcome:
         if self.finished:
@@ -345,14 +366,18 @@ class GameSession:
             else:
                 combo = tuple(sorted(ingredient.name for ingredient in selected))
             entry = self.cookbook.get(recipe_name)
-            if entry:
-                entry.count += 1
-                times_cooked_total = entry.count
-            else:
-                self.cookbook[recipe_name] = CookbookEntry(combo, 1)
-                times_cooked_total = 1
+            if not entry:
+                entry = CookbookEntry(combo, 0)
+                self.cookbook[recipe_name] = entry
                 discovered = True
                 self._cookbook_ingredients.update(combo)
+            entry.count += 1
+            times_cooked_total = entry.count
+            entry.multiplier = self.data.recipe_multiplier(
+                recipe_name,
+                chefs=self.chefs,
+                times_cooked=entry.count,
+            )
 
         current_round = self.round_index
         current_cook = self.cooks_completed_in_round + 1
@@ -632,9 +657,10 @@ class CookbookTile(ttk.Frame):
 
         for row, (name, entry) in enumerate(sorted(self.entries.items())):
             times = "time" if entry.count == 1 else "times"
+            multiplier_text = format_multiplier(entry.multiplier)
             header = ttk.Label(
                 self.entries_frame,
-                text=f"{name} — cooked {entry.count} {times}",
+                text=f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}",
                 style="TileInfo.TLabel",
                 wraplength=260,
                 justify="left",
@@ -664,13 +690,90 @@ class CookbookTile(ttk.Frame):
             self.subtitle_var.set(f"{count} {plural} discovered. Click to view details.")
 
 
+class ChefTeamTile(ttk.Frame):
+    def __init__(self, master: tk.Widget) -> None:
+        super().__init__(master, style="Tile.TFrame", padding=(14, 12))
+        self.max_slots: int = DEFAULT_MAX_CHEFS
+        self._slot_widgets: list[tk.Widget] = []
+
+        self.columnconfigure(0, weight=1)
+
+        self.header_var = tk.StringVar(value="👩‍🍳 Chef Team (0/0)")
+        self.header_label = ttk.Label(
+            self,
+            textvariable=self.header_var,
+            style="TileSub.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.header_label.configure(font=("Helvetica", 12, "bold"))
+        self.header_label.grid(row=0, column=0, sticky="ew")
+
+        self.subtitle_var = tk.StringVar(value="No chefs recruited yet.")
+        self.subtitle_label = ttk.Label(
+            self,
+            textvariable=self.subtitle_var,
+            style="TileSub.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.subtitle_label.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+
+        self.slots_frame = ttk.Frame(self, style="TileBody.TFrame")
+        self.slots_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        self.slots_frame.columnconfigure(0, weight=1)
+
+    def _clear_slots(self) -> None:
+        for widget in self._slot_widgets:
+            widget.destroy()
+        self._slot_widgets.clear()
+
+    def set_team(self, chefs: Sequence[Chef], max_slots: int) -> None:
+        self.max_slots = max_slots
+        count = len(chefs)
+        self.header_var.set(f"👩‍🍳 Chef Team ({count}/{max_slots})")
+        if count == 0:
+            self.subtitle_var.set("No chefs recruited yet.")
+        elif count >= max_slots:
+            self.subtitle_var.set("Chef roster is full.")
+        else:
+            remaining = max_slots - count
+            plural = "slot" if remaining == 1 else "slots"
+            self.subtitle_var.set(f"{remaining} {plural} available for recruitment.")
+
+        self._clear_slots()
+        if max_slots <= 0:
+            return
+
+        for index in range(max_slots):
+            if index < count:
+                chef = chefs[index]
+                recipes = ", ".join(chef.recipe_names) if chef.recipe_names else "No signature recipes"
+                text = f"{chef.name}\nRecipes: {recipes}"
+            else:
+                text = "Open slot — recruit a chef to fill this space."
+            label = ttk.Label(
+                self.slots_frame,
+                text=text,
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            label.grid(row=index, column=0, sticky="w", pady=(0, 6))
+            self._slot_widgets.append(label)
+
+    def clear(self) -> None:
+        self.set_team([], self.max_slots or DEFAULT_MAX_CHEFS)
+
+
 class CardView(ttk.Frame):
     def __init__(
         self,
         master: tk.Widget,
         index: int,
         ingredient: Ingredient,
-        marker_text: str,
+        chef_names: Sequence[str],
+        recipe_hints: Sequence[str],
         cookbook_hint: bool,
         on_click,
     ) -> None:
@@ -704,15 +807,31 @@ class CardView(ttk.Frame):
         )
         self.chips_label.grid(row=3, column=0, sticky="w", pady=(2, 0))
 
-        self.marker_label: Optional[ttk.Label]
-        self.marker_label = None
-        if marker_text:
-            self.marker_label = ttk.Label(
+        self.chef_label: Optional[ttk.Label] = None
+        if chef_names:
+            first, *rest = chef_names
+            lines = [f"Chef Key: {first}"]
+            lines.extend(f"           {name}" for name in rest)
+            self.chef_label = ttk.Label(
                 self,
-                text=f"Chef Key: {marker_text}",
+                text="\n".join(lines),
                 style="CardMarker.TLabel",
+                justify="left",
             )
-            self.marker_label.grid(row=4, column=0, sticky="w", pady=(4, 0))
+            self.chef_label.grid(row=4, column=0, sticky="w", pady=(4, 0))
+            next_row = 5
+        else:
+            next_row = 4
+
+        hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
+        self.recipe_label = ttk.Label(
+            self,
+            text=f"Recipes: {hint_text}",
+            style="CardHint.TLabel",
+            wraplength=220,
+            justify="left",
+        )
+        self.recipe_label.grid(row=next_row, column=0, sticky="w", pady=(4, 0))
 
         self.bind("<Button-1>", self._handle_click)
         for child in self.winfo_children():
@@ -730,11 +849,14 @@ class CardView(ttk.Frame):
         marker_style = (
             "CardMarkerSelected.TLabel" if selected else "CardMarker.TLabel"
         )
+        hint_style = "CardHintSelected.TLabel" if selected else "CardHint.TLabel"
         self.name_label.configure(style=title_style)
         self.taste_label.configure(style=body_style)
         self.chips_label.configure(style=body_style)
-        if self.marker_label:
-            self.marker_label.configure(style=marker_style)
+        if self.chef_label:
+            self.chef_label.configure(style=marker_style)
+        if self.recipe_label:
+            self.recipe_label.configure(style=hint_style)
 
 
 class FoodGameApp:
@@ -750,6 +872,7 @@ class FoodGameApp:
         self.spinboxes: List[ttk.Spinbox] = []
         self.chef_tile: Optional[ChefTile] = None
         self.cookbook_tile: Optional[CookbookTile] = None
+        self.team_tile: Optional[ChefTeamTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
 
@@ -797,6 +920,12 @@ class FoodGameApp:
             background=base_bg,
         )
         style.configure(
+            "CardHint.TLabel",
+            font=("Helvetica", 9),
+            foreground="#4a4a4a",
+            background=base_bg,
+        )
+        style.configure(
             "CardTitleSelected.TLabel",
             font=title_font,
             foreground="#1f1f1f",
@@ -812,6 +941,12 @@ class FoodGameApp:
             "CardMarkerSelected.TLabel",
             font=marker_font,
             foreground="#4a4a4a",
+            background=selected_bg,
+        )
+        style.configure(
+            "CardHintSelected.TLabel",
+            font=("Helvetica", 9),
+            foreground="#383838",
             background=selected_bg,
         )
 
@@ -901,6 +1036,9 @@ class FoodGameApp:
         self.cookbook_tile = CookbookTile(self.control_frame)
         self.cookbook_tile.pack(fill="x", pady=(0, 12))
 
+        self.team_tile = ChefTeamTile(self.control_frame)
+        self.team_tile.pack(fill="x", pady=(0, 12))
+
         config_frame = ttk.Frame(self.control_frame)
         config_frame.pack(anchor="w", pady=(8, 0))
 
@@ -908,11 +1046,21 @@ class FoodGameApp:
         self.cooks_var = tk.IntVar(value=DEFAULT_CONFIG.cooks)
         self.hand_var = tk.IntVar(value=DEFAULT_HAND_SIZE)
         self.pick_var = tk.IntVar(value=DEFAULT_PICK_SIZE)
+        self.max_chefs_var = tk.IntVar(value=DEFAULT_MAX_CHEFS)
 
         self._add_spinbox(config_frame, "Rounds", self.round_var, 1, 10)
         self._add_spinbox(config_frame, "Cooks / Round", self.cooks_var, 1, 12)
         self._add_spinbox(config_frame, "Hand Size", self.hand_var, 3, 10)
         self._add_spinbox(config_frame, "Pick Size", self.pick_var, 1, 5)
+        self._add_spinbox(
+            config_frame,
+            "Max Chefs",
+            self.max_chefs_var,
+            1,
+            max(1, len(DATA.chefs)),
+        )
+
+        self.team_tile.set_team([], self.max_chefs_var.get())
 
         self.start_button = ttk.Button(
             self.control_frame, text="Start Run", command=self.start_run
@@ -981,7 +1129,9 @@ class FoodGameApp:
             style="Info.TLabel",
         ).grid(row=3, column=0, columnspan=2, sticky="w")
 
-        self.chefs_var = tk.StringVar(value="Active chefs: —")
+        self.chefs_var = tk.StringVar(
+            value=f"Active chefs ({DEFAULT_MAX_CHEFS} max): —"
+        )
         ttk.Label(score_frame, textvariable=self.chefs_var, style="Info.TLabel").grid(
             row=4, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
@@ -1067,9 +1217,14 @@ class FoodGameApp:
             cooks = int(self.cooks_var.get())
             hand_size = int(self.hand_var.get())
             pick_size = int(self.pick_var.get())
+            max_chefs = int(self.max_chefs_var.get())
 
             if pick_size > hand_size:
                 raise ValueError("Pick size cannot exceed hand size.")
+            if max_chefs <= 0:
+                raise ValueError("Max chefs must be at least 1.")
+            if len(chefs) > max_chefs:
+                raise ValueError("Selected chefs exceed the configured maximum.")
 
             self.session = GameSession(
                 DATA,
@@ -1079,6 +1234,7 @@ class FoodGameApp:
                 cooks_per_round=cooks,
                 hand_size=hand_size,
                 pick_size=pick_size,
+                max_chefs=max_chefs,
             )
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Cannot start run", str(exc))
@@ -1086,6 +1242,8 @@ class FoodGameApp:
 
         if self.cookbook_tile:
             self.cookbook_tile.set_entries(self.session.get_cookbook())
+        if self.team_tile:
+            self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
 
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
@@ -1108,7 +1266,9 @@ class FoodGameApp:
         self.update_selection_label()
         self.score_var.set("0")
         self.progress_var.set("Round 0 / 0 — Turn 0 / 0")
-        self.chefs_var.set("Active chefs: —")
+        self.chefs_var.set(
+            f"Active chefs ({self.max_chefs_var.get()} max): —"
+        )
         self.cook_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
@@ -1117,6 +1277,8 @@ class FoodGameApp:
         self.write_result("Session reset. Configure options and start a new run.")
         if self.cookbook_tile:
             self.cookbook_tile.clear()
+        if self.team_tile:
+            self.team_tile.set_team([], int(self.max_chefs_var.get()))
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
@@ -1151,12 +1313,14 @@ class FoodGameApp:
 
         hand = self.session.get_hand()
         for index, ingredient in enumerate(hand):
-            markers, cookbook_hint = self.session.get_selection_markers(ingredient)
+            chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
+            recipe_hints = self.session.get_recipe_hints(ingredient)
             view = CardView(
                 self.hand_frame,
                 index=index,
                 ingredient=ingredient,
-                marker_text=markers,
+                chef_names=chef_names,
+                recipe_hints=recipe_hints,
                 cookbook_hint=cookbook_hint,
                 on_click=self.toggle_card,
             )
@@ -1236,7 +1400,9 @@ class FoodGameApp:
         self.progress_var.set(f"{round_text} — {turn_text}")
         self.score_var.set(str(self.session.get_total_score()))
         chef_names = ", ".join(chef.name for chef in self.session.chefs) or "None"
-        self.chefs_var.set(f"Active chefs: {chef_names}")
+        self.chefs_var.set(
+            f"Active chefs ({self.session.max_chefs} max): {chef_names}"
+        )
 
     def append_events(self, messages: Iterable[str]) -> None:
         if not messages:
@@ -1284,7 +1450,7 @@ class FoodGameApp:
         for name, entry in sorted(entries.items()):
             times = "time" if entry.count == 1 else "times"
             lines.append(
-                f"  {name} — cooked {entry.count} {times}: {', '.join(entry.ingredients)}"
+                f"  {name} — {format_multiplier(entry.multiplier)}; cooked {entry.count} {times}: {', '.join(entry.ingredients)}"
             )
         return "Cookbook:\n" + "\n".join(lines)
 
@@ -1348,12 +1514,6 @@ class FoodGameApp:
             summary_text = self._final_summary_text()
             if summary_text:
                 self.write_result(summary_text)
-
-    @staticmethod
-    def _format_multiplier(multiplier: float) -> str:
-        if math.isclose(multiplier, round(multiplier)):
-            return f"x{int(round(multiplier))}"
-        return f"x{multiplier:.2f}"
 
     def show_turn_summary_popup(self, outcome: TurnOutcome) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
@@ -1453,7 +1613,7 @@ class FoodGameApp:
         points_lines = [f"Chips: {outcome.chips}"]
         if outcome.recipe_name:
             points_lines.append(
-                f"Recipe multiplier: {self._format_multiplier(outcome.recipe_multiplier)}"
+                f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
             )
             if outcome.discovered_recipe:
                 points_lines.append("New recipe added to your cookbook!")
@@ -1656,6 +1816,8 @@ class FoodGameApp:
             self.append_events(self.session.consume_events())
             if self.cookbook_tile:
                 self.cookbook_tile.set_entries(self.session.get_cookbook())
+            if self.team_tile:
+                self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
 
         recruit_button = ttk.Button(button_frame, text="Recruit", command=on_recruit)
         recruit_button.grid(row=0, column=0, padx=(0, 8))

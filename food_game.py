@@ -39,6 +39,14 @@ DEFAULT_ROUNDS = DEFAULT_CONFIG.rounds
 DEFAULT_COOKS_PER_ROUND = DEFAULT_CONFIG.cooks
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
 DEFAULT_BIAS = DEFAULT_CONFIG.bias
+DEFAULT_MAX_CHEFS = DEFAULT_CONFIG.active_chefs
+
+
+def format_multiplier(multiplier: float) -> str:
+    rounded = round(multiplier)
+    if abs(multiplier - rounded) < 1e-9:
+        return f"x{int(rounded)}"
+    return f"x{multiplier:.2f}"
 
 
 def _prompt_selection(prompt: str, options: Sequence[str], rng: random.Random) -> str:
@@ -177,6 +185,19 @@ def prompt_pick_size(hand_size: int) -> int:
         return pick_size
 
 
+def prompt_max_chefs() -> int:
+    while True:
+        raw = input(
+            f"What is the maximum number of chefs you can recruit? "
+            f"(default {DEFAULT_MAX_CHEFS}, blank to accept): "
+        ).strip()
+        if not raw:
+            return max(1, DEFAULT_MAX_CHEFS)
+        if raw.isdigit() and int(raw) > 0:
+            return int(raw)
+        print("Please enter a positive integer.")
+
+
 def prompt_seed() -> Tuple[int, random.Random]:
     """Prompt the user for a reproducible RNG seed."""
 
@@ -191,34 +212,31 @@ def prompt_seed() -> Tuple[int, random.Random]:
             continue
         return resolve_seed(typed_seed)
 
-
-def _chef_marker(chef: Chef) -> str:
-    """Return a single-letter marker representing the chef."""
-
-    parts = [part for part in chef.name.split() if part]
-    for part in parts:
-        if part.lower() != "chef":
-            return part[0].upper()
-    return parts[0][0].upper() if parts else "?"
-
-
 def describe_ingredient(
     ingredient: Ingredient,
     chefs: Sequence[Chef],
     chef_key_map: Mapping[str, Collection[str]],
     cookbook_ingredients: Collection[str],
-) -> str:
-    markers = [
-        _chef_marker(chef)
+) -> List[str]:
+    chef_names = [
+        chef.name
         for chef in chefs
         if ingredient.name in chef_key_map.get(chef.name, ())
     ]
-    marker_text = f"(*{''.join(markers)})" if markers else ""
-    suffix = f" {marker_text}" if marker_text else ""
     book = " 📖" if ingredient.name in cookbook_ingredients else ""
-    return (
-        f"{ingredient.name}{book} (Taste: {ingredient.taste}, Chips: {ingredient.chips}){suffix}"
-    )
+    lines = [
+        f"{ingredient.name}{book} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
+    ]
+    if chef_names:
+        first, *rest = chef_names
+        lines.append(f"Chef Key: {first}")
+        lines.extend(f"           {name}" for name in rest)
+    recipes = list(DATA.recipes_using_ingredient(ingredient.name))
+    if recipes:
+        lines.append("Recipes: " + ", ".join(recipes))
+    else:
+        lines.append("Recipes: (none)")
+    return lines
 
 
 def display_hand(
@@ -232,16 +250,20 @@ def display_hand(
         for ingredient in combo
     }
     for idx, ingredient in enumerate(hand, start=1):
-        print(
-            f"  {idx}. {describe_ingredient(ingredient, chefs, chef_key_map, cookbook_ingredients)}"
+        description = describe_ingredient(
+            ingredient, chefs, chef_key_map, cookbook_ingredients
         )
+        if not description:
+            continue
+        first, *rest = description
+        print(f"  {idx}. {first}")
+        for line in rest:
+            print(f"       {line}")
     chef_names = ", ".join(chef.name for chef in chefs)
-    print(
-        "  (*X) at the end of an ingredient indicates it appears in an active chef's signature recipes."
-    )
     if chefs:
-        legend = ", ".join(f"(*{_chef_marker(chef)}) {chef.name}" for chef in chefs)
-        print(f"    Legend: {legend}")
+        print(
+            "    Chef Key lines list which active chefs feature the ingredient in a signature recipe."
+        )
     print(f"    Active chefs: {chef_names or 'None'}")
 
 
@@ -249,6 +271,7 @@ def print_cookbook(
     cookbook: Mapping[str, Sequence[str]],
     counts: Mapping[str, int] | None = None,
     title: str = "Cookbook",
+    chefs: Sequence[Chef] | None = None,
 ) -> None:
     print(f"\n=== {title} ===")
     if not cookbook:
@@ -262,7 +285,14 @@ def print_cookbook(
             if cooked:
                 times = "time" if cooked == 1 else "times"
                 count_text = f" (cooked {cooked} {times})"
-        print(f"  {recipe_name}: {ingredients}{count_text}")
+        multiplier = DATA.recipe_multiplier(
+            recipe_name,
+            chefs=chefs,
+            times_cooked=counts.get(recipe_name, 0) if counts else 0,
+        )
+        print(
+            f"  {recipe_name}: {ingredients} — multiplier {format_multiplier(multiplier)}{count_text}"
+        )
 
 
 def prompt_trio(hand: Sequence[Ingredient], pick_size: int) -> List[Ingredient] | None:
@@ -348,6 +378,7 @@ def play_single_run(
     cooks_per_round: int,
     hand_size: int,
     pick_size: int,
+    max_chefs: int,
     rng: random.Random,
 ) -> Tuple[int, Dict[str, Tuple[str, ...]], Counter[str]]:
     if rounds <= 0:
@@ -361,11 +392,17 @@ def play_single_run(
     if pick_size > hand_size:
         raise ValueError("pick_size cannot exceed hand_size")
 
+    if max_chefs <= 0:
+        raise ValueError("max_chefs must be a positive integer")
+    if len(chefs) > max_chefs:
+        raise ValueError("Initial chef roster exceeds the configured maximum.")
+
     total_score = 0
     cookbook: Dict[str, Tuple[str, ...]] = {}
     recipe_counts: Counter[str] = Counter()
     active_names = ", ".join(chef.name for chef in chefs) or "None"
     print("\nActive chefs this run: " + active_names)
+    print(f"Maximum chefs allowed: {max_chefs}")
 
     total_turns = rounds * cooks_per_round
     turn_number = 0
@@ -416,7 +453,11 @@ def play_single_run(
             for ingredient in selected:
                 hand.remove(ingredient)
 
-        if round_index < rounds and len(chefs) < len(DATA.chefs):
+        if (
+            round_index < rounds
+            and len(chefs) < max_chefs
+            and len(chefs) < len(DATA.chefs)
+        ):
             add_choice = input(
                 "Recruit a new chef before the next round? (y/N): "
             ).strip().lower()
@@ -426,7 +467,8 @@ def play_single_run(
                     chefs.append(new_chef)
                     print(
                         f"Chef {new_chef.name} joins your lineup! "
-                        "Future draws will favor their signature ingredients."
+                        "Future draws will favor their signature ingredients. "
+                        f"Roster {len(chefs)}/{max_chefs}."
                     )
 
     return total_score, cookbook, recipe_counts
@@ -467,16 +509,23 @@ def main() -> None:
         cooks_per_round = prompt_cooks_per_round()
         hand_size = prompt_hand_size()
         pick_size = prompt_pick_size(hand_size)
+        max_chefs = prompt_max_chefs()
         runs = prompt_run_count()
         total_turns = rounds * cooks_per_round
         overall_cookbook: Dict[str, Tuple[str, ...]] = {}
+
+        if len(roster) > max_chefs:
+            print(
+                f"Reducing initial roster to the first {max_chefs} chefs to respect the limit."
+            )
+            del roster[max_chefs:]
 
         for run_index in range(1, runs + 1):
             chef_names = ", ".join(c.name for c in roster) or "None"
             print(
                 f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} "
                 f"({rounds} rounds × {cooks_per_round} cooks, hand {hand_size}, pick {pick_size}) "
-                f"[{total_turns} total turns] <<<"
+                f"[{total_turns} total turns, max chefs {max_chefs}] <<<"
             )
             score, run_cookbook, run_counts = play_single_run(
                 theme,
@@ -485,13 +534,17 @@ def main() -> None:
                 cooks_per_round,
                 hand_size,
                 pick_size,
+                max_chefs,
                 rng,
             )
             print(f"Final score for run {run_index}: {score}\n")
 
             if run_cookbook:
                 print_cookbook(
-                    run_cookbook, run_counts, title=f"Run {run_index} Cookbook"
+                    run_cookbook,
+                    run_counts,
+                    title=f"Run {run_index} Cookbook",
+                    chefs=roster,
                 )
             else:
                 print("No recipes discovered this run.")
@@ -499,7 +552,7 @@ def main() -> None:
             for name, combo in run_cookbook.items():
                 overall_cookbook.setdefault(name, combo)
 
-            if len(roster) < len(DATA.chefs):
+            if len(roster) < max_chefs and len(roster) < len(DATA.chefs):
                 add_choice = input(
                     "Add a new chef to your lineup for the next run? (y/N): "
                 ).strip().lower()
@@ -508,7 +561,8 @@ def main() -> None:
                     if new_chef and new_chef not in roster:
                         roster.append(new_chef)
                         print(
-                            f"Chef {new_chef.name} has joined your team for future runs."
+                            f"Chef {new_chef.name} has joined your team for future runs. "
+                            f"Roster {len(roster)}/{max_chefs}."
                         )
 
         if overall_cookbook:

@@ -99,13 +99,15 @@ class GameData:
         return combined
 
     def trio_score(self, ingredients: Sequence[Ingredient]) -> Tuple[int, int, int, int]:
-        a, b, c = ingredients
-        chips = a.chips + b.chips + c.chips
-        taste_sum = (
-            self.taste_matrix[a.taste][b.taste]
-            + self.taste_matrix[a.taste][c.taste]
-            + self.taste_matrix[b.taste][c.taste]
-        )
+        if not ingredients:
+            return 0, 0, 0, 1
+
+        chips = sum(ingredient.chips for ingredient in ingredients)
+        taste_sum = 0
+        for idx, first in enumerate(ingredients):
+            for second in ingredients[idx + 1 :]:
+                taste_sum += self.taste_matrix[first.taste][second.taste]
+
         multiplier = max(1, taste_sum)
         return chips * multiplier, chips, taste_sum, multiplier
 
@@ -155,6 +157,7 @@ def _load_themes(path: str):
 
 
 DEFAULT_HAND_SIZE = 5
+DEFAULT_PICK_SIZE = 3
 TRIO_SIZE = 3
 
 
@@ -200,9 +203,12 @@ def _select_trio_from_hand(
     key_ingredients: Iterable[str],
     guarantee_prob: float,
     rng: random.Random,
+    pick_size: int,
 ) -> List[Ingredient]:
     key_set = set(key_ingredients)
-    if len(hand) < TRIO_SIZE:
+    if pick_size <= 0:
+        return []
+    if len(hand) < pick_size:
         return []
 
     trio: List[Ingredient] = []
@@ -213,7 +219,7 @@ def _select_trio_from_hand(
             trio.append(pick)
             hand.remove(pick)
 
-    while len(trio) < TRIO_SIZE and hand:
+    while len(trio) < pick_size and hand:
         pick = rng.choice(hand)
         trio.append(pick)
         hand.remove(pick)
@@ -227,12 +233,13 @@ def draw_cook(
     chefs: Sequence[Chef],
     guarantee_prob: float = 0.6,
     hand_size: int = DEFAULT_HAND_SIZE,
+    pick_size: int = DEFAULT_PICK_SIZE,
     key_ingredients: Optional[Iterable[str]] = None,
     rng: Optional[random.Random] = None,
 ) -> Tuple[List[Ingredient], List[Ingredient], List[Ingredient]]:
     rng = rng or random
     hand, deck = _refill_hand(hand, deck, hand_size)
-    if len(hand) < TRIO_SIZE:
+    if len(hand) < pick_size or pick_size <= 0:
         return [], hand, deck
 
     if not chefs:
@@ -242,7 +249,7 @@ def draw_cook(
         if key_ingredients is not None
         else data.chefs_key_ingredients(chefs)
     )
-    trio = _select_trio_from_hand(hand, keyset, guarantee_prob, rng)
+    trio = _select_trio_from_hand(hand, keyset, guarantee_prob, rng, pick_size)
     hand, deck = _refill_hand(hand, deck, hand_size)
     return trio, hand, deck
 
@@ -288,6 +295,8 @@ class SimulationConfig:
     guarantee_prob: float = 0.6
     reshuffle_every: int = 8
     hand_size: int = DEFAULT_HAND_SIZE
+    active_chefs: int = 3
+    pick_size: int = DEFAULT_PICK_SIZE
 
 
 def simulate_run(
@@ -299,9 +308,26 @@ def simulate_run(
 ) -> Dict[str, object]:
     rng = rng or random
     cfg = config or SimulationConfig()
-    active_chefs = list(start_chefs) if start_chefs else [rng.choice(data.chefs)]
-    if not active_chefs:
-        active_chefs.append(rng.choice(data.chefs))
+    if cfg.hand_size <= 0:
+        raise ValueError("SimulationConfig.hand_size must be a positive integer")
+    if cfg.pick_size <= 0:
+        raise ValueError("SimulationConfig.pick_size must be a positive integer")
+    if cfg.pick_size > cfg.hand_size:
+        raise ValueError("SimulationConfig.pick_size cannot exceed hand_size")
+    if cfg.active_chefs <= 0:
+        raise ValueError("SimulationConfig.active_chefs must be a positive integer")
+
+    if start_chefs is not None:
+        active_chefs = list(start_chefs)
+        if not active_chefs:
+            raise ValueError("start_chefs must contain at least one chef")
+    else:
+        available_chefs = list(data.chefs)
+        if not available_chefs:
+            raise ValueError("No chefs available to start the simulation")
+        rng.shuffle(available_chefs)
+        desired_chefs = min(cfg.active_chefs, len(available_chefs))
+        active_chefs = available_chefs[:desired_chefs]
     learning = LearningState()
     mastered: set[str] = set()
     total_score = 0
@@ -324,20 +350,22 @@ def simulate_run(
     cumulative_scores: List[int] = []
     cumulative_total = 0
 
+    pick_size = cfg.pick_size
+
     for _ in range(cfg.rounds):
         round_total = 0
         for _ in range(cfg.cooks):
-            if len(hand) < TRIO_SIZE:
-                if len(deck) < TRIO_SIZE:
+            if len(hand) < pick_size:
+                if len(deck) < pick_size:
                     deck = build_market_deck(
                         data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
                     )
                     draws = 0
                 hand, deck = _refill_hand(hand, deck, cfg.hand_size)
-                if len(hand) < TRIO_SIZE:
+                if len(hand) < pick_size:
                     break
 
-            if len(deck) < TRIO_SIZE or draws >= cfg.reshuffle_every:
+            if len(deck) < pick_size or draws >= cfg.reshuffle_every:
                 deck = build_market_deck(
                     data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
                 )
@@ -351,10 +379,11 @@ def simulate_run(
                 active_chefs,
                 cfg.guarantee_prob,
                 cfg.hand_size,
+                pick_size,
                 current_keys,
                 rng,
             )
-            if len(trio) < TRIO_SIZE:
+            if len(trio) < pick_size:
                 break
 
             chefkey_per_draw.append(sum(1 for ingredient in trio if ingredient.name in current_keys))
@@ -510,6 +539,9 @@ def simulate_many(
         "seed": seed,
         "rounds": cfg.rounds,
         "cooks_per_round": cfg.cooks,
+        "active_chefs": cfg.active_chefs,
+        "hand_size": cfg.hand_size,
+        "pick_size": cfg.pick_size,
         "average_score": round(mean_val, 2),
         "std_score": round(std_val, 2),
         "p50": round(p50, 2),

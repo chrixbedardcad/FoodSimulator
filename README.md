@@ -7,6 +7,7 @@ A toolkit for experimenting with the Food Card Deck video game concept. The repo
 
 * `food_simulator.py` — a Monte Carlo batch simulator that stress tests balance across hundreds of automated runs and exports CSV/TXT reports.
 * `food_game.py` — an interactive terminal mini-game that lets designers play short sessions using the exact same rules, decks, and scoring logic.
+* `food_desktop.py` — a Tkinter-powered desktop client with clickable ingredient cards, live score tracking, and instant trio breakdowns.
 
 Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and themes) so that data tweaks are immediately reflected everywhere.
 
@@ -28,6 +29,7 @@ FoodSimulator/
 ├── food_api.py             ← Shared rules/data loader powering both entry points
 ├── food_simulator.py       ← Monte Carlo simulator with CLI & report writer
 ├── food_game.py            ← Interactive terminal harness for manual playtests
+├── food_desktop.py         ← Desktop GUI built with Tkinter for visual playtests
 ├── ingredients.json        ← Ingredient cards (taste tags + chip values)
 ├── recipes.json            ← Recipe trios that can be discovered and mastered
 ├── chefs.json              ← Chef definitions, signature recipes, and perks
@@ -126,6 +128,25 @@ During each session you can:
 4. Review five-card hands, pick any trio, and instantly inspect chip totals, taste multipliers, chef key cards, and recipe completions.
 
 Chef perks defined in `chefs.json` apply automatically—e.g., recipe-specific score multipliers—so designers can evaluate perk tuning without code changes.
+
+---
+
+## 🖥️ Desktop GUI Prototype
+
+Prefer clickable cards over command-line prompts? Launch the Tkinter interface to play the same rule set with a richer presentation:
+
+```bash
+python food_desktop.py
+```
+
+Key highlights:
+
+- Pick a market theme and one or more chefs from dropdowns and multi-select lists.
+- See five-card hands rendered as colour-coded tiles that highlight chef key ingredients.
+- Click cards to build your trio (the UI enforces the pick limit) and review chip totals, taste synergy, recipe bonuses, and cumulative score in a side panel.
+- Track round/turn progress, deck refresh events, and active chefs without leaving the window.
+
+Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak immediately flows to the desktop client, terminal harness, and simulator alike.
 
 ---
 

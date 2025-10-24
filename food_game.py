@@ -246,7 +246,7 @@ def describe_ingredient(
     ]
     book = " 📖" if ingredient.name in cookbook_ingredients else ""
     taste_family = describe_taste_and_family(ingredient)
-    lines = [f"{ingredient.name}{book} ({taste_family}, Chips: {ingredient.chips})"]
+    lines = [f"{ingredient.name}{book} ({taste_family}, Value: {ingredient.Value})"]
     if chef_names:
         first, *rest = chef_names
         lines.append(f"Chef Key: {first}")
@@ -347,7 +347,7 @@ def score_trio(
     cookbook: MutableMapping[str, Tuple[str, ...]],
     recipe_counts: MutableMapping[str, int],
 ) -> int:
-    chips = sum(ingredient.chips for ingredient in selected)
+    Value = sum(ingredient.Value for ingredient in selected)
     recipe_name = DATA.which_recipe(list(selected))
     times_cooked_before = recipe_counts.get(recipe_name, 0) if recipe_name else 0
     recipe_multiplier = DATA.recipe_multiplier(
@@ -355,7 +355,7 @@ def score_trio(
         chefs=chefs,
         times_cooked=times_cooked_before,
     )
-    final_score = int(round(chips * recipe_multiplier))
+    final_score = int(round(Value * recipe_multiplier))
     key_set = DATA.chefs_key_ingredients(chefs)
     chef_hits = sum(1 for ing in selected if ing.name in key_set)
 
@@ -376,8 +376,8 @@ def score_trio(
     print("\n--- Trio Result ---")
     for ing in selected:
         taste_family = describe_taste_and_family(ing)
-        print(f"  {ing.name} ({taste_family}, Chips: {ing.chips})")
-    print(f"Total chips: {chips}")
+        print(f"  {ing.name} ({taste_family}, Value: {ing.Value})")
+    print(f"Total Value: {Value}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
@@ -399,7 +399,7 @@ def score_trio(
             print(f"Cooked {recipe_name} {total_cooked} {times} so far.")
     else:
         print("No recipe completed this turn.")
-    print(f"Score gained: {final_score} (base chips: {chips})")
+    print(f"Score gained: {final_score} (base Value: {Value})")
     active_names = ", ".join(chef.name for chef in chefs) if chefs else "None"
     print(
         f"Chef key ingredients used: {chef_hits}/{pick_size} (Active: {active_names})\n"

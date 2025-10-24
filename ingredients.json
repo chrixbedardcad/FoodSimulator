@@ -2,145 +2,145 @@
   {
     "name": "Truffle",
     "taste": "Umami",
-    "chips": 30,
+    "Value": 30,
     "family": "Vegetable"
   },
   {
     "name": "Parmesan",
     "taste": "Umami",
-    "chips": 18,
+    "Value": 18,
     "family": "Dairy"
   },
   {
     "name": "Egg",
     "taste": "Salty",
-    "chips": 12,
+    "Value": 12,
     "family": "Protein"
   },
   {
     "name": "Tomato",
     "taste": "Sour",
-    "chips": 22,
+    "Value": 22,
     "family": "Fruit"
   },
   {
     "name": "Basil",
     "taste": "Bitter",
-    "chips": 6,
+    "Value": 6,
     "family": "Vegetable"
   },
   {
     "name": "OliveOil",
     "taste": "Umami",
-    "chips": 10,
+    "Value": 10,
     "family": "Vegetable"
   },
   {
     "name": "Mushroom",
     "taste": "Umami",
-    "chips": 10,
+    "Value": 10,
     "family": "Vegetable"
   },
   {
     "name": "Garlic",
     "taste": "Bitter",
-    "chips": 6,
+    "Value": 6,
     "family": "Vegetable"
   },
   {
     "name": "Lemon",
     "taste": "Sour",
-    "chips": 8,
+    "Value": 8,
     "family": "Fruit"
   },
   {
     "name": "Honey",
     "taste": "Sweet",
-    "chips": 12,
+    "Value": 12,
     "family": "Fruit"
   },
   {
     "name": "Chocolate",
     "taste": "Sweet",
-    "chips": 12,
+    "Value": 12,
     "family": "Fruit"
   },
   {
     "name": "Salt",
     "taste": "Salty",
-    "chips": 3,
+    "Value": 3,
     "family": "Grain"
   },
   {
     "name": "Beef",
     "taste": "Umami",
-    "chips": 18,
+    "Value": 18,
     "family": "Protein"
   },
   {
     "name": "Bacon",
     "taste": "Salty",
-    "chips": 14,
+    "Value": 14,
     "family": "Protein"
   },
   {
     "name": "Pasta",
     "taste": "Umami",
-    "chips": 12,
+    "Value": 12,
     "family": "Grain"
   },
   {
     "name": "Rice",
     "taste": "Umami",
-    "chips": 10,
+    "Value": 10,
     "family": "Grain"
   },
   {
     "name": "Fish",
     "taste": "Umami",
-    "chips": 14,
+    "Value": 14,
     "family": "Protein"
   },
   {
     "name": "Seaweed",
     "taste": "Umami",
-    "chips": 8,
+    "Value": 8,
     "family": "Vegetable"
   },
   {
     "name": "Cream",
     "taste": "Sweet",
-    "chips": 10,
+    "Value": 10,
     "family": "Dairy"
   },
   {
     "name": "Sugar",
     "taste": "Sweet",
-    "chips": 8,
+    "Value": 8,
     "family": "Fruit"
   },
   {
     "name": "Onion",
     "taste": "Sweet",
-    "chips": 8,
+    "Value": 8,
     "family": "Vegetable"
   },
   {
     "name": "Bread",
     "taste": "Umami",
-    "chips": 10,
+    "Value": 10,
     "family": "Grain"
   },
   {
     "name": "Butter",
     "taste": "Sweet",
-    "chips": 10,
+    "Value": 10,
     "family": "Dairy"
   },
   {
     "name": "Yogurt",
     "taste": "Sour",
-    "chips": 10,
+    "Value": 10,
     "family": "Dairy"
   }
 ]

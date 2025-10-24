@@ -1,0 +1,100 @@
+{
+  "dish_matrix": [
+    {
+      "id": 1,
+      "name": "Good",
+      "min_ingredients": 3,
+      "max_ingredients": 3,
+      "family_pattern": "all_different",
+      "flavor_pattern": "all_different",
+      "multiplier": 1.0,
+      "tier": "Common",
+      "chance": 0.999,
+      "description": "A simple but well-balanced tasting flight of different families and flavors."
+    },
+    {
+      "id": 2,
+      "name": "Signature",
+      "min_ingredients": 3,
+      "max_ingredients": 3,
+      "family_pattern": "all_same",
+      "flavor_pattern": "all_different",
+      "multiplier": 2.0,
+      "tier": "Uncommon",
+      "chance": 0.659,
+      "description": "A unique dish expressing one family in multiple taste variations."
+    },
+    {
+      "id": 3,
+      "name": "Creation",
+      "min_ingredients": 4,
+      "max_ingredients": 4,
+      "family_pattern": "all_same",
+      "flavor_pattern": "mixed",
+      "multiplier": 2.8,
+      "tier": "Rare",
+      "chance": 0.361,
+      "description": "A crafted composition from a single family with subtle flavor diversity."
+    },
+    {
+      "id": 4,
+      "name": "Fusion",
+      "min_ingredients": 4,
+      "max_ingredients": 4,
+      "family_pattern": "balanced",
+      "flavor_pattern": "all_different",
+      "multiplier": 3.5,
+      "tier": "Rare+",
+      "chance": 0.186,
+      "description": "A fusion of two core families and distinct flavors blending cultures and ideas."
+    },
+    {
+      "id": 5,
+      "name": "Symphony",
+      "min_ingredients": 4,
+      "max_ingredients": 4,
+      "family_pattern": "all_same",
+      "flavor_pattern": "all_different",
+      "multiplier": 4.0,
+      "tier": "Epic",
+      "chance": 0.102,
+      "description": "A perfect flavor ensemble from one family, balanced across all taste tones."
+    },
+    {
+      "id": 6,
+      "name": "Feast",
+      "min_ingredients": 5,
+      "max_ingredients": 5,
+      "family_pattern": "all_different",
+      "flavor_pattern": "all_different",
+      "multiplier": 4.5,
+      "tier": "Epic+",
+      "chance": 0.079,
+      "description": "A grand abundance of diverse ingredients and flavors from all families."
+    },
+    {
+      "id": 7,
+      "name": "Grand",
+      "min_ingredients": 5,
+      "max_ingredients": 5,
+      "family_pattern": "all_same",
+      "flavor_pattern": "mixed",
+      "multiplier": 4.5,
+      "tier": "Epic++",
+      "chance": 0.082,
+      "description": "A refined centerpiece dish, unified in family but layered in taste."
+    },
+    {
+      "id": 8,
+      "name": "Masterpiece",
+      "min_ingredients": 5,
+      "max_ingredients": 5,
+      "family_pattern": "all_same",
+      "flavor_pattern": "all_different",
+      "multiplier": 9.0,
+      "tier": "Legendary",
+      "chance": 0.0034,
+      "description": "The ultimate creation — one family, every flavor, pure culinary art."
+    }
+  ]
+}

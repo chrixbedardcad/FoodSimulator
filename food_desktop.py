@@ -27,10 +27,14 @@ from food_api import (
     DEFAULT_RECIPES_JSON,
     DEFAULT_TASTE_JSON,
     DEFAULT_THEMES_JSON,
+    DEFAULT_DISH_MATRIX_JSON,
     Chef,
+    DishMatrixEntry,
     GameData,
     Ingredient,
     SimulationConfig,
+    describe_family_pattern,
+    describe_flavor_pattern,
     build_market_deck,
 )
 from family_icons import get_family_icon
@@ -53,6 +57,7 @@ def _load_game_data() -> GameData:
         chefs_path=str(ASSET_DIR / DEFAULT_CHEFS_JSON),
         taste_path=str(ASSET_DIR / DEFAULT_TASTE_JSON),
         themes_path=str(ASSET_DIR / DEFAULT_THEMES_JSON),
+        dish_matrix_path=str(ASSET_DIR / DEFAULT_DISH_MATRIX_JSON),
     )
 
 
@@ -70,6 +75,15 @@ def format_multiplier(multiplier: float) -> str:
 class TurnOutcome:
     selected: Sequence[Ingredient]
     Value: int
+    dish_value: float
+    dish_multiplier: float
+    dish_name: Optional[str]
+    dish_tier: Optional[str]
+    family_label: str
+    flavor_label: str
+    family_pattern: str
+    flavor_pattern: str
+    terrible_taste: bool
     recipe_name: Optional[str]
     recipe_multiplier: float
     final_score: int
@@ -103,6 +117,97 @@ class CookbookEntry:
             self.multiplier,
             self.personal_discovery,
         )
+
+
+class DishMatrixTile(ttk.Frame):
+    def __init__(
+        self, master: tk.Widget, entries: Sequence[DishMatrixEntry]
+    ) -> None:
+        super().__init__(master, style="Tile.TFrame", padding=(14, 12))
+        self.entries = list(entries)
+        self.expanded = False
+
+        self.columnconfigure(0, weight=1)
+
+        self.header_var = tk.StringVar(value="🍽️ Dish Matrix")
+        self.header_button = ttk.Button(
+            self,
+            textvariable=self.header_var,
+            style="TileHeader.TButton",
+            command=self.toggle,
+        )
+        self.header_button.grid(row=0, column=0, sticky="ew")
+
+        self.subtitle_var = tk.StringVar(
+            value="Reference combos for family harmony and taste."
+        )
+        self.subtitle_label = ttk.Label(
+            self,
+            textvariable=self.subtitle_var,
+            style="TileSub.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(4, 8))
+
+        self.body_frame = ttk.Frame(self, style="TileBody.TFrame")
+        self.body_frame.grid(row=2, column=0, sticky="ew")
+        self.body_frame.grid_remove()
+
+        self.entries_frame = ttk.Frame(self.body_frame, style="TileBody.TFrame")
+        self.entries_frame.grid(row=0, column=0, sticky="ew")
+
+        self._entry_labels: List[ttk.Label] = []
+        self.set_entries(self.entries)
+
+    def toggle(self) -> None:
+        self.expanded = not self.expanded
+        if self.expanded:
+            self.body_frame.grid()
+            self.header_var.set("🍽️ Dish Matrix ▼")
+        else:
+            self.body_frame.grid_remove()
+            self.header_var.set("🍽️ Dish Matrix")
+
+    def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
+        for label in self._entry_labels:
+            label.destroy()
+        self._entry_labels.clear()
+        self.entries = list(entries)
+
+        if not self.entries:
+            empty = ttk.Label(
+                self.entries_frame,
+                text="No dish matrix entries available.",
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            empty.grid(row=0, column=0, sticky="w")
+            self._entry_labels.append(empty)
+            return
+
+        for row, entry in enumerate(self.entries):
+            family_label = describe_family_pattern(entry.family_pattern)
+            flavor_label = describe_flavor_pattern(entry.flavor_pattern)
+            if entry.min_ingredients == entry.max_ingredients:
+                count_text = f"{entry.min_ingredients} ingredients"
+            else:
+                count_text = f"{entry.min_ingredients}-{entry.max_ingredients} ingredients"
+            line = (
+                f"{entry.name} ({count_text}) — "
+                f"{family_label} families, {flavor_label} tastes, "
+                f"{format_multiplier(entry.multiplier)} [{entry.tier}]"
+            )
+            label = ttk.Label(
+                self.entries_frame,
+                text=line,
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            label.grid(row=row, column=0, sticky="w", pady=(0, 4))
+            self._entry_labels.append(label)
 
 
 class GameSession:
@@ -355,7 +460,8 @@ class GameSession:
             raise IndexError("Selection index out of range for the current hand.")
 
         selected = [self.hand[index] for index in unique]
-        Value = sum(card.Value for card in selected)
+        dish = self.data.evaluate_dish(selected)
+        Value = dish.base_value
         recipe_name = self.data.which_recipe(selected)
         times_cooked_before = self._times_cooked(recipe_name)
         recipe_multiplier = self.data.recipe_multiplier(
@@ -363,7 +469,7 @@ class GameSession:
             chefs=self.chefs,
             times_cooked=times_cooked_before,
         )
-        final_score = int(round(Value * recipe_multiplier))
+        final_score = int(round(dish.dish_value * recipe_multiplier))
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
@@ -431,11 +537,20 @@ class GameSession:
         return TurnOutcome(
             selected=selected,
             Value=Value,
+            dish_value=dish.dish_value,
+            dish_multiplier=dish.dish_multiplier,
+            dish_name=dish.name,
+            dish_tier=dish.tier,
+            family_label=dish.family_label,
+            flavor_label=dish.flavor_label,
+            family_pattern=dish.family_pattern,
+            flavor_pattern=dish.flavor_pattern,
+            terrible_taste=dish.is_terrible(),
             recipe_name=recipe_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
             times_cooked_total=times_cooked_total,
-            base_score=Value,
+            base_score=int(round(dish.dish_value)),
             chef_hits=chef_hits,
             round_index=current_round,
             total_rounds=self.rounds,
@@ -775,6 +890,7 @@ class FoodGameApp:
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
         self.cookbook_tile: Optional[CookbookTile] = None
+        self.dish_tile: Optional[DishMatrixTile] = None
         self.team_tile: Optional[ChefTeamTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
@@ -923,6 +1039,9 @@ class FoodGameApp:
 
         self.cookbook_tile = CookbookTile(self.control_frame)
         self.cookbook_tile.pack(fill="x", pady=(0, 12))
+
+        self.dish_tile = DishMatrixTile(self.control_frame, DATA.dish_matrix)
+        self.dish_tile.pack(fill="x", pady=(0, 12))
 
         self.team_tile = ChefTeamTile(self.control_frame)
         self.team_tile.pack(fill="x", pady=(0, 12))
@@ -1295,7 +1414,18 @@ class FoodGameApp:
         self.recruit_dialog = None
 
     def log_turn_points(self, outcome: TurnOutcome) -> None:
-        recipe_note = ""
+        notes: List[str] = []
+        if outcome.dish_name:
+            tier_text = f" {outcome.dish_tier}" if outcome.dish_tier else ""
+            notes.append(
+                f"dish {outcome.dish_name}{tier_text}"
+                f" {format_multiplier(outcome.dish_multiplier)}"
+            )
+        elif outcome.terrible_taste:
+            notes.append("dish terrible taste (0 pts)")
+        else:
+            notes.append("dish x1.00")
+
         if outcome.recipe_name:
             parts = [
                 f"recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f}"
@@ -1307,8 +1437,10 @@ class FoodGameApp:
                     parts.append("new recipe")
             if outcome.times_cooked_total:
                 parts.append(f"total cooks {outcome.times_cooked_total}")
-            recipe_note = " (" + "; ".join(parts) + ")"
-        entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{recipe_note}"
+            notes.append("; ".join(parts))
+
+        note_text = f" ({'; '.join(notes)})" if notes else ""
+        entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{note_text}"
         self.events_text.configure(state="normal")
         self.events_text.insert("end", f"{entry}\n")
         self.events_text.see("end")
@@ -1490,7 +1622,33 @@ class FoodGameApp:
             anchor="w",
         ).pack(anchor="w", fill="x", pady=(0, 10))
 
-        points_lines = [f"Value: {outcome.Value}"]
+        family_desc = outcome.family_pattern.replace("_", " ")
+        flavor_desc = outcome.flavor_pattern.replace("_", " ")
+        points_lines = [
+            f"Ingredient Value: {outcome.Value}",
+            f"Family profile: {outcome.family_label} ({family_desc})",
+            f"Taste profile: {outcome.flavor_label} ({flavor_desc})",
+        ]
+        if outcome.terrible_taste:
+            points_lines.append(
+                "Dish classification: Terrible taste — dish earns no points."
+            )
+        elif outcome.dish_name:
+            tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""
+            points_lines.append(
+                "Dish classification: "
+                f"{outcome.dish_name}{tier_text} — Dish multiplier "
+                f"{format_multiplier(outcome.dish_multiplier)}"
+            )
+        else:
+            points_lines.append("Dish classification: None — Dish multiplier x1.00")
+
+        if outcome.terrible_taste:
+            points_lines.append("Dish value before recipes: 0")
+        else:
+            points_lines.append(
+                f"Dish value before recipes: {outcome.dish_value:.2f}"
+            )
         if outcome.recipe_name:
             points_lines.append(
                 f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
@@ -1739,6 +1897,30 @@ class FoodGameApp:
             )
         parts.append("")
         parts.append(f"Total Value: {outcome.Value}")
+        parts.append(
+            f"Family profile: {outcome.family_label}"
+            f" ({outcome.family_pattern.replace('_', ' ')})"
+        )
+        parts.append(
+            f"Taste profile: {outcome.flavor_label}"
+            f" ({outcome.flavor_pattern.replace('_', ' ')})"
+        )
+        if outcome.terrible_taste:
+            parts.append("Dish classification: Terrible taste — 0 points awarded.")
+        elif outcome.dish_name:
+            tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""
+            parts.append(
+                f"Dish classification: {outcome.dish_name}{tier_text}"
+                f" — Dish multiplier {format_multiplier(outcome.dish_multiplier)}"
+            )
+        else:
+            parts.append("Dish classification: None — Dish multiplier x1.00")
+        if outcome.terrible_taste:
+            parts.append("Dish value before recipe bonus: 0")
+        else:
+            parts.append(
+                f"Dish value before recipe bonus: {outcome.dish_value:.2f}"
+            )
         if outcome.recipe_name:
             parts.append(
                 f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
@@ -1754,9 +1936,12 @@ class FoodGameApp:
                 )
         else:
             parts.append("No recipe completed this turn.")
-        parts.append(
-            f"Score gained: {outcome.final_score} (base Value: {outcome.base_score})"
+        base_text = (
+            f"base Value: {outcome.base_score}"
+            if not outcome.terrible_taste
+            else "no points"
         )
+        parts.append(f"Score gained: {outcome.final_score} ({base_text})")
         parts.append(
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"
         )

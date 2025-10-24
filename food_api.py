@@ -20,6 +20,7 @@ RULES_VERSION = "1.0.1"
 
 DEFAULT_INGREDIENTS_JSON = "ingredients.json"
 DEFAULT_TASTE_JSON = "taste_matrix.json"
+DEFAULT_DISH_MATRIX_JSON = "dish_matrix.json"
 DEFAULT_RECIPES_JSON = "recipes.json"
 DEFAULT_CHEFS_JSON = "chefs.json"
 DEFAULT_THEMES_JSON = "themes.json"
@@ -53,6 +54,73 @@ class Chef:
     perks: MutableMapping[str, object]
 
 
+@dataclass(frozen=True)
+class DishMatrixEntry:
+    id: int
+    name: str
+    min_ingredients: int
+    max_ingredients: int
+    family_pattern: str
+    flavor_pattern: str
+    multiplier: float
+    tier: str
+    chance: float
+    description: str
+
+    def matches(
+        self, count: int, family_pattern: str, flavor_pattern: str
+    ) -> bool:
+        return (
+            self.min_ingredients <= count <= self.max_ingredients
+            and self.family_pattern == family_pattern
+            and self.flavor_pattern == flavor_pattern
+        )
+
+
+FAMILY_LABELS = {
+    "all_same": "Harmony",
+    "all_different": "Rich",
+    "balanced": "Balanced",
+}
+
+FLAVOR_LABELS = {
+    "all_same": "Terrible",
+    "all_different": "Tasteful",
+    "mixed": "Neutral",
+}
+
+
+def describe_family_pattern(pattern: str) -> str:
+    return FAMILY_LABELS.get(pattern, pattern.replace("_", " ").title())
+
+
+def describe_flavor_pattern(pattern: str) -> str:
+    return FLAVOR_LABELS.get(pattern, pattern.replace("_", " ").title())
+
+
+@dataclass(frozen=True)
+class DishOutcome:
+    base_value: int
+    dish_value: float
+    dish_multiplier: float
+    family_pattern: str
+    flavor_pattern: str
+    family_label: str
+    flavor_label: str
+    entry: Optional[DishMatrixEntry]
+
+    @property
+    def name(self) -> Optional[str]:
+        return self.entry.name if self.entry else None
+
+    @property
+    def tier(self) -> Optional[str]:
+        return self.entry.tier if self.entry else None
+
+    def is_terrible(self) -> bool:
+        return self.flavor_pattern == "all_same"
+
+
 @dataclass
 class GameData:
     ingredients: Dict[str, Ingredient]
@@ -60,6 +128,7 @@ class GameData:
     chefs: List[Chef]
     themes: Dict[str, List[Tuple[str, int]]]
     taste_matrix: MutableMapping[str, MutableMapping[str, int]]
+    dish_matrix: List[DishMatrixEntry]
     recipe_by_name: Dict[str, Recipe] = field(init=False)
     recipe_trio_lookup: Dict[Tuple[str, str, str], str] = field(init=False)
     recipe_multipliers: Dict[str, float] = field(init=False)
@@ -93,6 +162,7 @@ class GameData:
         chefs_path: str = DEFAULT_CHEFS_JSON,
         taste_path: str = DEFAULT_TASTE_JSON,
         themes_path: str = DEFAULT_THEMES_JSON,
+        dish_matrix_path: str = DEFAULT_DISH_MATRIX_JSON,
     ) -> "GameData":
         return cls(
             ingredients=_load_ingredients(ingredients_path),
@@ -100,6 +170,7 @@ class GameData:
             chefs=_load_chefs(chefs_path),
             themes=_load_themes(themes_path),
             taste_matrix=_load_taste_matrix(taste_path),
+            dish_matrix=_load_dish_matrix(dish_matrix_path),
         )
 
     # --- Helpers that operate on the loaded data ---
@@ -118,14 +189,15 @@ class GameData:
         return combined
 
     def trio_score(self, ingredients: Sequence[Ingredient]) -> Tuple[int, int, int, int]:
-        if not ingredients:
-            return 0, 0, 0, 1
-
-        Value = sum(ingredient.Value for ingredient in ingredients)
-        # Taste synergy no longer affects scoring but is retained for reference.
-        taste_sum = 0
-        multiplier = 1
-        return Value, Value, taste_sum, multiplier
+        outcome = self.evaluate_dish(ingredients)
+        return (
+            int(round(outcome.dish_value)),
+            outcome.base_value,
+            0,
+            int(round(outcome.dish_multiplier * 100))
+            if outcome.dish_multiplier
+            else 0,
+        )
 
     def which_recipe(self, ingredients: Sequence[Ingredient]) -> Optional[str]:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
@@ -168,6 +240,71 @@ class GameData:
 
         total = base_multiplier * chef_multiplier
         return total if total > 0 else 0.0
+
+    def evaluate_dish(self, ingredients: Sequence[Ingredient]) -> DishOutcome:
+        if not ingredients:
+            return DishOutcome(
+                base_value=0,
+                dish_value=0.0,
+                dish_multiplier=0.0,
+                family_pattern="",
+                flavor_pattern="",
+                family_label="",
+                flavor_label="",
+                entry=None,
+            )
+
+        base_value = sum(ingredient.Value for ingredient in ingredients)
+        families = [ingredient.family for ingredient in ingredients]
+        tastes = [ingredient.taste for ingredient in ingredients]
+
+        unique_families = set(families)
+        if len(unique_families) == 1:
+            family_pattern = "all_same"
+        elif len(unique_families) == len(families):
+            family_pattern = "all_different"
+        else:
+            family_pattern = "balanced"
+
+        unique_tastes = set(tastes)
+        if len(unique_tastes) == 1:
+            flavor_pattern = "all_same"
+        elif len(unique_tastes) == len(tastes):
+            flavor_pattern = "all_different"
+        else:
+            flavor_pattern = "mixed"
+
+        entry: Optional[DishMatrixEntry] = None
+        multiplier = 1.0
+
+        if flavor_pattern == "all_same":
+            multiplier = 0.0
+        else:
+            count = len(ingredients)
+            entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
+            if entry:
+                multiplier = float(entry.multiplier)
+
+        dish_value = float(base_value) * multiplier
+
+        return DishOutcome(
+            base_value=base_value,
+            dish_value=dish_value,
+            dish_multiplier=multiplier,
+            family_pattern=family_pattern,
+            flavor_pattern=flavor_pattern,
+            family_label=describe_family_pattern(family_pattern),
+            flavor_label=describe_flavor_pattern(flavor_pattern),
+            entry=entry,
+        )
+
+    def _match_dish_matrix(
+        self, count: int, family_pattern: str, flavor_pattern: str
+    ) -> Optional[DishMatrixEntry]:
+        for entry in self.dish_matrix:
+            if entry.matches(count, family_pattern, flavor_pattern):
+                return entry
+        return None
 
 
 def _load_ingredients(path: str) -> Dict[str, Ingredient]:
@@ -223,6 +360,27 @@ def _load_chefs(path: str) -> List[Chef]:
 def _load_taste_matrix(path: str):
     raw = load_json(path)
     return raw["matrix"]
+
+
+def _load_dish_matrix(path: str) -> List[DishMatrixEntry]:
+    raw = load_json(path)
+    entries: List[DishMatrixEntry] = []
+    for entry in raw.get("dish_matrix", []):
+        entries.append(
+            DishMatrixEntry(
+                id=int(entry["id"]),
+                name=str(entry["name"]),
+                min_ingredients=int(entry["min_ingredients"]),
+                max_ingredients=int(entry["max_ingredients"]),
+                family_pattern=str(entry["family_pattern"]),
+                flavor_pattern=str(entry["flavor_pattern"]),
+                multiplier=float(entry["multiplier"]),
+                tier=str(entry["tier"]),
+                chance=float(entry["chance"]),
+                description=str(entry["description"]),
+            )
+        )
+    return entries
 
 
 def _load_themes(path: str):
@@ -453,13 +611,13 @@ def simulate_run(
                 )
             learning = update_learning(learning, active_chefs, recipe_name)
 
-            score, _, _, _ = data.trio_score(trio)
+            dish = data.evaluate_dish(trio)
             recipe_multiplier = data.recipe_multiplier(
                 recipe_name,
                 chefs=active_chefs,
                 times_cooked=times_cooked_before,
             )
-            final_score = int(round(score * recipe_multiplier))
+            final_score = int(round(dish.dish_value * recipe_multiplier))
             total_score += final_score
             round_total += final_score
 

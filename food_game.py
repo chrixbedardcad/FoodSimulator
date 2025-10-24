@@ -347,7 +347,8 @@ def score_trio(
     cookbook: MutableMapping[str, Tuple[str, ...]],
     recipe_counts: MutableMapping[str, int],
 ) -> int:
-    Value = sum(ingredient.Value for ingredient in selected)
+    dish = DATA.evaluate_dish(selected)
+    Value = dish.base_value
     recipe_name = DATA.which_recipe(list(selected))
     times_cooked_before = recipe_counts.get(recipe_name, 0) if recipe_name else 0
     recipe_multiplier = DATA.recipe_multiplier(
@@ -355,7 +356,7 @@ def score_trio(
         chefs=chefs,
         times_cooked=times_cooked_before,
     )
-    final_score = int(round(Value * recipe_multiplier))
+    final_score = int(round(dish.dish_value * recipe_multiplier))
     key_set = DATA.chefs_key_ingredients(chefs)
     chef_hits = sum(1 for ing in selected if ing.name in key_set)
 
@@ -378,6 +379,29 @@ def score_trio(
         taste_family = describe_taste_and_family(ing)
         print(f"  {ing.name} ({taste_family}, Value: {ing.Value})")
     print(f"Total Value: {Value}")
+    print(
+        f"Family profile: {dish.family_label}"
+        f" ({dish.family_pattern.replace('_', ' ')})"
+    )
+    print(
+        f"Taste profile: {dish.flavor_label}"
+        f" ({dish.flavor_pattern.replace('_', ' ')})"
+    )
+    if dish.name:
+        tier_text = f" [{dish.tier}]" if dish.tier else ""
+        print(
+            f"Dish classification: {dish.name}{tier_text}"
+            f" — Dish multiplier x{dish.dish_multiplier:.2f}"
+        )
+    else:
+        if dish.is_terrible():
+            print("Dish classification: Terrible taste! Score reduced to zero.")
+        else:
+            print("Dish classification: None — Dish multiplier x1.00")
+    if not dish.is_terrible():
+        print(f"Dish Value after multiplier: {dish.dish_value:.2f}")
+    else:
+        print("Dish Value after multiplier: 0 (taste penalty)")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
@@ -399,7 +423,8 @@ def score_trio(
             print(f"Cooked {recipe_name} {total_cooked} {times} so far.")
     else:
         print("No recipe completed this turn.")
-    print(f"Score gained: {final_score} (base Value: {Value})")
+    base_text = f"base Value: {Value}" if not dish.is_terrible() else "no points"
+    print(f"Score gained: {final_score} ({base_text})")
     active_names = ", ".join(chef.name for chef in chefs) if chefs else "None"
     print(
         f"Chef key ingredients used: {chef_hits}/{pick_size} (Active: {active_names})\n"

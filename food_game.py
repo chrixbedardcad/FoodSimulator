@@ -19,6 +19,7 @@ import random
 from collections import Counter
 from typing import Collection, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
+from family_icons import get_family_icon
 from food_api import (
     Chef,
     Ingredient,
@@ -27,6 +28,7 @@ from food_api import (
     SimulationConfig,
     build_market_deck,
 )
+from taste_icons import get_taste_icon
 from seed_utils import resolve_seed
 
 DATA = GameData.from_json()
@@ -47,6 +49,25 @@ def format_multiplier(multiplier: float) -> str:
     if abs(multiplier - rounded) < 1e-9:
         return f"x{int(rounded)}"
     return f"x{multiplier:.2f}"
+
+
+def describe_taste_and_family(ingredient: Ingredient) -> str:
+    """Return a combined taste/family string with optional icons."""
+
+    taste_icon = get_taste_icon(ingredient.taste)
+    family_icon = get_family_icon(ingredient.family)
+
+    taste_part = (
+        f"Taste: {taste_icon} {ingredient.taste}"
+        if taste_icon
+        else f"Taste: {ingredient.taste}"
+    )
+    family_part = (
+        f"Family: {family_icon} {ingredient.family}"
+        if family_icon
+        else f"Family: {ingredient.family}"
+    )
+    return f"{taste_part}, {family_part}"
 
 
 def _prompt_selection(prompt: str, options: Sequence[str], rng: random.Random) -> str:
@@ -224,9 +245,8 @@ def describe_ingredient(
         if ingredient.name in chef_key_map.get(chef.name, ())
     ]
     book = " 📖" if ingredient.name in cookbook_ingredients else ""
-    lines = [
-        f"{ingredient.name}{book} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
-    ]
+    taste_family = describe_taste_and_family(ingredient)
+    lines = [f"{ingredient.name}{book} ({taste_family}, Chips: {ingredient.chips})"]
     if chef_names:
         first, *rest = chef_names
         lines.append(f"Chef Key: {first}")
@@ -355,7 +375,8 @@ def score_trio(
 
     print("\n--- Trio Result ---")
     for ing in selected:
-        print(f"  {ing.name} (Taste: {ing.taste}, Chips: {ing.chips})")
+        taste_family = describe_taste_and_family(ing)
+        print(f"  {ing.name} ({taste_family}, Chips: {ing.chips})")
     print(f"Total chips: {chips}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")

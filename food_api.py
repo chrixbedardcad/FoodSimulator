@@ -34,7 +34,7 @@ def load_json(path: str):
 class Ingredient:
     name: str
     taste: str
-    chips: int
+    Value: int
     family: str
 
 
@@ -121,11 +121,11 @@ class GameData:
         if not ingredients:
             return 0, 0, 0, 1
 
-        chips = sum(ingredient.chips for ingredient in ingredients)
+        Value = sum(ingredient.Value for ingredient in ingredients)
         # Taste synergy no longer affects scoring but is retained for reference.
         taste_sum = 0
         multiplier = 1
-        return chips, chips, taste_sum, multiplier
+        return Value, Value, taste_sum, multiplier
 
     def which_recipe(self, ingredients: Sequence[Ingredient]) -> Optional[str]:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
@@ -176,7 +176,7 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
         entry["name"]: Ingredient(
             entry["name"],
             entry["taste"],
-            int(entry["chips"]),
+            int(entry["Value"]),
             entry.get("family", "Unknown"),
         )
         for entry in raw

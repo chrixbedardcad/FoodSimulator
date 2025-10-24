@@ -69,7 +69,7 @@ def format_multiplier(multiplier: float) -> str:
 @dataclass
 class TurnOutcome:
     selected: Sequence[Ingredient]
-    chips: int
+    Value: int
     recipe_name: Optional[str]
     recipe_multiplier: float
     final_score: int
@@ -355,7 +355,7 @@ class GameSession:
             raise IndexError("Selection index out of range for the current hand.")
 
         selected = [self.hand[index] for index in unique]
-        chips = sum(card.chips for card in selected)
+        Value = sum(card.Value for card in selected)
         recipe_name = self.data.which_recipe(selected)
         times_cooked_before = self._times_cooked(recipe_name)
         recipe_multiplier = self.data.recipe_multiplier(
@@ -363,7 +363,7 @@ class GameSession:
             chefs=self.chefs,
             times_cooked=times_cooked_before,
         )
-        final_score = int(round(chips * recipe_multiplier))
+        final_score = int(round(Value * recipe_multiplier))
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
@@ -430,12 +430,12 @@ class GameSession:
 
         return TurnOutcome(
             selected=selected,
-            chips=chips,
+            Value=Value,
             recipe_name=recipe_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
             times_cooked_total=times_cooked_total,
-            base_score=chips,
+            base_score=Value,
             chef_hits=chef_hits,
             round_index=current_round,
             total_rounds=self.rounds,
@@ -706,10 +706,10 @@ class CardView(ttk.Frame):
         self.family_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
         row_index += 1
 
-        self.chips_label = ttk.Label(
-            self, text=f"Chips: {ingredient.chips}", style="CardBody.TLabel"
+        self.Value_label = ttk.Label(
+            self, text=f"Value: {ingredient.Value}", style="CardBody.TLabel"
         )
-        self.chips_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
+        self.Value_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
         row_index += 1
 
         self.chef_label: Optional[ttk.Label] = None
@@ -756,7 +756,7 @@ class CardView(ttk.Frame):
         self.name_label.configure(style=title_style)
         self.taste_label.configure(style=body_style)
         self.family_label.configure(style=body_style)
-        self.chips_label.configure(style=body_style)
+        self.Value_label.configure(style=body_style)
         if self.chef_label:
             self.chef_label.configure(style=marker_style)
         if self.recipe_label:
@@ -1012,7 +1012,7 @@ class FoodGameApp:
             row=2, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
-        self.selection_summary_var = tk.StringVar(value="CHIPS × RECIPE = POINTS")
+        self.selection_summary_var = tk.StringVar(value="Value × RECIPE = POINTS")
         ttk.Label(
             score_frame,
             textvariable=self.selection_summary_var,
@@ -1233,7 +1233,7 @@ class FoodGameApp:
         self.update_selection_summary()
 
     def update_selection_summary(self) -> None:
-        default_text = "CHIPS × RECIPE = POINTS"
+        default_text = "Value × RECIPE = POINTS"
         if not self.session or not self.selected_indices:
             self.selection_summary_var.set(default_text)
             return
@@ -1245,16 +1245,16 @@ class FoodGameApp:
             self.selection_summary_var.set(default_text)
             return
 
-        chips = sum(card.chips for card in selected)
+        Value = sum(card.Value for card in selected)
         recipe_name = self.session.data.which_recipe(selected)
         multiplier = self.session.preview_recipe_multiplier(recipe_name)
-        total = int(round(chips * multiplier))
+        total = int(round(Value * multiplier))
         if recipe_name:
             summary = (
-                f"CHIPS {chips} × RECIPE {recipe_name} (x{multiplier:.2f}) = {total}"
+                f"Value {Value} × RECIPE {recipe_name} (x{multiplier:.2f}) = {total}"
             )
         else:
-            summary = f"CHIPS {chips} × RECIPE x1 = {total}"
+            summary = f"Value {Value} × RECIPE x1 = {total}"
         self.selection_summary_var.set(summary)
 
     def update_status(self) -> None:
@@ -1466,7 +1466,7 @@ class FoodGameApp:
             recipe_banner.pack(anchor="w", pady=(0, 8))
 
         ingredient_lines = [
-            f"• {ingredient.name} — Taste {ingredient.taste}, Chips {ingredient.chips}"
+            f"• {ingredient.name} — Taste {ingredient.taste}, Value {ingredient.Value}"
             for ingredient in outcome.selected
         ]
         ingredients_text = "\n".join(ingredient_lines) or "• —"
@@ -1490,7 +1490,7 @@ class FoodGameApp:
             anchor="w",
         ).pack(anchor="w", fill="x", pady=(0, 10))
 
-        points_lines = [f"Chips: {outcome.chips}"]
+        points_lines = [f"Value: {outcome.Value}"]
         if outcome.recipe_name:
             points_lines.append(
                 f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
@@ -1735,10 +1735,10 @@ class FoodGameApp:
         parts.append("Cooked selection:")
         for ingredient in outcome.selected:
             parts.append(
-                f"  • {ingredient.name} (Taste: {ingredient.taste}, Chips: {ingredient.chips})"
+                f"  • {ingredient.name} (Taste: {ingredient.taste}, Value: {ingredient.Value})"
             )
         parts.append("")
-        parts.append(f"Total chips: {outcome.chips}")
+        parts.append(f"Total Value: {outcome.Value}")
         if outcome.recipe_name:
             parts.append(
                 f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
@@ -1755,7 +1755,7 @@ class FoodGameApp:
         else:
             parts.append("No recipe completed this turn.")
         parts.append(
-            f"Score gained: {outcome.final_score} (base chips: {outcome.base_score})"
+            f"Score gained: {outcome.final_score} (base Value: {outcome.base_score})"
         )
         parts.append(
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"

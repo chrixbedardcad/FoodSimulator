@@ -35,6 +35,7 @@ class Ingredient:
     name: str
     taste: str
     chips: int
+    family: str
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,12 @@ class GameData:
 def _load_ingredients(path: str) -> Dict[str, Ingredient]:
     raw = load_json(path)
     return {
-        entry["name"]: Ingredient(entry["name"], entry["taste"], int(entry["chips"]))
+        entry["name"]: Ingredient(
+            entry["name"],
+            entry["taste"],
+            int(entry["chips"]),
+            entry.get("family", "Unknown"),
+        )
         for entry in raw
     }
 

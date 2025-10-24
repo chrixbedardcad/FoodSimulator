@@ -163,6 +163,18 @@ Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak imm
 
 ---
 
+## 🍽️ Taste Icon Reference
+
+| Icon | Taste Name | Description / Examples |
+|------|------------|------------------------|
+| 🍬 | Sweet | sugar, honey, fruit syrups, desserts |
+| 🧂 | Salty | cured, savory, seasoning-rich |
+| 🍋 | Sour | citrus, vinegar, yogurt tang |
+| 🍄 | Umami | broths, mushrooms, soy, cooked meats |
+| ☕ | Bitter | dark greens, coffee, cocoa, charred foods |
+
+---
+
 ## 📊 Report Contents
 
 Each Monte Carlo batch exports the following artefacts:

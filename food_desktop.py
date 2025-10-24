@@ -33,6 +33,7 @@ from food_api import (
     SimulationConfig,
     build_market_deck,
 )
+from taste_icons import get_taste_icon
 
 DEFAULT_CONFIG = SimulationConfig()
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
@@ -829,8 +830,14 @@ class CardView(ttk.Frame):
         separator = ttk.Separator(self, orient="horizontal")
         separator.grid(row=1, column=0, sticky="ew", pady=(6, 8))
 
+        taste_icon = get_taste_icon(ingredient.taste)
+        if taste_icon:
+            taste_text = f"Taste: {taste_icon} {ingredient.taste}"
+        else:
+            taste_text = f"Taste: {ingredient.taste}"
+
         self.taste_label = ttk.Label(
-            self, text=f"Taste: {ingredient.taste}", style="CardBody.TLabel"
+            self, text=taste_text, style="CardBody.TLabel"
         )
         self.taste_label.grid(row=2, column=0, sticky="w")
 

@@ -886,7 +886,7 @@ class FoodGameApp:
         self.root.minsize(980, 640)
 
         self.session: Optional[GameSession] = None
-        self.card_views: List[CardView] = []
+        self.card_views: Dict[int, CardView] = {}
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
         self.cookbook_tile: Optional[CookbookTile] = None
@@ -894,6 +894,12 @@ class FoodGameApp:
         self.team_tile: Optional[ChefTeamTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
+
+        self.hand_sort_modes: Tuple[str, ...] = ("name", "family", "taste")
+        self.hand_sort_index = 0
+        self.hand_sort_var = tk.StringVar(
+            value=self._format_sort_label(self._current_sort_mode())
+        )
 
         self._init_styles()
         self._build_layout()
@@ -1138,11 +1144,18 @@ class FoodGameApp:
             style="Info.TLabel",
         ).grid(row=3, column=0, columnspan=2, sticky="w")
 
+        self.sort_button = ttk.Button(
+            score_frame,
+            textvariable=self.hand_sort_var,
+            command=self.cycle_hand_sort_mode,
+        )
+        self.sort_button.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
         self.chefs_var = tk.StringVar(
             value=f"Active chefs ({DEFAULT_MAX_CHEFS} max): —"
         )
         ttk.Label(score_frame, textvariable=self.chefs_var, style="Info.TLabel").grid(
-            row=4, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            row=5, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
         self.events_text = tk.Text(
@@ -1301,8 +1314,10 @@ class FoodGameApp:
         if not self.session:
             return
 
-        hand = self.session.get_hand()
-        for index, ingredient in enumerate(hand):
+        hand_with_indices = list(enumerate(self.session.get_hand()))
+        sorted_hand = self._sorted_hand(hand_with_indices)
+
+        for column, (index, ingredient) in enumerate(sorted_hand):
             chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
             recipe_hints = self.session.get_recipe_hints(ingredient)
             view = CardView(
@@ -1314,23 +1329,48 @@ class FoodGameApp:
                 cookbook_hint=cookbook_hint,
                 on_click=self.toggle_card,
             )
-            view.grid(row=0, column=index, sticky="nw", padx=8, pady=8)
-            self.card_views.append(view)
+            view.grid(row=0, column=column, sticky="nw", padx=8, pady=8)
+            if index in self.selected_indices:
+                view.set_selected(True)
+            self.card_views[index] = view
 
         self.hand_frame.update_idletasks()
         self.hand_canvas.configure(scrollregion=self.hand_canvas.bbox("all"))
 
+    def _sorted_hand(
+        self, hand_with_indices: Sequence[Tuple[int, Ingredient]]
+    ) -> List[Tuple[int, Ingredient]]:
+        mode = self._current_sort_mode()
+        if mode == "name":
+            key_func = lambda pair: (pair[1].name.lower(), pair[0])
+        elif mode == "family":
+            key_func = lambda pair: (
+                pair[1].family.lower(),
+                pair[1].name.lower(),
+                pair[0],
+            )
+        else:
+            key_func = lambda pair: (
+                pair[1].taste.lower(),
+                pair[1].name.lower(),
+                pair[0],
+            )
+        return sorted(hand_with_indices, key=key_func)
+
     def clear_hand(self) -> None:
-        for view in self.card_views:
+        for view in self.card_views.values():
             view.destroy()
-        self.card_views.clear()
+        self.card_views = {}
 
     def toggle_card(self, index: int) -> None:
         if not self.session:
             return
+        view = self.card_views.get(index)
+        if not view:
+            return
         if index in self.selected_indices:
             self.selected_indices.remove(index)
-            self.card_views[index].set_selected(False)
+            view.set_selected(False)
         else:
             if len(self.selected_indices) >= self.session.pick_size:
                 messagebox.showinfo(
@@ -1339,8 +1379,20 @@ class FoodGameApp:
                 )
                 return
             self.selected_indices.add(index)
-            self.card_views[index].set_selected(True)
+            view.set_selected(True)
         self.update_selection_label()
+
+    def _current_sort_mode(self) -> str:
+        return self.hand_sort_modes[self.hand_sort_index]
+
+    def _format_sort_label(self, mode: str) -> str:
+        labels = {"name": "Name", "family": "Family", "taste": "Taste"}
+        return f"Sort order: {labels.get(mode, mode.title())}"
+
+    def cycle_hand_sort_mode(self) -> None:
+        self.hand_sort_index = (self.hand_sort_index + 1) % len(self.hand_sort_modes)
+        self.hand_sort_var.set(self._format_sort_label(self._current_sort_mode()))
+        self.render_hand()
 
     def update_selection_label(self) -> None:
         count = len(self.selected_indices)

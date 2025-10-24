@@ -33,6 +33,7 @@ from food_api import (
     SimulationConfig,
     build_market_deck,
 )
+from family_icons import get_family_icon
 from taste_icons import get_taste_icon
 
 DEFAULT_CONFIG = SimulationConfig()
@@ -857,6 +858,17 @@ class CardView(ttk.Frame):
         )
         self.family_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
         row_index += 1
+
+        family_icon = get_family_icon(ingredient.family)
+        if family_icon:
+            family_text = f"Family: {family_icon} {ingredient.family}"
+        else:
+            family_text = f"Family: {ingredient.family}"
+
+        self.family_label = ttk.Label(
+            self, text=family_text, style="CardBody.TLabel"
+        )
+        self.family_label.grid(row=3, column=0, sticky="w", pady=(2, 0))
 
         self.chips_label = ttk.Label(
             self, text=f"Chips: {ingredient.chips}", style="CardBody.TLabel"

@@ -1352,7 +1352,7 @@ class FoodGameApp:
         self.update_selection_summary()
 
     def update_selection_summary(self) -> None:
-        default_text = "Value × RECIPE = POINTS"
+        default_text = "Value × DISH = POINTS"
         if not self.session or not self.selected_indices:
             self.selection_summary_var.set(default_text)
             return
@@ -1365,15 +1365,24 @@ class FoodGameApp:
             return
 
         Value = sum(card.Value for card in selected)
-        recipe_name = self.session.data.which_recipe(selected)
-        multiplier = self.session.preview_recipe_multiplier(recipe_name)
-        total = int(round(Value * multiplier))
-        if recipe_name:
+        dish_outcome = self.session.data.evaluate_dish(selected)
+        multiplier = dish_outcome.dish_multiplier
+        total = int(round(dish_outcome.dish_value))
+        if dish_outcome.entry:
             summary = (
-                f"Value {Value} × RECIPE {recipe_name} (x{multiplier:.2f}) = {total}"
+                f"Value {Value} × DISH {dish_outcome.entry.name} "
+                f"({format_multiplier(multiplier)}) = {total}"
+            )
+        elif dish_outcome.flavor_pattern == "all_same":
+            taste_name = selected[0].taste if selected else "matching taste"
+            summary = (
+                f"Value {Value} × DISH Terrible ({format_multiplier(multiplier)}) = {total}"
+                f" — Horrible, flat taste of {taste_name}"
             )
         else:
-            summary = f"Value {Value} × RECIPE x1 = {total}"
+            summary = (
+                f"Value {Value} × DISH {format_multiplier(multiplier)} = {total}"
+            )
         self.selection_summary_var.set(summary)
 
     def update_status(self) -> None:
@@ -1575,6 +1584,36 @@ class FoodGameApp:
             justify="center",
         )
         score_highlight.pack(fill="x", pady=(0, 12))
+
+        indicator_text: Optional[str] = None
+        indicator_bg = "#e8f5e9"
+        indicator_fg = "#1e4520"
+        if outcome.dish_name:
+            multiplier_value = f"{outcome.dish_multiplier:.2f}".rstrip("0").rstrip(".")
+            indicator_text = f'"{outcome.dish_name}" x {multiplier_value}'
+        elif outcome.terrible_taste:
+            taste_name = outcome.selected[0].taste if outcome.selected else "matching taste"
+            indicator_text = f"Horrible, flat taste of {taste_name}"
+            indicator_bg = "#fdecea"
+            indicator_fg = "#611a15"
+
+        if indicator_text:
+            indicator_container = tk.Frame(
+                content,
+                bg=indicator_bg,
+                padx=16,
+                pady=10,
+            )
+            indicator_container.pack(fill="x", pady=(0, 12))
+            tk.Label(
+                indicator_container,
+                text=indicator_text,
+                font=("Helvetica", 13, "bold"),
+                fg=indicator_fg,
+                bg=indicator_bg,
+                anchor="w",
+                justify="left",
+            ).pack(anchor="w")
 
         if outcome.recipe_name:
             if outcome.discovered_recipe and outcome.personal_discovery:

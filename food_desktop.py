@@ -554,8 +554,14 @@ class ChefTile(ttk.Frame):
             return
         if not self.expanded:
             self.toggle_recipes()
-        lines = "\n".join(f"• {ingredient}" for ingredient in recipe.trio)
-        self.ingredients_var.set(f"Ingredients:\n{lines}")
+        lines = []
+        for ingredient_name in recipe.trio:
+            ingredient = self.data.ingredients.get(ingredient_name)
+            if ingredient:
+                lines.append(f"• {ingredient_name} ({ingredient.family})")
+            else:
+                lines.append(f"• {ingredient_name}")
+        self.ingredients_var.set("Ingredients:\n" + "\n".join(lines))
         self.subtitle_var.set(f"{recipe_name} ingredients:")
 
     def _clear_recipe_buttons(self) -> None:
@@ -837,10 +843,21 @@ class CardView(ttk.Frame):
         else:
             taste_text = f"Taste: {ingredient.taste}"
 
+        row_index = 2
+
         self.taste_label = ttk.Label(
             self, text=taste_text, style="CardBody.TLabel"
         )
-        self.taste_label.grid(row=2, column=0, sticky="w")
+        self.taste_label.grid(row=row_index, column=0, sticky="w")
+        row_index += 1
+
+        self.family_label = ttk.Label(
+            self,
+            text=f"Family: {ingredient.family}",
+            style="CardBody.TLabel",
+        )
+        self.family_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
+        row_index += 1
 
         family_icon = get_family_icon(ingredient.family)
         if family_icon:
@@ -856,7 +873,8 @@ class CardView(ttk.Frame):
         self.chips_label = ttk.Label(
             self, text=f"Chips: {ingredient.chips}", style="CardBody.TLabel"
         )
-        self.chips_label.grid(row=4, column=0, sticky="w", pady=(2, 0))
+        self.chips_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
+        row_index += 1
 
         self.chef_label: Optional[ttk.Label] = None
         if chef_names:
@@ -869,10 +887,8 @@ class CardView(ttk.Frame):
                 style="CardMarker.TLabel",
                 justify="left",
             )
-            self.chef_label.grid(row=5, column=0, sticky="w", pady=(4, 0))
-            next_row = 6
-        else:
-            next_row = 5
+            self.chef_label.grid(row=row_index, column=0, sticky="w", pady=(4, 0))
+            row_index += 1
 
         hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
         self.recipe_label = ttk.Label(
@@ -882,7 +898,7 @@ class CardView(ttk.Frame):
             wraplength=220,
             justify="left",
         )
-        self.recipe_label.grid(row=next_row, column=0, sticky="w", pady=(4, 0))
+        self.recipe_label.grid(row=row_index, column=0, sticky="w", pady=(4, 0))
 
         self.bind("<Button-1>", self._handle_click)
         for child in self.winfo_children():
@@ -903,6 +919,7 @@ class CardView(ttk.Frame):
         hint_style = "CardHintSelected.TLabel" if selected else "CardHint.TLabel"
         self.name_label.configure(style=title_style)
         self.taste_label.configure(style=body_style)
+        self.family_label.configure(style=body_style)
         self.chips_label.configure(style=body_style)
         if self.chef_label:
             self.chef_label.configure(style=marker_style)

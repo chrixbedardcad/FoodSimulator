@@ -7,7 +7,7 @@
       "max_ingredients": 3,
       "family_pattern": "all_different",
       "flavor_pattern": "all_different",
-      "multiplier": 1.6,
+      "multiplier": 1.5,
       "tier": "Common",
       "chance": 0.6376,
       "description": "A simple but well-balanced tasting flight of different families and flavors."
@@ -19,7 +19,7 @@
       "max_ingredients": 3,
       "family_pattern": "all_same",
       "flavor_pattern": "all_different",
-      "multiplier": 4.0,
+      "multiplier": 3.5,
       "tier": "Rare",
       "chance": 0.1166,
       "description": "A unique dish expressing one family in multiple taste variations."
@@ -31,7 +31,7 @@
       "max_ingredients": 3,
       "family_pattern": "all_same",
       "flavor_pattern": "all_same",
-      "multiplier": 0.8,
+      "multiplier": 4.6,
       "tier": "Rare",
       "chance": 0.0686,
       "description": "Three ingredients from the same family and taste, yielding a flat but serviceable plate."
@@ -55,7 +55,7 @@
       "max_ingredients": 4,
       "family_pattern": "all_different",
       "flavor_pattern": "mixed",
-      "multiplier": 2.0,
+      "multiplier": 2.1,
       "tier": "Uncommon",
       "chance": 0.3287,
       "description": "Four distinct families coming together with varied tastes for a rich special."
@@ -67,7 +67,7 @@
       "max_ingredients": 4,
       "family_pattern": "balanced",
       "flavor_pattern": "all_different",
-      "multiplier": 2.6,
+      "multiplier": 2.4,
       "tier": "Uncommon",
       "chance": 0.2552,
       "description": "A fusion of two core families and distinct flavors blending cultures and ideas."
@@ -91,7 +91,7 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "all_same",
-      "multiplier": 0.6,
+      "multiplier": 12.0,
       "tier": "Legendary",
       "chance": 0.0038,
       "description": "Four matching ingredients that play it safe, resulting in a muted experience."

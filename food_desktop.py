@@ -1989,6 +1989,35 @@ class FoodGameApp:
                 justify="left",
             ).pack(anchor="w")
 
+        if outcome.alerts:
+            alert_container = tk.Frame(
+                content,
+                bg="#fdecea",
+                padx=16,
+                pady=12,
+            )
+            alert_container.pack(fill="x", pady=(0, 12))
+            tk.Label(
+                alert_container,
+                text="Alerts:",
+                font=("Helvetica", 12, "bold"),
+                fg="#611a15",
+                bg="#fdecea",
+                anchor="w",
+                justify="left",
+            ).pack(anchor="w")
+            for alert in outcome.alerts:
+                tk.Label(
+                    alert_container,
+                    text=f"⚠️ {alert}",
+                    font=("Helvetica", 10),
+                    fg="#611a15",
+                    bg="#fdecea",
+                    wraplength=360,
+                    justify="left",
+                    anchor="w",
+                ).pack(anchor="w", pady=(2, 0))
+
         if outcome.recipe_name:
             if outcome.discovered_recipe and outcome.personal_discovery:
                 banner_text = (

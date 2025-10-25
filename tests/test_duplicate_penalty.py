@@ -67,6 +67,21 @@ def test_global_duplicate_penalty_applies_multiplier():
     assert int(round(outcome.dish_value)) == 43
 
 
+def test_duplicate_penalty_alert_mentions_penalty():
+    data = _load_data()
+    cards = _sample_cards()
+    ingredients = [
+        cards["Tomato"],
+        cards["Tomato"],
+        cards["Basil"],
+    ]
+
+    outcome = data.evaluate_dish(ingredients)
+
+    assert any("too much Tomato" in alert for alert in outcome.alerts)
+    assert any("penalty -20%" in alert for alert in outcome.alerts)
+
+
 def test_global_duplicate_penalty_handles_multiple_types():
     data = _load_data()
     cards = _sample_cards()

@@ -314,6 +314,7 @@ class GameData:
                 duplicate_ids = [key for key, value in counts.items() if value > 1]
 
                 if duplicate_ids:
+                    duplicate_messages: List[str] = []
                     per_copy_raw = penalty_rules.get("per_copy_multipliers", {})
                     per_copy_multipliers: Dict[str, float] = {}
                     if isinstance(per_copy_raw, Mapping):
@@ -364,6 +365,25 @@ class GameData:
                             f"Recipe is over taste of the duplicated ingredient: {joined}."
                         )
 
+                    for identifier in duplicate_ids:
+                        count = counts[identifier]
+                        factor = _lookup_multiplier(count)
+                        change = int(round((1 - factor) * 100))
+                        names = id_to_names.get(identifier) or [identifier]
+                        primary_name = names[0]
+                        if change > 0:
+                            duplicate_messages.append(
+                                f"Recipe has too much {primary_name} (x{count}), penalty -{change}% to scoring."
+                            )
+                        elif change < 0:
+                            duplicate_messages.append(
+                                f"Recipe has extra {primary_name} (x{count}), bonus +{abs(change)}% to scoring."
+                            )
+                        else:
+                            duplicate_messages.append(
+                                f"Recipe has repeated {primary_name} (x{count}) with no scoring change."
+                            )
+
                     if application == "per_card":
                         seen = Counter()
                         penalized_total = 0.0
@@ -384,6 +404,9 @@ class GameData:
                             factor = _lookup_multiplier(count)
                             penalty_multiplier *= factor
                         dish_value *= penalty_multiplier
+
+                    if duplicate_messages:
+                        alerts.extend(duplicate_messages)
 
         return DishOutcome(
             base_value=base_value,

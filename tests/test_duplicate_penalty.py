@@ -129,3 +129,18 @@ def test_duplicate_alert_triggers_for_third_copy():
     outcome = data.evaluate_dish(ingredients)
 
     assert any("over taste" in alert for alert in outcome.alerts)
+
+
+def test_duplicate_penalty_reduces_unmatched_all_same_flavor():
+    data = _load_data()
+    rice = data.ingredients["Rice"]
+    pasta = data.ingredients["Pasta"]
+    seaweed = data.ingredients["Seaweed"]
+
+    ingredients = [pasta, rice, rice, seaweed]
+
+    outcome = data.evaluate_dish(ingredients)
+
+    assert round(outcome.dish_multiplier, 2) == 0.8
+    assert int(round(outcome.dish_value)) == int(round(outcome.base_value * 0.8))
+    assert any("too much Rice" in alert for alert in outcome.alerts)

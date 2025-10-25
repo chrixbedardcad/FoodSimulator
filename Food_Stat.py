@@ -3,9 +3,7 @@
 This script simulates ingredient draws and computes the chance of
 producing every entry in the dish matrix under configurable
 conditions. The simulation can use a specific theme and chef roster, or
-fall back to a general pool of all ingredients. The resulting CSV keeps
-the original dish matrix chance values alongside the simulated chance
-derived from the runs.
+fall back to a general pool of all ingredients.
 """
 from __future__ import annotations
 
@@ -247,11 +245,6 @@ def write_report(
     counts: Counter,
     output_path: str,
     total_draws: int,
-    *,
-    hand_size: int,
-    pick_size: int,
-    theme: Optional[str],
-    chefs: Sequence[Chef],
 ) -> None:
     ensure_output_dir(output_path)
     fieldnames = [
@@ -263,14 +256,10 @@ def write_report(
         "flavor_pattern",
         "multiplier",
         "tier",
-        "matrix_chance",
-        "simulated_chance",
-        "hand_size",
-        "pick_size",
-        "theme",
-        "chefs",
-        "occurrences",
+        "chance",
         "description",
+        "occurrences",
+        "original_chance",
     ]
     with open(output_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -288,14 +277,10 @@ def write_report(
                     "flavor_pattern": entry.flavor_pattern,
                     "multiplier": entry.multiplier,
                     "tier": entry.tier,
-                    "matrix_chance": entry.chance,
-                    "simulated_chance": round(chance, 6),
-                    "hand_size": hand_size,
-                    "pick_size": pick_size,
-                    "theme": theme or "",
-                    "chefs": ", ".join(chef.name for chef in chefs),
-                    "occurrences": count,
+                    "chance": round(chance, 6),
                     "description": entry.description,
+                    "occurrences": count,
+                    "original_chance": entry.chance,
                 }
             )
 
@@ -319,16 +304,7 @@ def main() -> None:
         rng,
     )
     total_draws = counts.pop("__total__", 0)
-    write_report(
-        data,
-        counts,
-        args.output,
-        total_draws,
-        hand_size=args.hand_size,
-        pick_size=args.pick_size,
-        theme=args.theme,
-        chefs=chefs,
-    )
+    write_report(data, counts, args.output, total_draws)
     print(f"Simulated {total_draws} draws. Report saved to {args.output}.")
 
 

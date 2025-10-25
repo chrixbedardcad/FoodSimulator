@@ -25,6 +25,18 @@
       "description": "A unique dish expressing one family in multiple taste variations."
     },
     {
+      "id": 10,
+      "name": "Monotone Trio",
+      "min_ingredients": 3,
+      "max_ingredients": 3,
+      "family_pattern": "all_same",
+      "flavor_pattern": "all_same",
+      "multiplier": 0.35,
+      "tier": "Dull",
+      "chance": 0.512,
+      "description": "Three ingredients from the same family and taste, yielding a flat but serviceable plate."
+    },
+    {
       "id": 3,
       "name": "Creation",
       "min_ingredients": 4,
@@ -43,10 +55,10 @@
       "max_ingredients": 4,
       "family_pattern": "all_different",
       "flavor_pattern": "mixed",
-      "multiplier": 3,
-      "tier": "Rare",
-      "chance": 0.361,
-      "description": "A crafted composition from a single family with subtle flavor diversity."
+      "multiplier": 3.0,
+      "tier": "Rich",
+      "chance": 0.274,
+      "description": "Four distinct families coming together with varied tastes for a rich special."
     },
     {
       "id": 5,
@@ -71,6 +83,18 @@
       "tier": "Epic",
       "chance": 0.102,
       "description": "A perfect flavor ensemble from one family, balanced across all taste tones."
+    },
+    {
+      "id": 11,
+      "name": "Monotone Quartet",
+      "min_ingredients": 4,
+      "max_ingredients": 4,
+      "family_pattern": "all_same",
+      "flavor_pattern": "all_same",
+      "multiplier": 0.25,
+      "tier": "Dull",
+      "chance": 0.421,
+      "description": "Four matching ingredients that play it safe, resulting in a muted experience."
     },
     {
       "id": 7,

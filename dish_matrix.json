@@ -7,7 +7,7 @@
       "max_ingredients": 3,
       "family_pattern": "all_different",
       "flavor_pattern": "all_different",
-      "multiplier": 1.0,
+      "multiplier": 1.5,
       "tier": "Common",
       "chance": 0.999,
       "description": "A simple but well-balanced tasting flight of different families and flavors."
@@ -31,7 +31,7 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "mixed",
-      "multiplier": 2.8,
+      "multiplier": 2.5,
       "tier": "Rare",
       "chance": 0.361,
       "description": "A crafted composition from a single family with subtle flavor diversity."

@@ -37,15 +37,56 @@ from food_api import (
     describe_flavor_pattern,
     build_market_deck,
 )
-from family_icons import get_family_icon
-from taste_icons import get_taste_icon
+ASSET_DIR = Path(__file__).resolve().parent
+ICON_ASSET_DIR = ASSET_DIR / "icons"
+
+
+TASTE_ICON_FILES: Mapping[str, str] = {
+    "Sweet": "Sweet.png",
+    "Salty": "Salty.png",
+    "Sour": "Sour.png",
+    "Umami": "Umami.png",
+    "Bitter": "Bitter.png",
+}
+
+
+FAMILY_ICON_FILES: Mapping[str, str] = {
+    "Protein": "Protein.png",
+    "Vegetable": "Vegetable.png",
+    "Grain": "Grain.png",
+    "Dairy": "Dairy.png",
+    "Fruit": "Fruit.png",
+}
+
+
+_icon_cache: Dict[str, tk.PhotoImage] = {}
+
+
+def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
+    if not name:
+        return None
+
+    mapping = TASTE_ICON_FILES if category == "taste" else FAMILY_ICON_FILES
+    filename = mapping.get(name)
+    if not filename:
+        return None
+
+    cache_key = f"{category}:{name}"
+    if cache_key in _icon_cache:
+        return _icon_cache[cache_key]
+
+    icon_path = ICON_ASSET_DIR / filename
+    if not icon_path.exists():
+        return None
+
+    image = tk.PhotoImage(file=str(icon_path))
+    _icon_cache[cache_key] = image
+    return image
 
 DEFAULT_CONFIG = SimulationConfig()
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
 DEFAULT_BIAS = DEFAULT_CONFIG.bias
 DEFAULT_MAX_CHEFS = DEFAULT_CONFIG.active_chefs
-
-ASSET_DIR = Path(__file__).resolve().parent
 
 
 def _load_game_data() -> GameData:
@@ -793,30 +834,28 @@ class CardView(ttk.Frame):
         separator = ttk.Separator(self, orient="horizontal")
         separator.grid(row=1, column=0, sticky="ew", pady=(6, 8))
 
-        taste_icon = get_taste_icon(ingredient.taste)
-        if taste_icon:
-            taste_text = f"Taste: {taste_icon} {ingredient.taste}"
-        else:
-            taste_text = f"Taste: {ingredient.taste}"
-
         row_index = 2
 
+        self.taste_image = _load_icon("taste", ingredient.taste)
+        taste_text = f"Taste: {ingredient.taste}"
         self.taste_label = ttk.Label(
-            self, text=taste_text, style="CardBody.TLabel"
+            self,
+            text=taste_text,
+            style="CardBody.TLabel",
+            image=self.taste_image,
+            compound="left",
         )
         self.taste_label.grid(row=row_index, column=0, sticky="w")
         row_index += 1
 
-        family_icon = get_family_icon(ingredient.family)
-        if family_icon:
-            family_text = f"Family: {family_icon} {ingredient.family}"
-        else:
-            family_text = f"Family: {ingredient.family}"
-
+        self.family_image = _load_icon("family", ingredient.family)
+        family_text = f"Family: {ingredient.family}"
         self.family_label = ttk.Label(
             self,
             text=family_text,
             style="CardBody.TLabel",
+            image=self.family_image,
+            compound="left",
         )
         self.family_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
         row_index += 1

@@ -34,6 +34,7 @@ def load_json(path: str):
 @dataclass(frozen=True)
 class Ingredient:
     name: str
+    ingredient_id: str
     taste: str
     Value: int
     family: str
@@ -108,6 +109,7 @@ class DishOutcome:
     family_label: str
     flavor_label: str
     entry: Optional[DishMatrixEntry]
+    alerts: Tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def name(self) -> Optional[str]:
@@ -276,6 +278,7 @@ class GameData:
             flavor_pattern = "mixed"
 
         entry: Optional[DishMatrixEntry] = None
+        alerts: List[str] = []
         count = len(ingredients)
         multiplier = 1.0
 
@@ -304,6 +307,9 @@ class GameData:
                     return item.name
 
                 identifiers = [_ingredient_identifier(ingredient) for ingredient in ingredients]
+                id_to_names: Dict[str, List[str]] = {}
+                for ingredient, identifier in zip(ingredients, identifiers):
+                    id_to_names.setdefault(identifier, []).append(ingredient.name)
                 counts = Counter(identifiers)
                 duplicate_ids = [key for key, value in counts.items() if value > 1]
 
@@ -342,6 +348,22 @@ class GameData:
                             return fallback
                         return value
 
+                    over_taste_ids = [
+                        identifier
+                        for identifier in duplicate_ids
+                        if counts[identifier] > 2
+                    ]
+                    if over_taste_ids:
+                        labelled = []
+                        for identifier in over_taste_ids:
+                            names = id_to_names.get(identifier) or [identifier]
+                            name = names[0]
+                            labelled.append(f"{name} (x{counts[identifier]})")
+                        joined = ", ".join(sorted(labelled))
+                        alerts.append(
+                            f"Recipe is over taste of the duplicated ingredient: {joined}."
+                        )
+
                     if application == "per_card":
                         seen = Counter()
                         penalized_total = 0.0
@@ -372,6 +394,7 @@ class GameData:
             family_label=describe_family_pattern(family_pattern),
             flavor_label=describe_flavor_pattern(flavor_pattern),
             entry=entry,
+            alerts=tuple(alerts),
         )
 
     def _match_dish_matrix(
@@ -385,15 +408,19 @@ class GameData:
 
 def _load_ingredients(path: str) -> Dict[str, Ingredient]:
     raw = load_json(path)
-    return {
-        entry["name"]: Ingredient(
-            entry["name"],
+    ingredients: Dict[str, Ingredient] = {}
+    for entry in raw:
+        name = entry["name"]
+        identifier = entry.get("ingredient_id") or f"ing.{name.lower()}"
+        ingredient = Ingredient(
+            name,
+            str(identifier),
             entry["taste"],
             int(entry["Value"]),
             entry.get("family", "Unknown"),
         )
-        for entry in raw
-    }
+        ingredients[name] = ingredient
+    return ingredients
 
 
 def _load_recipes(path: str) -> List[Recipe]:

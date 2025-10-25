@@ -399,6 +399,9 @@ def score_trio(
             f" — Dish multiplier x{dish.dish_multiplier:.2f}"
         )
     print(f"Dish Value after multiplier: {dish.dish_value:.2f}")
+    if dish.alerts:
+        for alert in dish.alerts:
+            print(f"⚠️  {alert}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")

@@ -419,6 +419,7 @@ class TurnOutcome:
     deck_refreshed: bool
     discovered_recipe: bool
     personal_discovery: bool
+    alerts: Tuple[str, ...] = ()
 
 
 @dataclass
@@ -756,6 +757,9 @@ class GameSession:
 
         selected = [self.hand[index] for index in unique]
         dish = self.data.evaluate_dish(selected)
+        if dish.alerts:
+            for alert in dish.alerts:
+                self._push_event(alert)
         Value = dish.base_value
         recipe_name = self.data.which_recipe(selected)
         times_cooked_before = self._times_cooked(recipe_name)
@@ -855,6 +859,7 @@ class GameSession:
             deck_refreshed=deck_refreshed,
             discovered_recipe=discovered,
             personal_discovery=personal_discovery,
+            alerts=tuple(dish.alerts),
         )
 
     def is_finished(self) -> bool:
@@ -1808,6 +1813,9 @@ class FoodGameApp:
         )
         self.events_text.configure(state="normal")
         self.events_text.insert("end", f"{entry}\n")
+        if outcome.alerts:
+            for alert in outcome.alerts:
+                self.events_text.insert("end", f"    ⚠️ {alert}\n")
         self.events_text.see("end")
         self.events_text.configure(state="disabled")
 
@@ -2328,6 +2336,10 @@ class FoodGameApp:
         parts.append(
             f"Dish value before recipe bonus: {outcome.dish_value:.2f}"
         )
+        if outcome.alerts:
+            parts.append("")
+            for alert in outcome.alerts:
+                parts.append(f"⚠️  {alert}")
         if outcome.recipe_name:
             parts.append(
                 f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"

@@ -15,7 +15,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -105,6 +105,71 @@ def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
     _icon_cache[cache_key] = image
     return image
 
+FAMILY_EXAMPLE_ORDER = ["Protein", "Vegetable", "Grain", "Dairy", "Fruit"]
+TASTE_EXAMPLE_ORDER = ["Sweet", "Salty", "Sour", "Umami", "Bitter"]
+
+
+def _cycle_example(values: Sequence[str], length: int) -> List[str]:
+    if not values:
+        return [""] * length
+    return [values[index % len(values)] for index in range(length)]
+
+
+def _family_example(pattern: str, length: int) -> List[str]:
+    if length <= 0:
+        return []
+    if pattern == "all_same":
+        return [FAMILY_EXAMPLE_ORDER[0]] * length
+    if pattern == "all_different":
+        return _cycle_example(FAMILY_EXAMPLE_ORDER, length)
+    if pattern == "balanced":
+        half = max(1, length // 2)
+        primary = FAMILY_EXAMPLE_ORDER[0]
+        secondary = FAMILY_EXAMPLE_ORDER[1]
+        return [primary] * half + [secondary] * (length - half)
+    if pattern == "mixed":
+        base = [FAMILY_EXAMPLE_ORDER[0], FAMILY_EXAMPLE_ORDER[0]]
+        remainder = max(0, length - len(base))
+        return base + _cycle_example(FAMILY_EXAMPLE_ORDER[1:], remainder)
+    return _cycle_example(FAMILY_EXAMPLE_ORDER, length)
+
+
+def _flavor_example(pattern: str, length: int) -> List[str]:
+    if length <= 0:
+        return []
+    if pattern == "all_same":
+        return [TASTE_EXAMPLE_ORDER[0]] * length
+    if pattern == "all_different":
+        return _cycle_example(TASTE_EXAMPLE_ORDER, length)
+    if pattern == "balanced":
+        half = max(1, length // 2)
+        primary = TASTE_EXAMPLE_ORDER[0]
+        secondary = TASTE_EXAMPLE_ORDER[1]
+        return [primary] * half + [secondary] * (length - half)
+    if pattern == "mixed":
+        base = [TASTE_EXAMPLE_ORDER[0], TASTE_EXAMPLE_ORDER[0]]
+        remainder = max(0, length - len(base))
+        return base + _cycle_example(TASTE_EXAMPLE_ORDER[1:], remainder)
+    return _cycle_example(TASTE_EXAMPLE_ORDER, length)
+
+
+def _pattern_explanation(dimension: str, pattern: str) -> str:
+    if dimension == "family":
+        mapping = {
+            "all_same": "All ingredients come from the same family.",
+            "all_different": "Each ingredient uses a different family.",
+            "balanced": "Families split evenly between two core groups.",
+            "mixed": "A dominant family supported by contrasting partners.",
+        }
+    else:
+        mapping = {
+            "all_same": "Every ingredient shares the same taste.",
+            "all_different": "Each ingredient highlights a unique taste.",
+            "balanced": "Tastes split evenly across two profiles.",
+            "mixed": "Repeating tastes blended with contrasting accents.",
+        }
+    return mapping.get(pattern, pattern.replace("_", " ").title())
+
 DEFAULT_CONFIG = SimulationConfig()
 DEFAULT_DECK_SIZE = DEFAULT_CONFIG.deck_size
 DEFAULT_BIAS = DEFAULT_CONFIG.bias
@@ -133,6 +198,195 @@ def format_multiplier(multiplier: float) -> str:
         return f"x{int(rounded)}"
     return f"x{multiplier:.2f}"
 
+
+class DishMatrixDialog(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        entries: Sequence[DishMatrixEntry],
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self.title("Dish Matrix Reference")
+        self.geometry("640x620")
+        self.minsize(520, 480)
+        self.entries: List[DishMatrixEntry] = list(entries)
+        self._on_close = on_close
+        self._icon_refs: List[tk.PhotoImage] = []
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(1, weight=1)
+
+        intro = ttk.Label(
+            container,
+            text=(
+                "Match the icon patterns to trigger dish multipliers. "
+                "Icons show example families and tastes—any ingredients that "
+                "fit the pattern will work."
+            ),
+            style="Info.TLabel",
+            wraplength=560,
+            justify="left",
+        )
+        intro.grid(row=0, column=0, columnspan=2, sticky="w")
+
+        self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        scrollbar = ttk.Scrollbar(
+            container, orient="vertical", command=self.canvas.yview
+        )
+        scrollbar.grid(row=1, column=1, sticky="ns", pady=(12, 0))
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.entries_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.entries_frame, anchor="nw")
+        self.entries_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._handle_close)
+        self.bind("<Escape>", lambda _e: self._handle_close())
+
+        self.set_entries(self.entries)
+
+    def _handle_close(self) -> None:
+        if self._on_close:
+            self._on_close()
+        self.destroy()
+
+    def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
+        for child in self.entries_frame.winfo_children():
+            child.destroy()
+        self.entries = list(entries)
+        self._icon_refs.clear()
+
+        if not self.entries:
+            ttk.Label(
+                self.entries_frame,
+                text="No dish matrix entries available.",
+                style="Info.TLabel",
+                wraplength=540,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        row = 0
+        for index, entry in enumerate(self.entries):
+            self._build_entry(entry, row)
+            row += 1
+            if index < len(self.entries) - 1:
+                separator = ttk.Separator(self.entries_frame, orient="horizontal")
+                separator.grid(row=row, column=0, sticky="ew", pady=(8, 12))
+                row += 1
+
+    def _build_entry(self, entry: DishMatrixEntry, row: int) -> None:
+        frame = ttk.Frame(self.entries_frame, padding=(0, 4))
+        frame.grid(row=row, column=0, sticky="ew")
+        frame.columnconfigure(0, weight=1)
+
+        header = ttk.Frame(frame)
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+
+        ttk.Label(header, text=entry.name, style="Header.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        ttk.Label(
+            header,
+            text=format_multiplier(entry.multiplier),
+            style="Summary.TLabel",
+            anchor="center",
+        ).grid(row=0, column=1, sticky="e", padx=(12, 0))
+
+        count_text = (
+            f"Requires {entry.min_ingredients}-{entry.max_ingredients} ingredients"
+            if entry.min_ingredients != entry.max_ingredients
+            else f"Requires {entry.min_ingredients} ingredients"
+        )
+        ttk.Label(
+            frame,
+            text=(
+                f"{entry.tier} tier • {entry.chance:.2%} chance • {count_text}"
+            ),
+            style="Info.TLabel",
+            wraplength=540,
+            justify="left",
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        ttk.Label(
+            frame,
+            text=entry.description,
+            style="Info.TLabel",
+            wraplength=540,
+            justify="left",
+        ).grid(row=2, column=0, sticky="w", pady=(6, 0))
+
+        self._build_pattern_row(
+            frame,
+            "Families",
+            entry.family_pattern,
+            _family_example(entry.family_pattern, entry.min_ingredients),
+            "family",
+            row=3,
+        )
+        self._build_pattern_row(
+            frame,
+            "Tastes",
+            entry.flavor_pattern,
+            _flavor_example(entry.flavor_pattern, entry.min_ingredients),
+            "taste",
+            row=4,
+        )
+
+    def _build_pattern_row(
+        self,
+        parent: ttk.Frame,
+        title: str,
+        pattern: str,
+        examples: Sequence[str],
+        category: str,
+        row: int,
+    ) -> None:
+        wrapper = ttk.Frame(parent)
+        wrapper.grid(row=row, column=0, sticky="w", pady=(8, 0))
+        dimension = "family" if category == "family" else "taste"
+        explanation = _pattern_explanation(dimension, pattern)
+        ttk.Label(
+            wrapper,
+            text=f"{title}: {explanation}",
+            style="Info.TLabel",
+            wraplength=420,
+            justify="left",
+        ).grid(row=0, column=0, sticky="w")
+
+        icons_frame = ttk.Frame(wrapper)
+        icons_frame.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        if not examples:
+            ttk.Label(icons_frame, text="—", style="Info.TLabel").pack(side="left")
+            return
+
+        for name in examples:
+            icon = _load_icon(category, name)
+            if icon:
+                label = ttk.Label(icons_frame, image=icon)
+                label.image = icon
+                label.pack(side="left", padx=2)
+                self._icon_refs.append(icon)
+            else:
+                fallback = ttk.Label(
+                    icons_frame,
+                    text=name[:3],
+                    style="Info.TLabel",
+                    width=5,
+                    anchor="center",
+                )
+                fallback.pack(side="left", padx=2)
 
 @dataclass
 class TurnOutcome:
@@ -187,89 +441,64 @@ class DishMatrixTile(ttk.Frame):
     ) -> None:
         super().__init__(master, style="Tile.TFrame", padding=(14, 12))
         self.entries = list(entries)
-        self.expanded = False
+        self.dialog: Optional[DishMatrixDialog] = None
 
         self.columnconfigure(0, weight=1)
 
-        self.header_var = tk.StringVar(value="🍽️ Dish Matrix")
-        self.header_button = ttk.Button(
+        ttk.Label(
             self,
-            textvariable=self.header_var,
-            style="TileHeader.TButton",
-            command=self.toggle,
-        )
-        self.header_button.grid(row=0, column=0, sticky="ew")
+            text="🍽️ Dish Matrix",
+            style="TileHeader.TLabel",
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
 
         self.subtitle_var = tk.StringVar(
-            value="Reference combos for family harmony and taste."
+            value="Open the reference to see icon-based dish multipliers."
         )
-        self.subtitle_label = ttk.Label(
+        ttk.Label(
             self,
             textvariable=self.subtitle_var,
             style="TileSub.TLabel",
             wraplength=260,
             justify="left",
-        )
-        self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(4, 8))
+        ).grid(row=1, column=0, sticky="w", pady=(4, 8))
 
-        self.body_frame = ttk.Frame(self, style="TileBody.TFrame")
-        self.body_frame.grid(row=2, column=0, sticky="ew")
-        self.body_frame.grid_remove()
+        ttk.Button(
+            self,
+            text="View Dish Matrix",
+            style="TileAction.TButton",
+            command=self.open_dialog,
+        ).grid(row=2, column=0, sticky="ew")
 
-        self.entries_frame = ttk.Frame(self.body_frame, style="TileBody.TFrame")
-        self.entries_frame.grid(row=0, column=0, sticky="ew")
+        ttk.Label(
+            self,
+            text="Use the pop-up guide to match families and tastes for bonuses.",
+            style="TileInfo.TLabel",
+            wraplength=260,
+            justify="left",
+        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
 
-        self._entry_labels: List[ttk.Label] = []
-        self.set_entries(self.entries)
-
-    def toggle(self) -> None:
-        self.expanded = not self.expanded
-        if self.expanded:
-            self.body_frame.grid()
-            self.header_var.set("🍽️ Dish Matrix ▼")
-        else:
-            self.body_frame.grid_remove()
-            self.header_var.set("🍽️ Dish Matrix")
-
-    def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
-        for label in self._entry_labels:
-            label.destroy()
-        self._entry_labels.clear()
-        self.entries = list(entries)
-
-        if not self.entries:
-            empty = ttk.Label(
-                self.entries_frame,
-                text="No dish matrix entries available.",
-                style="TileInfo.TLabel",
-                wraplength=260,
-                justify="left",
-            )
-            empty.grid(row=0, column=0, sticky="w")
-            self._entry_labels.append(empty)
+    def open_dialog(self) -> None:
+        if self.dialog and self.dialog.winfo_exists():
+            self.dialog.lift()
+            self.dialog.focus_force()
             return
 
-        for row, entry in enumerate(self.entries):
-            family_label = describe_family_pattern(entry.family_pattern)
-            flavor_label = describe_flavor_pattern(entry.flavor_pattern)
-            if entry.min_ingredients == entry.max_ingredients:
-                count_text = f"{entry.min_ingredients} ingredients"
-            else:
-                count_text = f"{entry.min_ingredients}-{entry.max_ingredients} ingredients"
-            line = (
-                f"{entry.name} ({count_text}) — "
-                f"{family_label} families, {flavor_label} tastes, "
-                f"{format_multiplier(entry.multiplier)} [{entry.tier}]"
-            )
-            label = ttk.Label(
-                self.entries_frame,
-                text=line,
-                style="TileInfo.TLabel",
-                wraplength=260,
-                justify="left",
-            )
-            label.grid(row=row, column=0, sticky="w", pady=(0, 4))
-            self._entry_labels.append(label)
+        def _on_close() -> None:
+            self.dialog = None
+
+        self.dialog = DishMatrixDialog(self, self.entries, on_close=_on_close)
+        toplevel = self.winfo_toplevel()
+        if toplevel:
+            self.dialog.transient(toplevel)
+        self.dialog.focus_force()
+
+    def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
+        self.entries = list(entries)
+        if self.dialog and self.dialog.winfo_exists():
+            self.dialog.set_entries(self.entries)
+        else:
+            self.dialog = None
 
 
 class GameSession:
@@ -1037,6 +1266,7 @@ class FoodGameApp:
         style.configure("Info.TLabel", font=("Helvetica", 10), foreground="#2f2f2f")
         style.configure("Header.TLabel", font=("Helvetica", 14, "bold"), foreground="#1f1f1f")
         style.configure("Score.TLabel", font=("Helvetica", 18, "bold"), foreground="#1f1f1f")
+        style.configure("Summary.TLabel", font=("Helvetica", 16, "bold"), foreground="#1c1c1c")
         style.configure(
             "Tile.TFrame",
             background=tile_bg,
@@ -1049,6 +1279,12 @@ class FoodGameApp:
             font=("Helvetica", 12, "bold"),
             anchor="w",
             padding=(8, 6),
+        )
+        style.configure(
+            "TileHeader.TLabel",
+            font=("Helvetica", 12, "bold"),
+            foreground="#1f1f1f",
+            background=tile_bg,
         )
         style.configure(
             "TileSub.TLabel",
@@ -1067,6 +1303,11 @@ class FoodGameApp:
             font=("Helvetica", 10),
             anchor="w",
             padding=(6, 4),
+        )
+        style.configure(
+            "TileAction.TButton",
+            font=("Helvetica", 11, "bold"),
+            padding=(8, 6),
         )
 
     def _build_layout(self) -> None:
@@ -1176,6 +1417,7 @@ class FoodGameApp:
     def _build_game_panel(self) -> None:
         score_frame = ttk.Frame(self.game_frame)
         score_frame.grid(row=0, column=0, sticky="ew")
+        score_frame.columnconfigure(0, weight=1)
         score_frame.columnconfigure(1, weight=1)
 
         ttk.Label(score_frame, text="Total Score", style="Header.TLabel").grid(
@@ -1196,12 +1438,17 @@ class FoodGameApp:
             row=2, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
-        self.selection_summary_var = tk.StringVar(value="Value × RECIPE = POINTS")
-        ttk.Label(
+        self.selection_summary_var = tk.StringVar(value="Value × Dish = Score")
+        self.selection_summary_label = ttk.Label(
             score_frame,
             textvariable=self.selection_summary_var,
-            style="Info.TLabel",
-        ).grid(row=3, column=0, columnspan=2, sticky="w")
+            style="Summary.TLabel",
+            anchor="center",
+            justify="center",
+        )
+        self.selection_summary_label.grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0)
+        )
 
         self.sort_button = ttk.Button(
             score_frame,
@@ -1463,7 +1710,7 @@ class FoodGameApp:
         self.update_selection_summary()
 
     def update_selection_summary(self) -> None:
-        default_text = "Value × DISH = POINTS"
+        default_text = "Value × Dish = Score"
         if not self.session or not self.selected_indices:
             self.selection_summary_var.set(default_text)
             return
@@ -1481,12 +1728,12 @@ class FoodGameApp:
         total = int(round(dish_outcome.dish_value))
         if dish_outcome.entry:
             summary = (
-                f"Value {Value} × DISH {dish_outcome.entry.name} "
+                f"Value {Value} × Dish {dish_outcome.entry.name} "
                 f"({format_multiplier(multiplier)}) = {total}"
             )
         else:
             summary = (
-                f"Value {Value} × DISH {format_multiplier(multiplier)} = {total}"
+                f"Value {Value} × Dish {format_multiplier(multiplier)} = {total}"
             )
         self.selection_summary_var.set(summary)
 

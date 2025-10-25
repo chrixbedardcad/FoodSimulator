@@ -59,6 +59,9 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 }
 
 
+ICON_TARGET_PX = 64
+
+
 _icon_cache: Dict[str, tk.PhotoImage] = {}
 
 
@@ -80,6 +83,10 @@ def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
         return None
 
     image = tk.PhotoImage(file=str(icon_path))
+    max_side = max(image.width(), image.height())
+    if max_side > ICON_TARGET_PX:
+        reduction = max(1, math.ceil(max_side / ICON_TARGET_PX))
+        image = image.subsample(reduction, reduction)
     _icon_cache[cache_key] = image
     return image
 

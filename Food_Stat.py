@@ -68,13 +68,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bias",
         type=float,
-        default=2.7,
+        default=1.0,
         help="Bias multiplier for key ingredients when using a theme deck",
     )
     parser.add_argument(
         "--guarantee-prob",
         type=float,
-        default=0.6,
+        default=0.0,
         help="Probability that a key ingredient is forced into a pick",
     )
     parser.add_argument(
@@ -223,23 +223,19 @@ def simulate(
         return Counter()
 
     counts: Counter[int | str] = Counter()
-    total_draws = 0
-    hand: List[Ingredient] = []
-    deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
-    min_combo_size = (
-        min((entry.min_ingredients for entry in data.dish_matrix), default=pick_size)
-        if pick_size > 0
-        else 0
+    denom_by_size: dict[int, int] = {}
+
+    size_set = sorted(
+        {e.min_ingredients for e in data.dish_matrix if e.min_ingredients <= pick_size}
     )
-    min_considered = min(min_combo_size, pick_size) if pick_size > 0 else 0
-    combo_sizes = [
-        size for size in range(min_considered, pick_size + 1) if size > 0
-    ]
-    if not combo_sizes:
+    if not size_set:
         return counts
 
+    deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+    hand: List[Ingredient] = []
+
     for _ in range(iterations):
-        if len(deck) < pick_size:
+        if len(deck) < hand_size:
             deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
             hand = []
 
@@ -256,16 +252,22 @@ def simulate(
         if not picks:
             continue
 
-        for size in combo_sizes:
-            if size > len(picks):
-                break
-            for combo in itertools.combinations(picks, size):
+        for k in size_set:
+            denom_by_size[k] = denom_by_size.get(k, 0) + 1
+            if k > len(picks):
+                continue
+
+            matched_this_hand: set[int] = set()
+            for combo in itertools.combinations(picks, k):
                 outcome = data.evaluate_dish(combo)
                 if outcome.entry:
-                    counts[outcome.entry.id] += 1
-                total_draws += 1
+                    matched_this_hand.add(outcome.entry.id)
 
-    counts["__total__"] = total_draws
+            for entry_id in matched_this_hand:
+                counts[entry_id] += 1
+
+    for k, denom in denom_by_size.items():
+        counts[f"__denom_{k}__"] = denom
     return counts
 
 
@@ -279,7 +281,6 @@ def write_report(
     data: GameData,
     counts: Counter,
     output_path: str,
-    total_draws: int,
     hand_size: int,
     pick_size: int,
     theme_name: Optional[str],
@@ -309,7 +310,9 @@ def write_report(
         writer.writeheader()
         for entry in data.dish_matrix:
             count = counts.get(entry.id, 0)
-            chance = (count / total_draws) if total_draws else 0.0
+            k = entry.min_ingredients
+            denom = counts.get(f"__denom_{k}__", 0)
+            chance = (count / denom) if denom else 0.0
             writer.writerow(
                 {
                     "id": entry.id,
@@ -350,18 +353,16 @@ def main() -> None:
         args.guarantee_prob,
         rng,
     )
-    total_draws = counts.pop("__total__", 0)
     write_report(
         data,
         counts,
         args.output,
-        total_draws,
         args.hand_size,
         args.pick_size,
         args.theme,
         chefs,
     )
-    print(f"Simulated {total_draws} draws. Report saved to {args.output}.")
+    print(f"Report saved to {args.output}.")
 
 
 if __name__ == "__main__":

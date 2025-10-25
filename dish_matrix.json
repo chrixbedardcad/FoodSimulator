@@ -144,5 +144,18 @@
       "chance": 0.0001,
       "description": "The ultimate creation — one family, every flavor, pure culinary art."
     }
-  ]
+  ],
+  "rules": {
+    "duplicate_ingredient_penalty": {
+      "enabled": true,
+      "application": "global",
+      "applies_to": "same_ingredient_exact",
+      "stacking_model": "per_type_once",
+      "per_copy_multipliers": {
+        "2": 0.8
+      },
+      "default_after_defined": 0.8,
+      "max_copies_scored": 2
+    }
+  }
 }

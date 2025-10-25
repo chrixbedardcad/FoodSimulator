@@ -129,6 +129,7 @@ class GameData:
     themes: Dict[str, List[Tuple[str, int]]]
     taste_matrix: MutableMapping[str, MutableMapping[str, int]]
     dish_matrix: List[DishMatrixEntry]
+    rules: Mapping[str, object] = field(default_factory=dict)
     recipe_by_name: Dict[str, Recipe] = field(init=False)
     recipe_trio_lookup: Dict[Tuple[str, str, str], str] = field(init=False)
     recipe_multipliers: Dict[str, float] = field(init=False)
@@ -164,13 +165,15 @@ class GameData:
         themes_path: str = DEFAULT_THEMES_JSON,
         dish_matrix_path: str = DEFAULT_DISH_MATRIX_JSON,
     ) -> "GameData":
+        dish_matrix_entries, rules = _load_dish_matrix(dish_matrix_path)
         return cls(
             ingredients=_load_ingredients(ingredients_path),
             recipes=_load_recipes(recipes_path),
             chefs=_load_chefs(chefs_path),
             themes=_load_themes(themes_path),
             taste_matrix=_load_taste_matrix(taste_path),
-            dish_matrix=_load_dish_matrix(dish_matrix_path),
+            dish_matrix=dish_matrix_entries,
+            rules=rules,
         )
 
     # --- Helpers that operate on the loaded data ---
@@ -284,6 +287,82 @@ class GameData:
 
         dish_value = float(base_value) * multiplier
 
+        penalty_rules: Optional[Mapping[str, object]] = None
+        if isinstance(self.rules, Mapping):
+            maybe = self.rules.get("duplicate_ingredient_penalty")
+            if isinstance(maybe, Mapping):
+                penalty_rules = maybe
+
+        if penalty_rules and penalty_rules.get("enabled", True):
+            applies_to = str(penalty_rules.get("applies_to", "")).lower()
+            if applies_to in ("", "same_ingredient", "same_ingredient_exact"):
+                def _ingredient_identifier(item: Ingredient) -> str:
+                    for attr in ("ingredient_id", "id"):
+                        value = getattr(item, attr, None)
+                        if value is not None:
+                            return str(value)
+                    return item.name
+
+                identifiers = [_ingredient_identifier(ingredient) for ingredient in ingredients]
+                counts = Counter(identifiers)
+                duplicate_ids = [key for key, value in counts.items() if value > 1]
+
+                if duplicate_ids:
+                    per_copy_raw = penalty_rules.get("per_copy_multipliers", {})
+                    per_copy_multipliers: Dict[str, float] = {}
+                    if isinstance(per_copy_raw, Mapping):
+                        for key, value in per_copy_raw.items():
+                            try:
+                                per_copy_multipliers[str(key)] = float(value)
+                            except (TypeError, ValueError):
+                                continue
+
+                    default_after_defined = penalty_rules.get("default_after_defined", 1.0)
+                    try:
+                        fallback = float(default_after_defined)
+                    except (TypeError, ValueError):
+                        fallback = 1.0
+
+                    max_copies_raw = penalty_rules.get("max_copies_scored", 0)
+                    try:
+                        max_copies = int(max_copies_raw)
+                    except (TypeError, ValueError):
+                        max_copies = 0
+                    if max_copies <= 0:
+                        max_copies = None
+
+                    application = str(penalty_rules.get("application", "global")).lower()
+
+                    def _lookup_multiplier(copy_count: int) -> float:
+                        effective = copy_count
+                        if max_copies is not None:
+                            effective = min(copy_count, max_copies)
+                        value = per_copy_multipliers.get(str(effective))
+                        if value is None:
+                            return fallback
+                        return value
+
+                    if application == "per_card":
+                        seen = Counter()
+                        penalized_total = 0.0
+                        for ingredient in ingredients:
+                            identifier = _ingredient_identifier(ingredient)
+                            seen[identifier] += 1
+                            copy_index = seen[identifier]
+                            if copy_index == 1:
+                                factor = 1.0
+                            else:
+                                factor = _lookup_multiplier(copy_index)
+                            penalized_total += float(ingredient.Value) * factor
+                        dish_value = float(penalized_total) * multiplier
+                    else:
+                        penalty_multiplier = 1.0
+                        for identifier in duplicate_ids:
+                            count = counts[identifier]
+                            factor = _lookup_multiplier(count)
+                            penalty_multiplier *= factor
+                        dish_value *= penalty_multiplier
+
         return DishOutcome(
             base_value=base_value,
             dish_value=dish_value,
@@ -359,7 +438,7 @@ def _load_taste_matrix(path: str):
     return raw["matrix"]
 
 
-def _load_dish_matrix(path: str) -> List[DishMatrixEntry]:
+def _load_dish_matrix(path: str) -> Tuple[List[DishMatrixEntry], Mapping[str, object]]:
     raw = load_json(path)
     entries: List[DishMatrixEntry] = []
     for entry in raw.get("dish_matrix", []):
@@ -377,7 +456,12 @@ def _load_dish_matrix(path: str) -> List[DishMatrixEntry]:
                 description=str(entry["description"]),
             )
         )
-    return entries
+    rules_raw = raw.get("rules", {})
+    if isinstance(rules_raw, Mapping):
+        rules: Mapping[str, object] = dict(rules_raw)
+    else:
+        rules = {}
+    return entries, rules
 
 
 def _load_themes(path: str):

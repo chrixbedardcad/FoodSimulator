@@ -85,7 +85,11 @@
       "copies": 1
     },
     {
-      "ingredient": "Salt",
+      "ingredient": "Capers",
+      "copies": 3
+    },
+    {
+      "ingredient": "PickledCucumber",
       "copies": 2
     }
   ],
@@ -108,10 +112,6 @@
     },
     {
       "ingredient": "Garlic",
-      "copies": 4
-    },
-    {
-      "ingredient": "Salt",
       "copies": 4
     },
     {
@@ -173,6 +173,14 @@
     {
       "ingredient": "Tomato",
       "copies": 2
+    },
+    {
+      "ingredient": "Capers",
+      "copies": 1
+    },
+    {
+      "ingredient": "PickledCucumber",
+      "copies": 3
     }
   ]
 }

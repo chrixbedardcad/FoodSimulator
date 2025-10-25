@@ -136,5 +136,17 @@
     "taste": "Sour",
     "Value": 10,
     "family": "Dairy"
+  },
+  {
+    "name": "Capers",
+    "taste": "Salty",
+    "Value": 6,
+    "family": "Vegetable"
+  },
+  {
+    "name": "PickledCucumber",
+    "taste": "Sour",
+    "Value": 6,
+    "family": "Vegetable"
   }
 ]

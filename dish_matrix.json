@@ -7,7 +7,7 @@
       "max_ingredients": 3,
       "family_pattern": "all_different",
       "flavor_pattern": "all_different",
-      "multiplier": 1.0,
+      "multiplier": 1.5,
       "tier": "Common",
       "chance": 0.999,
       "description": "A simple but well-balanced tasting flight of different families and flavors."
@@ -31,13 +31,25 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "mixed",
-      "multiplier": 2.8,
+      "multiplier": 2.5,
       "tier": "Rare",
       "chance": 0.361,
       "description": "A crafted composition from a single family with subtle flavor diversity."
     },
     {
       "id": 4,
+      "name": "Special 4",
+      "min_ingredients": 4,
+      "max_ingredients": 4,
+      "family_pattern": "all_different",
+      "flavor_pattern": "mixed",
+      "multiplier": 3,
+      "tier": "Rare",
+      "chance": 0.361,
+      "description": "A crafted composition from a single family with subtle flavor diversity."
+    },
+    {
+      "id": 5,
       "name": "Fusion",
       "min_ingredients": 4,
       "max_ingredients": 4,
@@ -49,7 +61,7 @@
       "description": "A fusion of two core families and distinct flavors blending cultures and ideas."
     },
     {
-      "id": 5,
+      "id": 6,
       "name": "Symphony",
       "min_ingredients": 4,
       "max_ingredients": 4,
@@ -61,7 +73,7 @@
       "description": "A perfect flavor ensemble from one family, balanced across all taste tones."
     },
     {
-      "id": 6,
+      "id": 7,
       "name": "Feast",
       "min_ingredients": 5,
       "max_ingredients": 5,
@@ -73,7 +85,7 @@
       "description": "A grand abundance of diverse ingredients and flavors from all families."
     },
     {
-      "id": 7,
+      "id": 8,
       "name": "Grand",
       "min_ingredients": 5,
       "max_ingredients": 5,
@@ -85,7 +97,7 @@
       "description": "A refined centerpiece dish, unified in family but layered in taste."
     },
     {
-      "id": 8,
+      "id": 9,
       "name": "Masterpiece",
       "min_ingredients": 5,
       "max_ingredients": 5,

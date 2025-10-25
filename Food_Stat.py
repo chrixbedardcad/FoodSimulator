@@ -165,6 +165,26 @@ def build_general_deck(
     return deck
 
 
+def _resolve_theme_name(data: GameData, theme_name: str) -> str:
+    """Return the canonical theme name matching ``theme_name``.
+
+    Theme names in ``themes.json`` are capitalized (e.g. ``"Asian"``), but the
+    command line argument is easy to provide in a different case.  To make the
+    tool friendlier, resolve the name case-insensitively and fall back to the
+    original error if no match exists.
+    """
+
+    lookup = {name.lower(): name for name in data.themes}
+    resolved = lookup.get(theme_name.lower())
+    if resolved:
+        return resolved
+    raise ValueError(
+        "Unknown theme: {}. Available themes: {}".format(
+            theme_name, ", ".join(sorted(data.themes)) or "<none>"
+        )
+    )
+
+
 def build_deck(
     data: GameData,
     theme_name: Optional[str],
@@ -174,8 +194,7 @@ def build_deck(
     rng: random.Random,
 ) -> List[Ingredient]:
     if theme_name:
-        if theme_name not in data.themes:
-            raise ValueError(f"Unknown theme: {theme_name}")
+        theme_name = _resolve_theme_name(data, theme_name)
         return build_market_deck(
             data,
             theme_name,

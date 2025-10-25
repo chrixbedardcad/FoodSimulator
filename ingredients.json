@@ -66,12 +66,6 @@
     "family": "Fruit"
   },
   {
-    "name": "Salt",
-    "taste": "Salty",
-    "Value": 3,
-    "family": "Grain"
-  },
-  {
     "name": "Beef",
     "taste": "Umami",
     "Value": 18,

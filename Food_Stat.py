@@ -245,6 +245,10 @@ def write_report(
     counts: Counter,
     output_path: str,
     total_draws: int,
+    hand_size: int,
+    pick_size: int,
+    theme_name: Optional[str],
+    chefs: Sequence[Chef],
 ) -> None:
     ensure_output_dir(output_path)
     fieldnames = [
@@ -257,6 +261,10 @@ def write_report(
         "multiplier",
         "tier",
         "chance",
+        "hand_size",
+        "pick_size",
+        "theme",
+        "chefs",
         "description",
         "occurrences",
         "original_chance",
@@ -278,6 +286,10 @@ def write_report(
                     "multiplier": entry.multiplier,
                     "tier": entry.tier,
                     "chance": round(chance, 6),
+                    "hand_size": hand_size,
+                    "pick_size": pick_size,
+                    "theme": theme_name or "",
+                    "chefs": ", ".join(chef.name for chef in chefs),
                     "description": entry.description,
                     "occurrences": count,
                     "original_chance": entry.chance,
@@ -304,7 +316,16 @@ def main() -> None:
         rng,
     )
     total_draws = counts.pop("__total__", 0)
-    write_report(data, counts, args.output, total_draws)
+    write_report(
+        data,
+        counts,
+        args.output,
+        total_draws,
+        args.hand_size,
+        args.pick_size,
+        args.theme,
+        chefs,
+    )
     print(f"Simulated {total_draws} draws. Report saved to {args.output}.")
 
 

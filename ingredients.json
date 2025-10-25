@@ -1,150 +1,175 @@
 [
   {
     "name": "Truffle",
+    "ingredient_id": "ing.truffle",
     "taste": "Umami",
     "Value": 30,
     "family": "Vegetable"
   },
   {
     "name": "Parmesan",
+    "ingredient_id": "ing.parmesan",
     "taste": "Umami",
     "Value": 18,
     "family": "Dairy"
   },
   {
     "name": "Egg",
+    "ingredient_id": "ing.egg",
     "taste": "Salty",
     "Value": 12,
     "family": "Protein"
   },
   {
     "name": "Tomato",
+    "ingredient_id": "ing.tomato",
     "taste": "Sour",
     "Value": 22,
     "family": "Fruit"
   },
   {
     "name": "Basil",
+    "ingredient_id": "ing.basil",
     "taste": "Bitter",
     "Value": 6,
     "family": "Vegetable"
   },
   {
     "name": "OliveOil",
+    "ingredient_id": "ing.oliveoil",
     "taste": "Umami",
     "Value": 10,
     "family": "Vegetable"
   },
   {
     "name": "Mushroom",
+    "ingredient_id": "ing.mushroom",
     "taste": "Umami",
     "Value": 10,
     "family": "Vegetable"
   },
   {
     "name": "Garlic",
+    "ingredient_id": "ing.garlic",
     "taste": "Bitter",
     "Value": 6,
     "family": "Vegetable"
   },
   {
     "name": "Lemon",
+    "ingredient_id": "ing.lemon",
     "taste": "Sour",
     "Value": 8,
     "family": "Fruit"
   },
   {
     "name": "Honey",
+    "ingredient_id": "ing.honey",
     "taste": "Sweet",
     "Value": 12,
     "family": "Fruit"
   },
   {
     "name": "Chocolate",
+    "ingredient_id": "ing.chocolate",
     "taste": "Sweet",
     "Value": 12,
     "family": "Fruit"
   },
   {
     "name": "Beef",
+    "ingredient_id": "ing.beef",
     "taste": "Umami",
     "Value": 18,
     "family": "Protein"
   },
   {
     "name": "Bacon",
+    "ingredient_id": "ing.bacon",
     "taste": "Salty",
     "Value": 14,
     "family": "Protein"
   },
   {
     "name": "Pasta",
+    "ingredient_id": "ing.pasta",
     "taste": "Umami",
     "Value": 12,
     "family": "Grain"
   },
   {
     "name": "Rice",
+    "ingredient_id": "ing.rice",
     "taste": "Umami",
     "Value": 10,
     "family": "Grain"
   },
   {
     "name": "Fish",
+    "ingredient_id": "ing.fish",
     "taste": "Umami",
     "Value": 14,
     "family": "Protein"
   },
   {
     "name": "Seaweed",
+    "ingredient_id": "ing.seaweed",
     "taste": "Umami",
     "Value": 8,
     "family": "Vegetable"
   },
   {
     "name": "Cream",
+    "ingredient_id": "ing.cream",
     "taste": "Sweet",
     "Value": 10,
     "family": "Dairy"
   },
   {
     "name": "Sugar",
+    "ingredient_id": "ing.sugar",
     "taste": "Sweet",
     "Value": 8,
     "family": "Fruit"
   },
   {
     "name": "Onion",
+    "ingredient_id": "ing.onion",
     "taste": "Sweet",
     "Value": 8,
     "family": "Vegetable"
   },
   {
     "name": "Bread",
+    "ingredient_id": "ing.bread",
     "taste": "Umami",
     "Value": 10,
     "family": "Grain"
   },
   {
     "name": "Butter",
+    "ingredient_id": "ing.butter",
     "taste": "Sweet",
     "Value": 10,
     "family": "Dairy"
   },
   {
     "name": "Yogurt",
+    "ingredient_id": "ing.yogurt",
     "taste": "Sour",
     "Value": 10,
     "family": "Dairy"
   },
   {
     "name": "Capers",
+    "ingredient_id": "ing.capers",
     "taste": "Salty",
     "Value": 6,
     "family": "Vegetable"
   },
   {
     "name": "PickledCucumber",
+    "ingredient_id": "ing.pickledcucumber",
     "taste": "Sour",
     "Value": 6,
     "family": "Vegetable"

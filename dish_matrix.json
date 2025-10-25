@@ -43,10 +43,10 @@
       "max_ingredients": 4,
       "family_pattern": "all_different",
       "flavor_pattern": "mixed",
-      "multiplier": 3,
-      "tier": "Rare",
-      "chance": 0.361,
-      "description": "A crafted composition from a single family with subtle flavor diversity."
+      "multiplier": 3.0,
+      "tier": "Rich",
+      "chance": 0.274,
+      "description": "Four distinct families coming together with varied tastes for a rich special."
     },
     {
       "id": 5,

@@ -18,6 +18,7 @@ from tkinter import messagebox
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from tkinter import ttk
+from PIL import Image, ImageTk
 
 from food_api import (
     DEFAULT_HAND_SIZE,
@@ -61,6 +62,11 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 ICON_TARGET_PX = 64
 
+try:
+    RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
+except AttributeError:  # Pillow<9.1 fallback
+    RESAMPLE_LANCZOS = Image.LANCZOS
+
 
 _icon_cache: Dict[str, tk.PhotoImage] = {}
 
@@ -82,11 +88,20 @@ def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
     if not icon_path.exists():
         return None
 
-    image = tk.PhotoImage(file=str(icon_path))
-    max_side = max(image.width(), image.height())
-    if max_side > ICON_TARGET_PX:
-        reduction = max(1, math.ceil(max_side / ICON_TARGET_PX))
-        image = image.subsample(reduction, reduction)
+    with Image.open(icon_path) as source_image:
+        working = source_image.convert("RGBA")
+        max_side = max(working.size)
+        if max_side > ICON_TARGET_PX:
+            scale = ICON_TARGET_PX / max_side
+            new_size = (
+                max(1, int(round(working.width * scale))),
+                max(1, int(round(working.height * scale))),
+            )
+            working = working.resize(new_size, RESAMPLE_LANCZOS)
+        else:
+            working = working.copy()
+
+    image = ImageTk.PhotoImage(working)
     _icon_cache[cache_key] = image
     return image
 

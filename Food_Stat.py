@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import os
 import random
 from collections import Counter
@@ -56,7 +57,7 @@ def parse_args() -> argparse.Namespace:
         "--pick-size",
         type=int,
         default=DEFAULT_PICK_SIZE,
-        help="Number of ingredients selected each draw (default: %(default)s)",
+        help="Maximum number of ingredients selected each draw (default: %(default)s)",
     )
     parser.add_argument(
         "--deck-size",
@@ -218,20 +219,31 @@ def simulate(
     guarantee_prob: float,
     rng: random.Random,
 ) -> Counter[int | str]:
-    if iterations <= 0:
+    if iterations <= 0 or pick_size <= 0:
         return Counter()
 
     counts: Counter[int | str] = Counter()
     total_draws = 0
     hand: List[Ingredient] = []
     deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+    min_combo_size = (
+        min((entry.min_ingredients for entry in data.dish_matrix), default=pick_size)
+        if pick_size > 0
+        else 0
+    )
+    min_considered = min(min_combo_size, pick_size) if pick_size > 0 else 0
+    combo_sizes = [
+        size for size in range(min_considered, pick_size + 1) if size > 0
+    ]
+    if not combo_sizes:
+        return counts
 
     for _ in range(iterations):
         if len(deck) < pick_size:
             deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
             hand = []
 
-        trio, hand, deck = draw_cook(
+        picks, hand, deck = draw_cook(
             data,
             hand,
             deck,
@@ -241,13 +253,17 @@ def simulate(
             pick_size=pick_size,
             rng=rng,
         )
-        if not trio:
+        if not picks:
             continue
 
-        outcome = data.evaluate_dish(trio)
-        if outcome.entry:
-            counts[outcome.entry.id] += 1
-        total_draws += 1
+        for size in combo_sizes:
+            if size > len(picks):
+                break
+            for combo in itertools.combinations(picks, size):
+                outcome = data.evaluate_dish(combo)
+                if outcome.entry:
+                    counts[outcome.entry.id] += 1
+                total_draws += 1
 
     counts["__total__"] = total_draws
     return counts

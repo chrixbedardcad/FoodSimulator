@@ -118,7 +118,7 @@ class DishOutcome:
         return self.entry.tier if self.entry else None
 
     def is_terrible(self) -> bool:
-        return self.flavor_pattern == "all_same"
+        return self.entry is None and self.flavor_pattern == "all_same"
 
 
 @dataclass
@@ -221,8 +221,6 @@ class GameData:
 
         cooked = max(int(times_cooked), 0)
         base_multiplier = recipe.base_multiplier + (recipe.delta_multiplier * cooked)
-        if base_multiplier < 0:
-            base_multiplier = 0.0
 
         chef_multiplier = 1.0
         if chefs:
@@ -239,7 +237,7 @@ class GameData:
                     continue
 
         total = base_multiplier * chef_multiplier
-        return total if total > 0 else 0.0
+        return float(total)
 
     def evaluate_dish(self, ingredients: Sequence[Ingredient]) -> DishOutcome:
         if not ingredients:
@@ -275,15 +273,14 @@ class GameData:
             flavor_pattern = "mixed"
 
         entry: Optional[DishMatrixEntry] = None
+        count = len(ingredients)
         multiplier = 1.0
 
-        if flavor_pattern == "all_same":
+        entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
+        if entry:
+            multiplier = float(entry.multiplier)
+        elif flavor_pattern == "all_same":
             multiplier = 0.0
-        else:
-            count = len(ingredients)
-            entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
-            if entry:
-                multiplier = float(entry.multiplier)
 
         dish_value = float(base_value) * multiplier
 

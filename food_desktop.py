@@ -146,7 +146,6 @@ class TurnOutcome:
     flavor_label: str
     family_pattern: str
     flavor_pattern: str
-    terrible_taste: bool
     recipe_name: Optional[str]
     recipe_multiplier: float
     final_score: int
@@ -608,7 +607,6 @@ class GameSession:
             flavor_label=dish.flavor_label,
             family_pattern=dish.family_pattern,
             flavor_pattern=dish.flavor_pattern,
-            terrible_taste=dish.is_terrible(),
             recipe_name=recipe_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
@@ -1486,12 +1484,6 @@ class FoodGameApp:
                 f"Value {Value} × DISH {dish_outcome.entry.name} "
                 f"({format_multiplier(multiplier)}) = {total}"
             )
-        elif dish_outcome.flavor_pattern == "all_same":
-            taste_name = selected[0].taste if selected else "matching taste"
-            summary = (
-                f"Value {Value} × DISH Terrible ({format_multiplier(multiplier)}) = {total}"
-                f" — Horrible, flat taste of {taste_name}"
-            )
         else:
             summary = (
                 f"Value {Value} × DISH {format_multiplier(multiplier)} = {total}"
@@ -1543,10 +1535,8 @@ class FoodGameApp:
                 f"dish {outcome.dish_name}{tier_text}"
                 f" {format_multiplier(outcome.dish_multiplier)}"
             )
-        elif outcome.terrible_taste:
-            notes.append("dish terrible taste (0 pts)")
         else:
-            notes.append("dish x1.00")
+            notes.append(f"dish {format_multiplier(outcome.dish_multiplier)}")
 
         if outcome.recipe_name:
             parts = [
@@ -1562,7 +1552,9 @@ class FoodGameApp:
             notes.append("; ".join(parts))
 
         note_text = f" ({'; '.join(notes)})" if notes else ""
-        entry = f"Turn {outcome.turn_number} +{outcome.final_score} pts{note_text}"
+        entry = (
+            f"Turn {outcome.turn_number} {outcome.final_score:+d} pts{note_text}"
+        )
         self.events_text.configure(state="normal")
         self.events_text.insert("end", f"{entry}\n")
         self.events_text.see("end")
@@ -1685,12 +1677,20 @@ class FoodGameApp:
         )
         heading.pack(anchor="w", pady=(0, 8))
 
+        score_change = outcome.final_score
+        score_text = f"{score_change:+d} pts this turn"
+        highlight_bg = "#ffe9a8"
+        highlight_fg = "#1e2a33"
+        if score_change < 0:
+            highlight_bg = "#fdecea"
+            highlight_fg = "#611a15"
+
         score_highlight = tk.Label(
             content,
-            text=f"+{outcome.final_score} pts this turn",
+            text=score_text,
             font=("Helvetica", 22, "bold"),
-            fg="#1e2a33",
-            bg="#ffe9a8",
+            fg=highlight_fg,
+            bg=highlight_bg,
             padx=24,
             pady=16,
             anchor="center",
@@ -1704,11 +1704,13 @@ class FoodGameApp:
         if outcome.dish_name:
             multiplier_value = f"{outcome.dish_multiplier:.2f}".rstrip("0").rstrip(".")
             indicator_text = f'"{outcome.dish_name}" x {multiplier_value}'
-        elif outcome.terrible_taste:
-            taste_name = outcome.selected[0].taste if outcome.selected else "matching taste"
-            indicator_text = f"Horrible, flat taste of {taste_name}"
-            indicator_bg = "#fdecea"
-            indicator_fg = "#611a15"
+        elif not math.isclose(outcome.dish_multiplier, 1.0):
+            indicator_text = (
+                f"Dish multiplier applied: {format_multiplier(outcome.dish_multiplier)}"
+            )
+            if outcome.dish_multiplier < 1.0:
+                indicator_bg = "#fdecea"
+                indicator_fg = "#611a15"
 
         if indicator_text:
             indicator_container = tk.Frame(
@@ -1781,11 +1783,7 @@ class FoodGameApp:
             f"Family profile: {outcome.family_label} ({family_desc})",
             f"Taste profile: {outcome.flavor_label} ({flavor_desc})",
         ]
-        if outcome.terrible_taste:
-            points_lines.append(
-                "Dish classification: Terrible taste — dish earns no points."
-            )
-        elif outcome.dish_name:
+        if outcome.dish_name:
             tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""
             points_lines.append(
                 "Dish classification: "
@@ -1793,14 +1791,14 @@ class FoodGameApp:
                 f"{format_multiplier(outcome.dish_multiplier)}"
             )
         else:
-            points_lines.append("Dish classification: None — Dish multiplier x1.00")
-
-        if outcome.terrible_taste:
-            points_lines.append("Dish value before recipes: 0")
-        else:
             points_lines.append(
-                f"Dish value before recipes: {outcome.dish_value:.2f}"
+                "Dish classification: None — Dish multiplier "
+                f"{format_multiplier(outcome.dish_multiplier)}"
             )
+
+        points_lines.append(
+            f"Dish value before recipes: {outcome.dish_value:.2f}"
+        )
         if outcome.recipe_name:
             points_lines.append(
                 f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
@@ -1819,12 +1817,20 @@ class FoodGameApp:
                 else:
                     points_lines.append("New recipe added to your cookbook!")
             if outcome.times_cooked_total:
+                times = (
+                    "time"
+                    if outcome.times_cooked_total == 1
+                    else "times"
+                )
                 points_lines.append(
-                    f"Cooked {outcome.recipe_name} {outcome.times_cooked_total} time(s) total."
+                    f"Cooked {outcome.recipe_name} "
+                    f"{outcome.times_cooked_total} {times} total."
                 )
         else:
             points_lines.append("No recipe bonus this turn.")
-        points_lines.append(f"Score gained this turn: {outcome.final_score}")
+        points_lines.append(
+            f"Score gained this turn: {outcome.final_score:+d}"
+        )
 
         chef_hits = (
             f"Chef key ingredients used: {outcome.chef_hits}/"
@@ -2057,22 +2063,20 @@ class FoodGameApp:
             f"Taste profile: {outcome.flavor_label}"
             f" ({outcome.flavor_pattern.replace('_', ' ')})"
         )
-        if outcome.terrible_taste:
-            parts.append("Dish classification: Terrible taste — 0 points awarded.")
-        elif outcome.dish_name:
+        if outcome.dish_name:
             tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""
             parts.append(
                 f"Dish classification: {outcome.dish_name}{tier_text}"
                 f" — Dish multiplier {format_multiplier(outcome.dish_multiplier)}"
             )
         else:
-            parts.append("Dish classification: None — Dish multiplier x1.00")
-        if outcome.terrible_taste:
-            parts.append("Dish value before recipe bonus: 0")
-        else:
             parts.append(
-                f"Dish value before recipe bonus: {outcome.dish_value:.2f}"
+                "Dish classification: None — Dish multiplier "
+                f"{format_multiplier(outcome.dish_multiplier)}"
             )
+        parts.append(
+            f"Dish value before recipe bonus: {outcome.dish_value:.2f}"
+        )
         if outcome.recipe_name:
             parts.append(
                 f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
@@ -2088,12 +2092,10 @@ class FoodGameApp:
                 )
         else:
             parts.append("No recipe completed this turn.")
-        base_text = (
-            f"base Value: {outcome.base_score}"
-            if not outcome.terrible_taste
-            else "no points"
+        base_text = f"base Value: {outcome.base_score}"
+        parts.append(
+            f"Score gained: {outcome.final_score:+d} ({base_text})"
         )
-        parts.append(f"Score gained: {outcome.final_score} ({base_text})")
         parts.append(
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"
         )

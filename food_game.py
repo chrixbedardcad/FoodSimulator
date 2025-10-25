@@ -394,14 +394,11 @@ def score_trio(
             f" — Dish multiplier x{dish.dish_multiplier:.2f}"
         )
     else:
-        if dish.is_terrible():
-            print("Dish classification: Terrible taste! Score reduced to zero.")
-        else:
-            print("Dish classification: None — Dish multiplier x1.00")
-    if not dish.is_terrible():
-        print(f"Dish Value after multiplier: {dish.dish_value:.2f}")
-    else:
-        print("Dish Value after multiplier: 0 (taste penalty)")
+        print(
+            "Dish classification: None"
+            f" — Dish multiplier x{dish.dish_multiplier:.2f}"
+        )
+    print(f"Dish Value after multiplier: {dish.dish_value:.2f}")
     if recipe_name:
         print(f"Recipe completed: {recipe_name}")
         print(f"Recipe multiplier: x{recipe_multiplier:.2f}")
@@ -423,8 +420,8 @@ def score_trio(
             print(f"Cooked {recipe_name} {total_cooked} {times} so far.")
     else:
         print("No recipe completed this turn.")
-    base_text = f"base Value: {Value}" if not dish.is_terrible() else "no points"
-    print(f"Score gained: {final_score} ({base_text})")
+    base_text = f"dish value: {dish.dish_value:.2f}"
+    print(f"Score gained: {final_score:+d} ({base_text})")
     active_names = ", ".join(chef.name for chef in chefs) if chefs else "None"
     print(
         f"Chef key ingredients used: {chef_hits}/{pick_size} (Active: {active_names})\n"

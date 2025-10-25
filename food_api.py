@@ -281,6 +281,8 @@ class GameData:
         alerts: List[str] = []
         count = len(ingredients)
         multiplier = 1.0
+        has_duplicates = False
+        effective_penalty_multiplier = 1.0
 
         entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
         if entry:
@@ -314,6 +316,7 @@ class GameData:
                 duplicate_ids = [key for key, value in counts.items() if value > 1]
 
                 if duplicate_ids:
+                    has_duplicates = True
                     duplicate_messages: List[str] = []
                     per_copy_raw = penalty_rules.get("per_copy_multipliers", {})
                     per_copy_multipliers: Dict[str, float] = {}
@@ -397,6 +400,10 @@ class GameData:
                                 factor = _lookup_multiplier(copy_index)
                             penalized_total += float(ingredient.Value) * factor
                         dish_value = float(penalized_total) * multiplier
+                        if base_value:
+                            effective_penalty_multiplier = (
+                                float(penalized_total) / float(base_value)
+                            )
                     else:
                         penalty_multiplier = 1.0
                         for identifier in duplicate_ids:
@@ -404,14 +411,27 @@ class GameData:
                             factor = _lookup_multiplier(count)
                             penalty_multiplier *= factor
                         dish_value *= penalty_multiplier
+                        effective_penalty_multiplier = penalty_multiplier
 
                     if duplicate_messages:
                         alerts.extend(duplicate_messages)
 
+        if (
+            multiplier == 0.0
+            and has_duplicates
+            and effective_penalty_multiplier < 1.0
+        ):
+            dish_value = float(base_value) * effective_penalty_multiplier
+
+        if base_value:
+            final_multiplier = float(dish_value) / float(base_value)
+        else:
+            final_multiplier = 0.0
+
         return DishOutcome(
             base_value=base_value,
             dish_value=dish_value,
-            dish_multiplier=multiplier,
+            dish_multiplier=final_multiplier,
             family_pattern=family_pattern,
             flavor_pattern=flavor_pattern,
             family_label=describe_family_pattern(family_pattern),

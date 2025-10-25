@@ -61,6 +61,7 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 
 ICON_TARGET_PX = 64
+DIALOG_ICON_TARGET_PX = 40
 
 try:
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -71,7 +72,9 @@ except AttributeError:  # Pillow<9.1 fallback
 _icon_cache: Dict[str, tk.PhotoImage] = {}
 
 
-def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
+def _load_icon(
+    category: str, name: str, *, target_px: Optional[int] = None
+) -> Optional[tk.PhotoImage]:
     if not name:
         return None
 
@@ -80,19 +83,20 @@ def _load_icon(category: str, name: str) -> Optional[tk.PhotoImage]:
     if not filename:
         return None
 
-    cache_key = f"{category}:{name}"
-    if cache_key in _icon_cache:
-        return _icon_cache[cache_key]
-
     icon_path = ICON_ASSET_DIR / filename
     if not icon_path.exists():
         return None
 
+    target = target_px if target_px is not None else ICON_TARGET_PX
+    cache_key = f"{category}:{name}:{target}"
+    if cache_key in _icon_cache:
+        return _icon_cache[cache_key]
+
     with Image.open(icon_path) as source_image:
         working = source_image.convert("RGBA")
         max_side = max(working.size)
-        if max_side > ICON_TARGET_PX:
-            scale = ICON_TARGET_PX / max_side
+        if max_side > target:
+            scale = target / max_side
             new_size = (
                 max(1, int(round(working.width * scale))),
                 max(1, int(round(working.height * scale))),
@@ -208,8 +212,8 @@ class DishMatrixDialog(tk.Toplevel):
     ) -> None:
         super().__init__(master)
         self.title("Dish Matrix Reference")
-        self.geometry("640x620")
-        self.minsize(520, 480)
+        self.geometry("600x560")
+        self.minsize(500, 440)
         self.entries: List[DishMatrixEntry] = list(entries)
         self._on_close = on_close
         self._icon_refs: List[tk.PhotoImage] = []
@@ -217,7 +221,7 @@ class DishMatrixDialog(tk.Toplevel):
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        container = ttk.Frame(self, padding=16)
+        container = ttk.Frame(self, padding=12)
         container.grid(row=0, column=0, sticky="nsew")
         container.columnconfigure(0, weight=1)
         container.rowconfigure(1, weight=1)
@@ -230,17 +234,17 @@ class DishMatrixDialog(tk.Toplevel):
                 "fit the pattern will work."
             ),
             style="Info.TLabel",
-            wraplength=560,
+            wraplength=520,
             justify="left",
         )
         intro.grid(row=0, column=0, columnspan=2, sticky="w")
 
         self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
-        self.canvas.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        self.canvas.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         scrollbar = ttk.Scrollbar(
             container, orient="vertical", command=self.canvas.yview
         )
-        scrollbar.grid(row=1, column=1, sticky="ns", pady=(12, 0))
+        scrollbar.grid(row=1, column=1, sticky="ns", pady=(8, 0))
         self.canvas.configure(yscrollcommand=scrollbar.set)
 
         self.entries_frame = ttk.Frame(self.canvas)
@@ -271,7 +275,7 @@ class DishMatrixDialog(tk.Toplevel):
                 self.entries_frame,
                 text="No dish matrix entries available.",
                 style="Info.TLabel",
-                wraplength=540,
+                wraplength=500,
                 justify="left",
             ).grid(row=0, column=0, sticky="w")
             return
@@ -282,11 +286,11 @@ class DishMatrixDialog(tk.Toplevel):
             row += 1
             if index < len(self.entries) - 1:
                 separator = ttk.Separator(self.entries_frame, orient="horizontal")
-                separator.grid(row=row, column=0, sticky="ew", pady=(8, 12))
+                separator.grid(row=row, column=0, sticky="ew", pady=(6, 10))
                 row += 1
 
     def _build_entry(self, entry: DishMatrixEntry, row: int) -> None:
-        frame = ttk.Frame(self.entries_frame, padding=(0, 4))
+        frame = ttk.Frame(self.entries_frame, padding=(0, 2))
         frame.grid(row=row, column=0, sticky="ew")
         frame.columnconfigure(0, weight=1)
 
@@ -315,17 +319,17 @@ class DishMatrixDialog(tk.Toplevel):
                 f"{entry.tier} tier • {entry.chance:.2%} chance • {count_text}"
             ),
             style="Info.TLabel",
-            wraplength=540,
+            wraplength=500,
             justify="left",
-        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+        ).grid(row=1, column=0, sticky="w", pady=(2, 0))
 
         ttk.Label(
             frame,
             text=entry.description,
             style="Info.TLabel",
-            wraplength=540,
+            wraplength=500,
             justify="left",
-        ).grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ).grid(row=2, column=0, sticky="w", pady=(4, 0))
 
         self._build_pattern_row(
             frame,
@@ -354,39 +358,39 @@ class DishMatrixDialog(tk.Toplevel):
         row: int,
     ) -> None:
         wrapper = ttk.Frame(parent)
-        wrapper.grid(row=row, column=0, sticky="w", pady=(8, 0))
+        wrapper.grid(row=row, column=0, sticky="w", pady=(6, 0))
         dimension = "family" if category == "family" else "taste"
         explanation = _pattern_explanation(dimension, pattern)
         ttk.Label(
             wrapper,
             text=f"{title}: {explanation}",
             style="Info.TLabel",
-            wraplength=420,
+            wraplength=380,
             justify="left",
         ).grid(row=0, column=0, sticky="w")
 
         icons_frame = ttk.Frame(wrapper)
-        icons_frame.grid(row=0, column=1, sticky="w", padx=(12, 0))
+        icons_frame.grid(row=0, column=1, sticky="w", padx=(8, 0))
         if not examples:
             ttk.Label(icons_frame, text="—", style="Info.TLabel").pack(side="left")
             return
 
         for name in examples:
-            icon = _load_icon(category, name)
+            icon = _load_icon(category, name, target_px=DIALOG_ICON_TARGET_PX)
             if icon:
                 label = ttk.Label(icons_frame, image=icon)
                 label.image = icon
-                label.pack(side="left", padx=2)
+                label.pack(side="left", padx=1)
                 self._icon_refs.append(icon)
             else:
                 fallback = ttk.Label(
                     icons_frame,
                     text=name[:3],
                     style="Info.TLabel",
-                    width=5,
+                    width=4,
                     anchor="center",
                 )
-                fallback.pack(side="left", padx=2)
+                fallback.pack(side="left", padx=1)
 
 @dataclass
 class TurnOutcome:

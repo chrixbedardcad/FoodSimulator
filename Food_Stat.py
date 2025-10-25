@@ -1,0 +1,312 @@
+"""Generate statistical report for Food Simulator dish outcomes.
+
+This script simulates ingredient draws and computes the chance of
+producing every entry in the dish matrix under configurable
+conditions. The simulation can use a specific theme and chef roster, or
+fall back to a general pool of all ingredients.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import os
+import random
+from collections import Counter
+from typing import Iterable, List, Optional, Sequence
+
+from food_api import (
+    Chef,
+    DEFAULT_HAND_SIZE,
+    DEFAULT_PICK_SIZE,
+    GameData,
+    Ingredient,
+    build_market_deck,
+    draw_cook,
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Simulate dish chances and export CSV")
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=10000,
+        help="Number of simulated draws to perform (default: 10000)",
+    )
+    parser.add_argument(
+        "--theme",
+        type=str,
+        default=None,
+        help="Name of the theme to use for the ingredient deck",
+    )
+    parser.add_argument(
+        "--chefs",
+        type=str,
+        nargs="*",
+        default=(),
+        help="Chef names to activate during the simulation",
+    )
+    parser.add_argument(
+        "--hand-size",
+        type=int,
+        default=DEFAULT_HAND_SIZE,
+        help="Hand size to simulate (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--pick-size",
+        type=int,
+        default=DEFAULT_PICK_SIZE,
+        help="Number of ingredients selected each draw (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--deck-size",
+        type=int,
+        default=100,
+        help="Number of cards in the simulated deck (default: 100)",
+    )
+    parser.add_argument(
+        "--bias",
+        type=float,
+        default=2.7,
+        help="Bias multiplier for key ingredients when using a theme deck",
+    )
+    parser.add_argument(
+        "--guarantee-prob",
+        type=float,
+        default=0.6,
+        help="Probability that a key ingredient is forced into a pick",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Random seed for reproducibility"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=os.path.join("reports", "food_stats.csv"),
+        help="Path to the CSV report (default: reports/food_stats.csv)",
+    )
+    parser.add_argument(
+        "--ingredients-json",
+        type=str,
+        default=None,
+        help="Override path to ingredients.json",
+    )
+    parser.add_argument(
+        "--recipes-json",
+        type=str,
+        default=None,
+        help="Override path to recipes.json",
+    )
+    parser.add_argument(
+        "--chefs-json",
+        type=str,
+        default=None,
+        help="Override path to chefs.json",
+    )
+    parser.add_argument(
+        "--taste-json",
+        type=str,
+        default=None,
+        help="Override path to taste_matrix.json",
+    )
+    parser.add_argument(
+        "--themes-json",
+        type=str,
+        default=None,
+        help="Override path to themes.json",
+    )
+    parser.add_argument(
+        "--dish-matrix-json",
+        type=str,
+        default=None,
+        help="Override path to dish_matrix.json",
+    )
+    return parser.parse_args()
+
+
+def load_game_data(args: argparse.Namespace) -> GameData:
+    kwargs = {}
+    if args.ingredients_json:
+        kwargs["ingredients_path"] = args.ingredients_json
+    if args.recipes_json:
+        kwargs["recipes_path"] = args.recipes_json
+    if args.chefs_json:
+        kwargs["chefs_path"] = args.chefs_json
+    if args.taste_json:
+        kwargs["taste_path"] = args.taste_json
+    if args.themes_json:
+        kwargs["themes_path"] = args.themes_json
+    if args.dish_matrix_json:
+        kwargs["dish_matrix_path"] = args.dish_matrix_json
+    return GameData.from_json(**kwargs)
+
+
+def resolve_chefs(data: GameData, chef_names: Iterable[str]) -> List[Chef]:
+    lookup = {chef.name: chef for chef in data.chefs}
+    resolved: List[Chef] = []
+    for name in chef_names:
+        chef = lookup.get(name)
+        if chef:
+            resolved.append(chef)
+    return resolved
+
+
+def build_general_deck(
+    data: GameData, deck_size: int, rng: random.Random
+) -> List[Ingredient]:
+    pool = list(data.ingredients.values())
+    if not pool:
+        return []
+    deck: List[Ingredient] = []
+    while len(deck) < deck_size:
+        take = min(deck_size - len(deck), len(pool))
+        deck.extend(rng.sample(pool, take))
+    rng.shuffle(deck)
+    return deck
+
+
+def build_deck(
+    data: GameData,
+    theme_name: Optional[str],
+    chefs: Sequence[Chef],
+    deck_size: int,
+    bias: float,
+    rng: random.Random,
+) -> List[Ingredient]:
+    if theme_name:
+        if theme_name not in data.themes:
+            raise ValueError(f"Unknown theme: {theme_name}")
+        return build_market_deck(
+            data,
+            theme_name,
+            chefs,
+            deck_size=deck_size,
+            bias=bias,
+            rng=rng,
+        )
+    return build_general_deck(data, deck_size, rng)
+
+
+def simulate(
+    data: GameData,
+    theme_name: Optional[str],
+    chefs: Sequence[Chef],
+    iterations: int,
+    hand_size: int,
+    pick_size: int,
+    deck_size: int,
+    bias: float,
+    guarantee_prob: float,
+    rng: random.Random,
+) -> Counter[int | str]:
+    if iterations <= 0:
+        return Counter()
+
+    counts: Counter[int | str] = Counter()
+    total_draws = 0
+    hand: List[Ingredient] = []
+    deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+
+    for _ in range(iterations):
+        if len(deck) < pick_size:
+            deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+            hand = []
+
+        trio, hand, deck = draw_cook(
+            data,
+            hand,
+            deck,
+            chefs,
+            guarantee_prob=guarantee_prob,
+            hand_size=hand_size,
+            pick_size=pick_size,
+            rng=rng,
+        )
+        if not trio:
+            continue
+
+        outcome = data.evaluate_dish(trio)
+        if outcome.entry:
+            counts[outcome.entry.id] += 1
+        total_draws += 1
+
+    counts["__total__"] = total_draws
+    return counts
+
+
+def ensure_output_dir(path: str) -> None:
+    directory = os.path.dirname(os.path.abspath(path))
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
+
+def write_report(
+    data: GameData,
+    counts: Counter,
+    output_path: str,
+    total_draws: int,
+) -> None:
+    ensure_output_dir(output_path)
+    fieldnames = [
+        "id",
+        "name",
+        "min_ingredients",
+        "max_ingredients",
+        "family_pattern",
+        "flavor_pattern",
+        "multiplier",
+        "tier",
+        "chance",
+        "description",
+        "occurrences",
+        "original_chance",
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for entry in data.dish_matrix:
+            count = counts.get(entry.id, 0)
+            chance = (count / total_draws) if total_draws else 0.0
+            writer.writerow(
+                {
+                    "id": entry.id,
+                    "name": entry.name,
+                    "min_ingredients": entry.min_ingredients,
+                    "max_ingredients": entry.max_ingredients,
+                    "family_pattern": entry.family_pattern,
+                    "flavor_pattern": entry.flavor_pattern,
+                    "multiplier": entry.multiplier,
+                    "tier": entry.tier,
+                    "chance": round(chance, 6),
+                    "description": entry.description,
+                    "occurrences": count,
+                    "original_chance": entry.chance,
+                }
+            )
+
+
+def main() -> None:
+    args = parse_args()
+    rng = random.Random(args.seed)
+    data = load_game_data(args)
+    chefs = resolve_chefs(data, args.chefs)
+
+    counts = simulate(
+        data,
+        args.theme,
+        chefs,
+        args.iterations,
+        args.hand_size,
+        args.pick_size,
+        args.deck_size,
+        args.bias,
+        args.guarantee_prob,
+        rng,
+    )
+    total_draws = counts.pop("__total__", 0)
+    write_report(data, counts, args.output, total_draws)
+    print(f"Simulated {total_draws} draws. Report saved to {args.output}.")
+
+
+if __name__ == "__main__":
+    main()

@@ -25,6 +25,18 @@
       "description": "A unique dish expressing one family in multiple taste variations."
     },
     {
+      "id": 12,
+      "name": "Harmony Roll",
+      "min_ingredients": 3,
+      "max_ingredients": 3,
+      "family_pattern": "all_different",
+      "flavor_pattern": "all_same",
+      "multiplier": 4.2,
+      "tier": "Uncommon",
+      "chance": 0.0943,
+      "description": "Three distinct families wrapped in one taste — perfect for sushi-style spreads."
+    },
+    {
       "id": 10,
       "name": "Plain Trio",
       "min_ingredients": 3,

@@ -1,12 +1,12 @@
 id,name,min_ingredients,max_ingredients,family_pattern,flavor_pattern,multiplier,tier,chance,hand_size,pick_size,theme,chefs,description,occurrences,original_chance
-1,Good,3,3,all_different,all_different,1.5,Common,0.192372,6,3,asian,,A simple but well-balanced tasting flight of different families and flavors.,192372,0.999
-2,Signature,3,3,all_same,all_different,2.0,Uncommon,0.022175,6,3,asian,,A unique dish expressing one family in multiple taste variations.,22175,0.659
-10,Monotone Trio,3,3,all_same,all_same,0.35,Dull,0.006629,6,3,asian,,"Three ingredients from the same family and taste, yielding a flat but serviceable plate.",6629,0.512
-3,Creation,4,4,all_same,mixed,2.5,Rare,0.0,6,3,asian,,A crafted composition from a single family with subtle flavor diversity.,0,0.361
-4,Special 4,4,4,all_different,mixed,3.0,Rich,0.0,6,3,asian,,Four distinct families coming together with varied tastes for a rich special.,0,0.274
-5,Fusion,4,4,balanced,all_different,3.5,Rare+,0.0,6,3,asian,,A fusion of two core families and distinct flavors blending cultures and ideas.,0,0.186
-6,Symphony,4,4,all_same,all_different,4.0,Epic,0.0,6,3,asian,,"A perfect flavor ensemble from one family, balanced across all taste tones.",0,0.102
-11,Monotone Quartet,4,4,all_same,all_same,0.25,Dull,0.0,6,3,asian,,"Four matching ingredients that play it safe, resulting in a muted experience.",0,0.421
-7,Feast,5,5,all_different,all_different,4.5,Epic+,0.0,6,3,asian,,A grand abundance of diverse ingredients and flavors from all families.,0,0.079
-8,Grand,5,5,all_same,mixed,4.5,Epic++,0.0,6,3,asian,,"A refined centerpiece dish, unified in family but layered in taste.",0,0.082
-9,Masterpiece,5,5,all_same,all_different,9.0,Legendary,0.0,6,3,asian,,"The ultimate creation — one family, every flavor, pure culinary art.",0,0.0034
+1,Tasting Flight,3,3,all_different,all_different,1.6,Common,0.64468,8,5,asian,,A simple but well-balanced tasting flight of different families and flavors.,64468,0.6376
+2,Signature Trio,3,3,all_same,all_different,4.0,Rare,0.14071,8,5,asian,,A unique dish expressing one family in multiple taste variations.,14071,0.1166
+10,Plain Trio,3,3,all_same,all_same,0.8,Rare,0.06002,8,5,asian,,"Three ingredients from the same family and taste, yielding a flat but serviceable plate.",6002,0.0686
+3,Chef's Plate,4,4,all_same,mixed,5.1,Rare,0.06556,8,5,asian,,A crafted composition from a single family with subtle flavor diversity.,6556,0.0551
+4,Family Quartet,4,4,all_different,mixed,2.0,Uncommon,0.30579,8,5,asian,,Four distinct families coming together with varied tastes for a rich special.,30579,0.3287
+5,Fusion Quartet,4,4,balanced,all_different,2.6,Uncommon,0.28093,8,5,asian,,A fusion of two core families and distinct flavors blending cultures and ideas.,28093,0.2552
+6,Symphony,4,4,all_same,all_different,12.0,Legendary,0.01065,8,5,asian,,"A perfect flavor ensemble from one family, balanced across all taste tones.",1065,0.008
+11,Plain Quartet,4,4,all_same,all_same,0.6,Legendary,0.00253,8,5,asian,,"Four matching ingredients that play it safe, resulting in a muted experience.",253,0.0038
+7,Grand Feast,5,5,all_different,all_different,12.0,Legendary,0.00137,8,5,asian,,A grand abundance of diverse ingredients and flavors from all families.,137,0.0011
+8,Grand Course,5,5,all_same,mixed,12.0,Legendary,0.0065,8,5,asian,,"A refined centerpiece dish, unified in family but layered in taste.",650,0.0052
+9,Masterpiece,5,5,all_same,all_different,12.0,Legendary,0.0001,8,5,asian,,"The ultimate creation — one family, every flavor, pure culinary art.",10,0.0001

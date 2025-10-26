@@ -1698,6 +1698,163 @@ class DeckPopup(tk.Toplevel):
             self._card_views.append(card)
 
 
+class CookbookPopup(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        entries: Mapping[str, CookbookEntry],
+        data: GameData,
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self.data = data
+        self._on_close = on_close
+        self.entries: Dict[str, CookbookEntry] = {}
+        self._image_refs: List[tk.PhotoImage] = []
+
+        self.title("Cookbook")
+        self.geometry("720x560")
+        self.minsize(560, 420)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(2, weight=1)
+
+        heading = ttk.Label(
+            container,
+            text="Recipes you've discovered",
+            style="Header.TLabel",
+            anchor="w",
+        )
+        heading.grid(row=0, column=0, sticky="w")
+
+        self.count_var = tk.StringVar(value="")
+        self.count_label = ttk.Label(
+            container,
+            textvariable=self.count_var,
+            style="Info.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.count_label.grid(row=1, column=0, sticky="w", pady=(6, 8))
+
+        self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        self.canvas.grid(row=2, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(
+            container, orient="vertical", command=self.canvas.yview
+        )
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.entries_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.entries_frame, anchor="nw")
+        self.entries_frame.columnconfigure(0, weight=1)
+        self.entries_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._handle_close)
+        self.bind("<Escape>", lambda _e: self._handle_close())
+
+        self.set_entries(entries)
+
+    def _handle_close(self) -> None:
+        if self._on_close:
+            self._on_close()
+        self.destroy()
+
+    def set_entries(self, entries: Mapping[str, CookbookEntry]) -> None:
+        self.entries = {name: entry.clone() for name, entry in entries.items()}
+        self._render_entries()
+
+    def _render_entries(self) -> None:
+        for child in self.entries_frame.winfo_children():
+            child.destroy()
+        self._image_refs.clear()
+
+        total = len(self.entries)
+        if total == 0:
+            self.count_var.set("No recipes discovered yet.")
+            ttk.Label(
+                self.entries_frame,
+                text="Cook dishes during a run to add recipes to your cookbook.",
+                style="Info.TLabel",
+                wraplength=620,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        plural = "recipe" if total == 1 else "recipes"
+        self.count_var.set(f"{total} {plural} discovered.")
+
+        for row_index, (name, entry) in enumerate(sorted(self.entries.items())):
+            wrapper = ttk.Frame(self.entries_frame, padding=(0, 0))
+            wrapper.grid(row=row_index, column=0, sticky="ew", pady=(0, 14))
+            wrapper.columnconfigure(0, weight=1)
+
+            title_text = name
+            if entry.personal_discovery:
+                title_text += " ⭐"
+            ttk.Label(
+                wrapper,
+                text=title_text,
+                style="Header.TLabel",
+                anchor="w",
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+
+            times = "time" if entry.count == 1 else "times"
+            info_parts = [
+                f"Multiplier {format_multiplier(entry.multiplier)}",
+                f"Cooked {entry.count} {times}",
+            ]
+            if entry.personal_discovery:
+                info_parts.append("Personal discovery")
+            ttk.Label(
+                wrapper,
+                text=" • ".join(info_parts),
+                style="Info.TLabel",
+                wraplength=640,
+                justify="left",
+            ).grid(row=1, column=0, sticky="w", pady=(4, 8))
+
+            ingredients_frame = ttk.Frame(wrapper)
+            ingredients_frame.grid(row=2, column=0, sticky="w")
+
+            for col_index, ingredient_name in enumerate(entry.ingredients):
+                ingredient = self.data.ingredients.get(ingredient_name)
+                if ingredient:
+                    display_name = (
+                        getattr(ingredient, "display_name", None) or ingredient.name
+                    )
+                    image = _load_ingredient_image(ingredient, target_px=96)
+                else:
+                    display_name = ingredient_name
+                    image = None
+
+                if image is not None:
+                    self._image_refs.append(image)
+
+                label = ttk.Label(
+                    ingredients_frame,
+                    text=display_name,
+                    image=image,
+                    compound="top",
+                    style="CardBody.TLabel",
+                    anchor="center",
+                    justify="center",
+                    padding=(6, 0),
+                )
+                label.grid(row=0, column=col_index, padx=6)
+
+        self.canvas.yview_moveto(0)
+
 class FoodGameApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -1713,6 +1870,7 @@ class FoodGameApp:
         self.team_tile: Optional[ChefTeamTile] = None
         self.seasoning_tile: Optional[SeasoningTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
+        self.cookbook_popup: Optional["CookbookPopup"] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
         self.dish_dialog: Optional[DishMatrixDialog] = None
@@ -2097,19 +2255,21 @@ class FoodGameApp:
         for column in range(5):
             resource_frame.columnconfigure(column, weight=1)
 
+        self.cookbook_count_var = tk.StringVar(value="Cookbook\n0 recipes")
         cookbook_icon = _load_button_image("cookbook.png")
         if cookbook_icon is None:
             cookbook_icon = _generate_button_icon("cookbook", "CB")
         self._resource_button_images["cookbook"] = cookbook_icon
         self.cookbook_button = ttk.Button(
             resource_frame,
-            text="Cookbook",
+            textvariable=self.cookbook_count_var,
             image=self._resource_button_images["cookbook"],
             compound="top",
             style="ResourceButton.TButton",
             command=self.show_cookbook_panel,
         )
         self.cookbook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self._update_cookbook_button()
 
         dish_icon = _load_button_image("dishmatrix.png")
         if dish_icon is None:
@@ -2226,8 +2386,12 @@ class FoodGameApp:
             messagebox.showerror("Cannot start run", str(exc))
             return
 
+        cookbook_entries = self.session.get_cookbook()
         if self.cookbook_tile:
-            self.cookbook_tile.set_entries(self.session.get_cookbook())
+            self.cookbook_tile.set_entries(cookbook_entries)
+        self._update_cookbook_button()
+        if self.cookbook_popup and self.cookbook_popup.winfo_exists():
+            self.cookbook_popup.set_entries(cookbook_entries)
         if self.team_tile:
             self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
         if self.seasoning_tile:
@@ -2267,6 +2431,9 @@ class FoodGameApp:
         if self.deck_popup and self.deck_popup.winfo_exists():
             self.deck_popup.destroy()
         self.deck_popup = None
+        if self.cookbook_popup and self.cookbook_popup.winfo_exists():
+            self.cookbook_popup.destroy()
+        self.cookbook_popup = None
         self._close_recruit_dialog()
         self.session = None
         self.selected_indices.clear()
@@ -2288,6 +2455,7 @@ class FoodGameApp:
         self.write_result("Session reset. Configure options and start a new run.")
         if self.cookbook_tile:
             self.cookbook_tile.clear()
+        self._update_cookbook_button()
         if self.team_tile:
             self.team_tile.set_team([], int(self.max_chefs_var.get()))
         if self.seasoning_tile:
@@ -2398,25 +2566,27 @@ class FoodGameApp:
             )
             return
         entries = self.session.get_cookbook()
+        self._update_cookbook_button()
         if not entries:
             messagebox.showinfo(
                 "Cookbook", "No recipes unlocked yet. Cook dishes to discover more."
             )
             return
+        if self.cookbook_popup and self.cookbook_popup.winfo_exists():
+            self.cookbook_popup.set_entries(entries)
+            self.cookbook_popup.lift()
+            self.cookbook_popup.focus_force()
+            return
 
-        lines = []
-        for name, entry in sorted(entries.items()):
-            times = "time" if entry.count == 1 else "times"
-            ingredients = ", ".join(entry.ingredients)
-            multiplier_text = format_multiplier(entry.multiplier)
-            source_note = " (Personal discovery)" if entry.personal_discovery else ""
-            lines.append(
-                f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}{source_note}\n"
-                f"Ingredients: {ingredients}"
-            )
+        def handle_close() -> None:
+            self.cookbook_popup = None
 
-        message = "\n\n".join(lines)
-        messagebox.showinfo("Cookbook", message)
+        self.cookbook_popup = CookbookPopup(
+            self.root, entries, DATA, on_close=handle_close
+        )
+        self.cookbook_popup.transient(self.root)
+        self._center_popup(self.cookbook_popup)
+        self.cookbook_popup.focus_force()
 
     def show_dish_matrix(self) -> None:
         if self.dish_dialog and self.dish_dialog.winfo_exists():
@@ -2493,6 +2663,25 @@ class FoodGameApp:
 
     def _handle_seasoning_selected(self, seasoning: Optional[Seasoning]) -> None:
         self._update_seasoning_button(seasoning)
+
+    def _update_cookbook_button(self) -> None:
+        if not hasattr(self, "cookbook_button"):
+            return
+
+        if not self.session:
+            count = 0
+        else:
+            count = len(self.session.get_cookbook())
+
+        plural = "recipe" if count == 1 else "recipes"
+        self.cookbook_count_var.set(f"Cookbook\n{count} {plural}")
+
+        icon = self._resource_button_images.get("cookbook")
+        if icon is None:
+            icon = _generate_button_icon("cookbook", "CB")
+            self._resource_button_images["cookbook"] = icon
+
+        self.cookbook_button.configure(image=icon)
 
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not hasattr(self, "seasoning_button"):
@@ -2740,8 +2929,12 @@ class FoodGameApp:
         summary = self._format_outcome(outcome)
         self.write_result(summary)
 
+        cookbook_entries = self.session.get_cookbook()
         if self.cookbook_tile:
-            self.cookbook_tile.set_entries(self.session.get_cookbook())
+            self.cookbook_tile.set_entries(cookbook_entries)
+        self._update_cookbook_button()
+        if self.cookbook_popup and self.cookbook_popup.winfo_exists():
+            self.cookbook_popup.set_entries(cookbook_entries)
 
         self.render_hand()
         self.update_status()

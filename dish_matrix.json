@@ -109,6 +109,18 @@
       "description": "Four matching ingredients that play it safe, resulting in a muted experience."
     },
     {
+      "id": 13,
+      "name": "Mosaic Feast",
+      "min_ingredients": 5,
+      "max_ingredients": 5,
+      "family_pattern": "balanced",
+      "flavor_pattern": "all_different",
+      "multiplier": 6.5,
+      "tier": "Legendary",
+      "chance": 0.0189,
+      "description": "Five distinct tastes woven through a patchwork of culinary families."
+    },
+    {
       "id": 7,
       "name": "Grand Feast",
       "min_ingredients": 5,

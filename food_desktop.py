@@ -1945,20 +1945,13 @@ class FoodGameApp:
         if not self.selected_indices:
             messagebox.showwarning(
                 "No selection",
-                "Select an ingredient to discard.",
+                "Select at least one ingredient to discard.",
             )
             return
 
-        if len(self.selected_indices) != 1:
-            messagebox.showinfo(
-                "Discard limit",
-                "Select exactly one ingredient to discard.",
-            )
-            return
-
-        index = next(iter(self.selected_indices))
+        indices = sorted(self.selected_indices)
         try:
-            removed, deck_refreshed = self.session.discard_indices([index])
+            removed, deck_refreshed = self.session.discard_indices(indices)
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Unable to discard ingredient", str(exc))
             return
@@ -1976,7 +1969,8 @@ class FoodGameApp:
             if deck_refreshed:
                 message = f"Discarded {names}. Market deck refreshed."
             else:
-                message = f"Discarded {names} and drew a replacement."
+                replacement_text = "replacements" if len(removed) > 1 else "a replacement"
+                message = f"Discarded {names} and drew {replacement_text}."
         else:
             message = "No ingredient was discarded."
         self.write_result(message)

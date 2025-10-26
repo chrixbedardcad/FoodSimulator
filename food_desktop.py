@@ -738,6 +738,39 @@ class GameSession:
     def get_recipe_hints(self, ingredient: Ingredient) -> List[str]:
         return list(self._ingredient_recipe_map.get(ingredient.name, ()))
 
+    def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
+        if self.finished:
+            raise RuntimeError("The session has already finished.")
+        if not indices:
+            raise ValueError("You must select at least one card to discard.")
+        if len(indices) > self.pick_size:
+            raise ValueError(
+                f"You may discard up to {self.pick_size} cards at a time."
+            )
+
+        unique = sorted(set(indices))
+        if len(unique) != len(indices):
+            raise ValueError("Selections contain duplicates.")
+
+        if any(index < 0 or index >= len(self.hand) for index in unique):
+            raise IndexError("Selection index out of range for the current hand.")
+
+        removed = [self.hand[index] for index in unique]
+        for offset, index in enumerate(unique):
+            self.hand.pop(index - offset)
+
+        deck_refreshed = self._refill_hand()
+
+        if removed:
+            if len(removed) == 1:
+                name = removed[0].name
+                self._push_event(f"Discarded {name} to draw a new ingredient.")
+            else:
+                names = ", ".join(ingredient.name for ingredient in removed)
+                self._push_event(f"Discarded {names} and drew replacements.")
+
+        return removed, deck_refreshed
+
     def play_turn(self, indices: Sequence[int]) -> TurnOutcome:
         if self.finished:
             raise RuntimeError("The session has already finished.")
@@ -1512,6 +1545,7 @@ class FoodGameApp:
         action_frame = ttk.Frame(self.game_frame)
         action_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
 
         self.cook_button = ttk.Button(
             action_frame,
@@ -1519,7 +1553,15 @@ class FoodGameApp:
             command=self.cook_selected,
             state="disabled",
         )
-        self.cook_button.grid(row=0, column=0, sticky="ew")
+        self.cook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        self.discard_button = ttk.Button(
+            action_frame,
+            text="DISCARD",
+            command=self.discard_selected,
+            state="disabled",
+        )
+        self.discard_button.grid(row=0, column=1, sticky="ew")
 
         self.result_text = tk.Text(
             self.game_frame,
@@ -1579,6 +1621,7 @@ class FoodGameApp:
 
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
+        self.discard_button.configure(state="normal")
         self.reset_button.configure(state="normal")
         self.selected_indices.clear()
         self.update_selection_label()
@@ -1606,6 +1649,7 @@ class FoodGameApp:
             f"Active chefs ({self.max_chefs_var.get()} max): —"
         )
         self.cook_button.configure(state="disabled")
+        self.discard_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -1884,6 +1928,7 @@ class FoodGameApp:
 
         if self.session.is_finished():
             self.cook_button.configure(state="disabled")
+            self.discard_button.configure(state="disabled")
             self._set_controls_active(True)
             self._close_recruit_dialog()
             messagebox.showinfo(
@@ -1893,6 +1938,54 @@ class FoodGameApp:
             summary_text = self._final_summary_text()
             if summary_text:
                 self.write_result(summary_text)
+
+    def discard_selected(self) -> None:
+        if not self.session:
+            return
+        if not self.selected_indices:
+            messagebox.showwarning(
+                "No selection",
+                "Select an ingredient to discard.",
+            )
+            return
+
+        if len(self.selected_indices) != 1:
+            messagebox.showinfo(
+                "Discard limit",
+                "Select exactly one ingredient to discard.",
+            )
+            return
+
+        index = next(iter(self.selected_indices))
+        try:
+            removed, deck_refreshed = self.session.discard_indices([index])
+        except Exception as exc:  # pragma: no cover - user feedback path
+            messagebox.showerror("Unable to discard ingredient", str(exc))
+            return
+
+        self.selected_indices.clear()
+        self.update_selection_label()
+        self.render_hand()
+        self.update_status()
+
+        events = self.session.consume_events()
+        self.append_events(events)
+
+        if removed:
+            names = ", ".join(ingredient.name for ingredient in removed)
+            if deck_refreshed:
+                message = f"Discarded {names}. Market deck refreshed."
+            else:
+                message = f"Discarded {names} and drew a replacement."
+        else:
+            message = "No ingredient was discarded."
+        self.write_result(message)
+
+        if self.session.is_finished():
+            self.cook_button.configure(state="disabled")
+            self.discard_button.configure(state="disabled")
+            self._set_controls_active(True)
+            self._close_recruit_dialog()
 
     def show_turn_summary_popup(self, outcome: TurnOutcome) -> None:
         if self.active_popup and self.active_popup.winfo_exists():

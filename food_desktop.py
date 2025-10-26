@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 import random
 import tkinter as tk
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
@@ -679,6 +680,9 @@ class GameSession:
     def get_hand(self) -> Sequence[Ingredient]:
         return list(self.hand)
 
+    def get_remaining_deck(self) -> Sequence[Ingredient]:
+        return list(self.deck)
+
     def get_total_score(self) -> int:
         return self.total_score
 
@@ -1103,19 +1107,28 @@ class CardView(ttk.Frame):
         chef_names: Sequence[str],
         recipe_hints: Sequence[str],
         cookbook_hint: bool,
-        on_click,
+        on_click: Optional[Callable[[int], None]] = None,
+        *,
+        quantity: Optional[int] = None,
     ) -> None:
         super().__init__(master, style="Card.TFrame", padding=(10, 8))
         self.index = index
         self.on_click = on_click
         self.selected = False
         self.cookbook_hint = cookbook_hint
+        self.quantity = quantity
 
         self.columnconfigure(0, weight=1)
 
+        name_text = ingredient.name
+        if quantity and quantity > 1:
+            name_text += f" ×{quantity}"
+        if cookbook_hint:
+            name_text += " 📖"
+
         self.name_label = ttk.Label(
             self,
-            text=f"{ingredient.name}{' 📖' if cookbook_hint else ''}",
+            text=name_text,
             style="CardTitle.TLabel",
             anchor="center",
             justify="center",
@@ -1181,12 +1194,14 @@ class CardView(ttk.Frame):
         )
         self.recipe_label.grid(row=row_index, column=0, sticky="w", pady=(4, 0))
 
-        self.bind("<Button-1>", self._handle_click)
-        for child in self.winfo_children():
-            child.bind("<Button-1>", self._handle_click)
+        if self.on_click:
+            self.bind("<Button-1>", self._handle_click)
+            for child in self.winfo_children():
+                child.bind("<Button-1>", self._handle_click)
 
     def _handle_click(self, _event) -> None:
-        self.on_click(self.index)
+        if self.on_click:
+            self.on_click(self.index)
 
     def set_selected(self, selected: bool) -> None:
         self.selected = selected
@@ -1208,6 +1223,130 @@ class CardView(ttk.Frame):
             self.recipe_label.configure(style=hint_style)
 
 
+class DeckPopup(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        session: GameSession,
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self.session = session
+        self._on_close = on_close
+        self._card_views: List[CardView] = []
+
+        self.title("Ingredient Basket")
+        self.geometry("760x560")
+        self.minsize(520, 400)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(2, weight=1)
+
+        heading = ttk.Label(
+            container,
+            text="Remaining ingredients in your basket",
+            style="Header.TLabel",
+            anchor="w",
+        )
+        heading.grid(row=0, column=0, sticky="w")
+
+        self.count_var = tk.StringVar(value="")
+        self.count_label = ttk.Label(
+            container,
+            textvariable=self.count_var,
+            style="Info.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.count_label.grid(row=1, column=0, sticky="w", pady=(6, 8))
+
+        self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        self.canvas.grid(row=2, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(
+            container, orient="vertical", command=self.canvas.yview
+        )
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.cards_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.cards_frame, anchor="nw")
+        self.cards_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._handle_close)
+        self.bind("<Escape>", lambda _e: self._handle_close())
+
+        self.set_session(session)
+
+    def _handle_close(self) -> None:
+        if self._on_close:
+            self._on_close()
+        self.destroy()
+
+    def set_session(self, session: GameSession) -> None:
+        self.session = session
+        self._render_cards()
+
+    def _render_cards(self) -> None:
+        for child in self.cards_frame.winfo_children():
+            child.destroy()
+        self._card_views.clear()
+
+        if not self.session:
+            self.count_var.set("No run in progress.")
+            return
+
+        deck = list(self.session.get_remaining_deck())
+        total = len(deck)
+        self.count_var.set(f"Cards remaining: {total}")
+
+        if not deck:
+            ttk.Label(
+                self.cards_frame,
+                text="Your basket is empty. Draw or start a new round to refill it.",
+                style="Info.TLabel",
+                wraplength=600,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        counts = Counter()
+        samples: Dict[str, Ingredient] = {}
+        for ingredient in deck:
+            counts[ingredient.name] += 1
+            samples.setdefault(ingredient.name, ingredient)
+
+        sorted_names = sorted(counts.keys(), key=lambda name: name.lower())
+        columns = 3
+        for index, name in enumerate(sorted_names):
+            ingredient = samples[name]
+            count = counts[name]
+            chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
+            recipe_hints = self.session.get_recipe_hints(ingredient)
+            card = CardView(
+                self.cards_frame,
+                index=index,
+                ingredient=ingredient,
+                chef_names=chef_names,
+                recipe_hints=recipe_hints,
+                cookbook_hint=cookbook_hint,
+                on_click=None,
+                quantity=count,
+            )
+            row, column = divmod(index, columns)
+            card.grid(row=row, column=column, sticky="n", padx=8, pady=8)
+            self.cards_frame.columnconfigure(column, weight=1)
+            self._card_views.append(card)
+
+
 class FoodGameApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -1224,6 +1363,7 @@ class FoodGameApp:
         self.team_tile: Optional[ChefTeamTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
+        self.deck_popup: Optional["DeckPopup"] = None
 
         self.hand_sort_modes: Tuple[str, ...] = ("name", "family", "taste")
         self.hand_sort_index = 0
@@ -1546,6 +1686,7 @@ class FoodGameApp:
         action_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
+        action_frame.columnconfigure(2, weight=1)
 
         self.cook_button = ttk.Button(
             action_frame,
@@ -1561,7 +1702,15 @@ class FoodGameApp:
             command=self.discard_selected,
             state="disabled",
         )
-        self.discard_button.grid(row=0, column=1, sticky="ew")
+        self.discard_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+
+        self.deck_button = ttk.Button(
+            action_frame,
+            text="VIEW BASKET",
+            command=self.show_deck_popup,
+            state="disabled",
+        )
+        self.deck_button.grid(row=0, column=2, sticky="ew")
 
         self.result_text = tk.Text(
             self.game_frame,
@@ -1583,6 +1732,9 @@ class FoodGameApp:
         if self.active_popup and self.active_popup.winfo_exists():
             self.active_popup.destroy()
         self.active_popup = None
+        if self.deck_popup and self.deck_popup.winfo_exists():
+            self.deck_popup.destroy()
+        self.deck_popup = None
         self._close_recruit_dialog()
         try:
             theme = self.theme_var.get()
@@ -1622,6 +1774,7 @@ class FoodGameApp:
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
         self.discard_button.configure(state="normal")
+        self.deck_button.configure(state="normal")
         self.reset_button.configure(state="normal")
         self.selected_indices.clear()
         self.update_selection_label()
@@ -1639,6 +1792,9 @@ class FoodGameApp:
         if self.active_popup and self.active_popup.winfo_exists():
             self.active_popup.destroy()
         self.active_popup = None
+        if self.deck_popup and self.deck_popup.winfo_exists():
+            self.deck_popup.destroy()
+        self.deck_popup = None
         self._close_recruit_dialog()
         self.session = None
         self.selected_indices.clear()
@@ -1650,6 +1806,7 @@ class FoodGameApp:
         )
         self.cook_button.configure(state="disabled")
         self.discard_button.configure(state="disabled")
+        self.deck_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -1668,9 +1825,22 @@ class FoodGameApp:
         self.start_button.configure(state="normal" if active else "disabled")
 
     # ----------------- UI updates -----------------
+    def _refresh_deck_popup(self) -> None:
+        if not self.deck_popup:
+            return
+        if self.deck_popup.winfo_exists():
+            if self.session:
+                self.deck_popup.set_session(self.session)
+            else:
+                self.deck_popup.destroy()
+                self.deck_popup = None
+        else:
+            self.deck_popup = None
+
     def render_hand(self) -> None:
         self.clear_hand()
         if not self.session:
+            self._refresh_deck_popup()
             return
 
         hand_with_indices = list(enumerate(self.session.get_hand()))
@@ -1695,6 +1865,7 @@ class FoodGameApp:
 
         self.hand_frame.update_idletasks()
         self.hand_canvas.configure(scrollregion=self.hand_canvas.bbox("all"))
+        self._refresh_deck_popup()
 
     def _sorted_hand(
         self, hand_with_indices: Sequence[Tuple[int, Ingredient]]
@@ -1720,6 +1891,27 @@ class FoodGameApp:
         for view in self.card_views.values():
             view.destroy()
         self.card_views = {}
+
+    def show_deck_popup(self) -> None:
+        if not self.session:
+            messagebox.showinfo(
+                "No run in progress", "Start a run to view your ingredient basket."
+            )
+            return
+
+        if self.deck_popup and self.deck_popup.winfo_exists():
+            self.deck_popup.set_session(self.session)
+            self.deck_popup.lift()
+            self.deck_popup.focus_force()
+            return
+
+        def handle_close() -> None:
+            self.deck_popup = None
+
+        self.deck_popup = DeckPopup(self.root, self.session, on_close=handle_close)
+        self.deck_popup.transient(self.root)
+        self.deck_popup.focus_force()
+        self._center_popup(self.deck_popup)
 
     def toggle_card(self, index: int) -> None:
         if not self.session:

@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--theme",
         type=str,
-        default="Mediterranean",
+        default="Default",
         help="Theme / Market name from themes.json",
     )
     parser.add_argument(

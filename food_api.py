@@ -679,7 +679,7 @@ class SimulationConfig:
 
 def simulate_run(
     data: GameData,
-    theme_name: str = "Mediterranean",
+    theme_name: str = "Default",
     start_chefs: Optional[Sequence[Chef]] = None,
     config: Optional[SimulationConfig] = None,
     rng: Optional[random.Random] = None,
@@ -847,7 +847,7 @@ def summarize_scores(scores: Sequence[float]) -> Tuple[float, float, float, floa
 def simulate_many(
     data: GameData,
     n: int = 200,
-    theme_name: str = "Mediterranean",
+    theme_name: str = "Default",
     seed: Optional[int] = None,
     config: Optional[SimulationConfig] = None,
 ) -> Tuple[Dict[str, object], Counter[str], Counter[str], Counter[str], List[float]]:

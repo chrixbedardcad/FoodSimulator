@@ -25,6 +25,7 @@ DEFAULT_RULES_JSON = "rules.json"
 DEFAULT_RECIPES_JSON = "recipes.json"
 DEFAULT_CHEFS_JSON = "chefs.json"
 DEFAULT_BASKETS_JSON = "basket.json"
+DEFAULT_SEASONINGS_JSON = "seasonings.json"
 
 
 def quantize_multiplier(value: float) -> float:
@@ -45,6 +46,15 @@ class Ingredient:
     taste: str
     Value: int
     family: str
+    display_name: str = ""
+
+
+@dataclass(frozen=True)
+class Seasoning:
+    name: str
+    seasoning_id: str
+    taste: str
+    perk: str
     display_name: str = ""
 
 
@@ -136,6 +146,7 @@ class GameData:
     ingredients: Dict[str, Ingredient]
     recipes: List[Recipe]
     chefs: List[Chef]
+    seasonings: List[Seasoning]
     baskets: Dict[str, List[Tuple[str, int]]]
     taste_matrix: MutableMapping[str, MutableMapping[str, int]]
     dish_matrix: List[DishMatrixEntry]
@@ -171,6 +182,7 @@ class GameData:
         ingredients_path: str = DEFAULT_INGREDIENTS_JSON,
         recipes_path: str = DEFAULT_RECIPES_JSON,
         chefs_path: str = DEFAULT_CHEFS_JSON,
+        seasonings_path: str = DEFAULT_SEASONINGS_JSON,
         taste_path: str = DEFAULT_TASTE_JSON,
         baskets_path: str = DEFAULT_BASKETS_JSON,
         dish_matrix_path: str = DEFAULT_DISH_MATRIX_JSON,
@@ -181,6 +193,7 @@ class GameData:
             ingredients=_load_ingredients(ingredients_path),
             recipes=_load_recipes(recipes_path),
             chefs=_load_chefs(chefs_path),
+            seasonings=_load_seasonings(seasonings_path),
             baskets=_load_baskets(baskets_path),
             taste_matrix=_load_taste_matrix(taste_path),
             dish_matrix=dish_matrix_entries,
@@ -492,6 +505,30 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
         )
         ingredients[name] = ingredient
     return ingredients
+
+
+def _load_seasonings(path: str) -> List[Seasoning]:
+    raw = load_json(path)
+    seasonings: List[Seasoning] = []
+    for entry in raw:
+        name = entry["name"]
+        identifier = (
+            entry.get("seasoning_id")
+            or entry.get("ingredient_id")
+            or f"seasoning.{name.lower()}"
+        )
+        display_name = entry.get("display_name") or name
+        perk = entry.get("perk", "")
+        seasonings.append(
+            Seasoning(
+                name=name,
+                seasoning_id=str(identifier),
+                taste=str(entry.get("taste", "")),
+                perk=str(perk),
+                display_name=str(display_name),
+            )
+        )
+    return seasonings
 
 
 def _load_recipes(path: str) -> List[Recipe]:

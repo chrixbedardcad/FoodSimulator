@@ -28,6 +28,7 @@ from food_api import (
     DEFAULT_CHEFS_JSON,
     DEFAULT_INGREDIENTS_JSON,
     DEFAULT_RECIPES_JSON,
+    DEFAULT_SEASONINGS_JSON,
     DEFAULT_TASTE_JSON,
     DEFAULT_BASKETS_JSON,
     DEFAULT_DISH_MATRIX_JSON,
@@ -35,6 +36,7 @@ from food_api import (
     DishMatrixEntry,
     GameData,
     Ingredient,
+    Seasoning,
     SimulationConfig,
     describe_family_pattern,
     describe_flavor_pattern,
@@ -243,6 +245,7 @@ def _load_game_data() -> GameData:
         ingredients_path=str(ASSET_DIR / DEFAULT_INGREDIENTS_JSON),
         recipes_path=str(ASSET_DIR / DEFAULT_RECIPES_JSON),
         chefs_path=str(ASSET_DIR / DEFAULT_CHEFS_JSON),
+        seasonings_path=str(ASSET_DIR / DEFAULT_SEASONINGS_JSON),
         taste_path=str(ASSET_DIR / DEFAULT_TASTE_JSON),
         baskets_path=str(ASSET_DIR / DEFAULT_BASKETS_JSON),
         dish_matrix_path=str(ASSET_DIR / DEFAULT_DISH_MATRIX_JSON),
@@ -616,6 +619,7 @@ class GameSession:
 
         self.hand: List[Ingredient] = []
         self.deck: List[Ingredient] = []
+        self.seasonings: List[Seasoning] = []
         self._events: List[str] = []
 
         self._cookbook_ingredients: set[str] = set()
@@ -675,10 +679,10 @@ class GameSession:
         self._push_event(
             f"Round {self.round_index}/{self.rounds} begins. Deck shuffled for the team."
         )
-        if not initial and self.available_chefs():
+        if not initial and (self.available_chefs() or self.available_seasonings()):
             self.pending_new_chef_offer = True
             self._push_event(
-                "You may recruit an additional chef before drawing the next hand."
+                "You may recruit an additional chef or claim a seasoning wildcard before drawing the next hand."
             )
         self._refill_hand()
 
@@ -750,11 +754,19 @@ class GameSession:
         active_names = {chef.name for chef in self.chefs}
         return [chef for chef in self.data.chefs if chef.name not in active_names]
 
+    def available_seasonings(self) -> List[Seasoning]:
+        owned = {seasoning.name for seasoning in self.seasonings}
+        return [
+            seasoning
+            for seasoning in self.data.seasonings
+            if seasoning.name not in owned
+        ]
+
     def can_recruit_chef(self) -> bool:
         return (
             not self.finished
             and self.pending_new_chef_offer
-            and bool(self.available_chefs())
+            and (bool(self.available_chefs()) or bool(self.available_seasonings()))
         )
 
     def add_chef(self, chef: Chef) -> None:
@@ -773,10 +785,43 @@ class GameSession:
         )
         self._rebuild_deck_for_new_chef()
 
+    def add_seasoning(self, seasoning: Seasoning) -> None:
+        if any(existing.name == seasoning.name for existing in self.seasonings):
+            raise ValueError(f"{seasoning.display_name or seasoning.name} is already in your pantry.")
+        if self.finished:
+            raise RuntimeError("Cannot add seasonings after the run has finished.")
+        self.seasonings.append(seasoning)
+        self.pending_new_chef_offer = False
+        display_name = seasoning.display_name or seasoning.name
+        perk_text = seasoning.perk.strip()
+        if perk_text:
+            self._push_event(
+                f"{display_name} added to your seasoning rack — {perk_text}"
+            )
+        else:
+            self._push_event(f"{display_name} added to your seasoning rack.")
+
     def skip_chef_recruitment(self) -> None:
         if self.pending_new_chef_offer:
             self.pending_new_chef_offer = False
-            self._push_event("You continue without recruiting an additional chef this round.")
+            self._push_event(
+                "You continue without recruiting an additional chef or seasoning this round."
+            )
+
+    def random_available_chef(self) -> Optional[Chef]:
+        available = self.available_chefs()
+        if not available:
+            return None
+        return self.rng.choice(available)
+
+    def random_available_seasoning(self) -> Optional[Seasoning]:
+        available = self.available_seasonings()
+        if not available:
+            return None
+        return self.rng.choice(available)
+
+    def get_seasonings(self) -> Sequence[Seasoning]:
+        return list(self.seasonings)
 
     def preview_recipe_multiplier(self, recipe_name: Optional[str]) -> float:
         return self.data.recipe_multiplier(
@@ -1153,6 +1198,95 @@ class ChefTeamTile(ttk.Frame):
         self.set_team([], self.max_slots or DEFAULT_MAX_CHEFS)
 
 
+class SeasoningTile(ttk.Frame):
+    def __init__(self, master: tk.Widget) -> None:
+        super().__init__(master, style="Tile.TFrame", padding=(14, 12))
+        self._entry_widgets: list[tk.Widget] = []
+
+        self.columnconfigure(0, weight=1)
+
+        self.header_var = tk.StringVar(value="🧂 Seasonings (0)")
+        self.header_label = ttk.Label(
+            self,
+            textvariable=self.header_var,
+            style="TileHeader.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.header_label.grid(row=0, column=0, sticky="ew")
+
+        self.subtitle_var = tk.StringVar(
+            value="Collect wildcards to cover missing flavors."
+        )
+        self.subtitle_label = ttk.Label(
+            self,
+            textvariable=self.subtitle_var,
+            style="TileSub.TLabel",
+            wraplength=260,
+            justify="left",
+        )
+        self.subtitle_label.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+
+        self.entries_frame = ttk.Frame(self, style="TileBody.TFrame")
+        self.entries_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        self.entries_frame.columnconfigure(0, weight=1)
+
+    def _clear_entries(self) -> None:
+        for widget in self._entry_widgets:
+            widget.destroy()
+        self._entry_widgets.clear()
+
+    def set_seasonings(
+        self, seasonings: Sequence[Seasoning], remaining: int
+    ) -> None:
+        count = len(seasonings)
+        self.header_var.set(f"🧂 Seasonings ({count})")
+        if count == 0:
+            if remaining > 0:
+                self.subtitle_var.set("No seasonings collected yet. Finish rounds to claim one.")
+            else:
+                self.subtitle_var.set("All available seasonings have been collected.")
+        else:
+            if remaining > 0:
+                self.subtitle_var.set(
+                    f"{remaining} seasoning{'s' if remaining != 1 else ''} still waiting to be found."
+                )
+            else:
+                self.subtitle_var.set("Every seasoning wildcard is in your pantry.")
+
+        self._clear_entries()
+        if not seasonings:
+            empty_label = ttk.Label(
+                self.entries_frame,
+                text="Seasonings appear here once you claim them.",
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            empty_label.grid(row=0, column=0, sticky="w")
+            self._entry_widgets.append(empty_label)
+            return
+
+        for index, seasoning in enumerate(seasonings):
+            display_name = seasoning.display_name or seasoning.name
+            text = display_name
+            perk = seasoning.perk.strip()
+            if perk:
+                text += f" — {perk}"
+            label = ttk.Label(
+                self.entries_frame,
+                text=text,
+                style="TileInfo.TLabel",
+                wraplength=260,
+                justify="left",
+            )
+            label.grid(row=index, column=0, sticky="w", pady=(0, 6))
+            self._entry_widgets.append(label)
+
+    def clear(self) -> None:
+        self.set_seasonings([], 0)
+
+
 class CardView(ttk.Frame):
     def __init__(
         self,
@@ -1426,6 +1560,7 @@ class FoodGameApp:
         self.cookbook_tile: Optional[CookbookTile] = None
         self.dish_tile: Optional[DishMatrixTile] = None
         self.team_tile: Optional[ChefTeamTile] = None
+        self.seasoning_tile: Optional[SeasoningTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
@@ -1601,9 +1736,12 @@ class FoodGameApp:
         self.team_tile = ChefTeamTile(self.control_frame)
         self.team_tile.pack(fill="x", pady=(0, 12))
 
+        self.seasoning_tile = SeasoningTile(self.control_frame)
+        self.seasoning_tile.pack(fill="x", pady=(0, 12))
+
         ttk.Label(
             self.control_frame,
-            text="You'll be prompted to recruit chefs once a run begins.",
+            text="You'll be prompted to recruit chefs or claim seasonings once a run begins.",
             style="Info.TLabel",
             wraplength=260,
             justify="left",
@@ -1837,6 +1975,11 @@ class FoodGameApp:
             self.cookbook_tile.set_entries(self.session.get_cookbook())
         if self.team_tile:
             self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
+        if self.seasoning_tile:
+            self.seasoning_tile.set_seasonings(
+                self.session.get_seasonings(),
+                len(self.session.available_seasonings()),
+            )
 
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
@@ -1849,9 +1992,11 @@ class FoodGameApp:
         self.update_status()
         self.clear_events()
         self.append_events(self.session.consume_events())
-        if not self.session.chefs and self.session.available_chefs():
+        if not self.session.chefs and (
+            self.session.available_chefs() or self.session.available_seasonings()
+        ):
             self.session.pending_new_chef_offer = True
-            self.append_events(["Recruit a chef to begin your run."])
+            self.append_events(["Choose a chef or seasoning to begin your run."])
             self.show_recruit_dialog()
         self.write_result("Run started. Select ingredients and press COOK!")
 
@@ -1883,6 +2028,8 @@ class FoodGameApp:
             self.cookbook_tile.clear()
         if self.team_tile:
             self.team_tile.set_team([], int(self.max_chefs_var.get()))
+        if self.seasoning_tile:
+            self.seasoning_tile.clear()
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
@@ -2610,47 +2757,101 @@ class FoodGameApp:
     def show_recruit_dialog(self) -> None:
         if not self.session:
             return
-        available = self.session.available_chefs()
-        if not available:
+        available_chefs = self.session.available_chefs()
+        available_seasonings = self.session.available_seasonings()
+        if not (available_chefs or available_seasonings):
             self.session.skip_chef_recruitment()
             self.append_events(self.session.consume_events())
             return
 
         dialog = tk.Toplevel(self.root)
-        dialog.title("Recruit a Chef")
+        dialog.title("Choose a Reward")
         dialog.transient(self.root)
         dialog.resizable(False, False)
         self.recruit_dialog = dialog
 
         frame = ttk.Frame(dialog, padding=16)
         frame.pack(fill="both", expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
 
         ttk.Label(
             frame,
-            text="Recruit a new chef to join your team this round:",
+            text="Select a new chef or seasoning wildcard to boost your kitchen:",
             justify="left",
+            wraplength=360,
         ).grid(row=0, column=0, sticky="w")
 
-        listbox = tk.Listbox(
-            frame,
-            height=min(len(available), 8),
-            exportselection=False,
-        )
-        for chef in available:
-            listbox.insert("end", chef.name)
-        listbox.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+        tiles_frame = ttk.Frame(frame)
+        tiles_frame.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        tiles_frame.columnconfigure(0, weight=1)
+        tiles_frame.columnconfigure(1, weight=1)
 
-        frame.rowconfigure(1, weight=1)
-        frame.columnconfigure(0, weight=1)
+        chef_tile = ttk.Frame(tiles_frame, style="Tile.TFrame", padding=(14, 12))
+        chef_tile.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
 
-        detail_var = tk.StringVar(value="Select a chef to preview their specialties.")
-        detail_label = ttk.Label(
-            frame,
-            textvariable=detail_var,
-            wraplength=320,
+        ttk.Label(
+            chef_tile,
+            text="👩‍🍳 Recruit Chef",
+            style="TileHeader.TLabel",
+            anchor="w",
+            justify="left",
+        ).pack(anchor="w")
+        chef_desc = ttk.Label(
+            chef_tile,
+            text="Add a random chef to unlock new key ingredients and recipe boosts.",
+            style="TileInfo.TLabel",
+            wraplength=200,
             justify="left",
         )
-        detail_label.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        chef_desc.pack(anchor="w", pady=(8, 0))
+        chef_count_var = tk.StringVar()
+        chef_count_label = ttk.Label(
+            chef_tile,
+            textvariable=chef_count_var,
+            style="TileSub.TLabel",
+            wraplength=200,
+            justify="left",
+        )
+        chef_count_label.pack(anchor="w", pady=(12, 0))
+
+        seasoning_tile = ttk.Frame(tiles_frame, style="Tile.TFrame", padding=(14, 12))
+        seasoning_tile.grid(row=0, column=1, sticky="nsew")
+
+        ttk.Label(
+            seasoning_tile,
+            text="🧂 Claim Seasoning",
+            style="TileHeader.TLabel",
+            anchor="w",
+            justify="left",
+        ).pack(anchor="w")
+        seasoning_desc = ttk.Label(
+            seasoning_tile,
+            text="Draw a random seasoning that can complete any missing taste in a combo.",
+            style="TileInfo.TLabel",
+            wraplength=200,
+            justify="left",
+        )
+        seasoning_desc.pack(anchor="w", pady=(8, 0))
+        seasoning_count_var = tk.StringVar()
+        seasoning_count_label = ttk.Label(
+            seasoning_tile,
+            textvariable=seasoning_count_var,
+            style="TileSub.TLabel",
+            wraplength=200,
+            justify="left",
+        )
+        seasoning_count_label.pack(anchor="w", pady=(12, 0))
+
+        status_var = tk.StringVar(value="")
+        status_label = ttk.Label(
+            frame,
+            textvariable=status_var,
+            style="TileSub.TLabel",
+            wraplength=360,
+            justify="left",
+        )
+        status_label.grid(row=2, column=0, sticky="ew", pady=(12, 0))
 
         button_frame = ttk.Frame(frame)
         button_frame.grid(row=3, column=0, sticky="e", pady=(12, 0))
@@ -2661,27 +2862,103 @@ class FoodGameApp:
             if self.recruit_dialog is dialog:
                 self.recruit_dialog = None
 
-        def format_details(chef: Chef) -> str:
-            recipes = ", ".join(chef.recipe_names) if chef.recipe_names else "None"
-            lines = [f"Signature recipes: {recipes}"]
-            perks = chef.perks.get("recipe_multipliers")
-            if isinstance(perks, Mapping) and perks:
-                bonus_parts: List[str] = []
-                for name, value in perks.items():
-                    try:
-                        bonus_parts.append(f"{name} x{float(value):.2f}")
-                    except (TypeError, ValueError):
-                        continue
-                if bonus_parts:
-                    lines.append("Favorite multipliers: " + ", ".join(bonus_parts))
-            return "\n".join(lines)
+        def set_tile_cursor(tile: tk.Widget, enabled: bool) -> None:
+            cursor = "hand2" if enabled else "X_cursor"
+            try:
+                tile.configure(cursor=cursor)
+            except tk.TclError:
+                pass
+            for child in tile.winfo_children():
+                try:
+                    child.configure(cursor=cursor)
+                except tk.TclError:
+                    continue
 
-        def update_details(_event: Optional[tk.Event] = None) -> None:
-            selection = listbox.curselection()
-            if not selection:
-                detail_var.set("Select a chef to preview their specialties.")
+        def refresh_tile_states() -> None:
+            if not self.session:
                 return
-            detail_var.set(format_details(available[selection[0]]))
+            chef_remaining = len(self.session.available_chefs())
+            seasoning_remaining = len(self.session.available_seasonings())
+            if chef_remaining:
+                chef_count_var.set(f"{chef_remaining} chef{'s' if chef_remaining != 1 else ''} available.")
+            else:
+                chef_count_var.set("All chefs recruited.")
+            if seasoning_remaining:
+                seasoning_count_var.set(
+                    f"{seasoning_remaining} seasoning{'s' if seasoning_remaining != 1 else ''} remaining."
+                )
+            else:
+                seasoning_count_var.set("All seasonings collected.")
+            set_tile_cursor(chef_tile, chef_remaining > 0)
+            set_tile_cursor(seasoning_tile, seasoning_remaining > 0)
+
+        def choose_chef() -> None:
+            if not self.session:
+                return
+            chef = self.session.random_available_chef()
+            if not chef:
+                status_var.set("All chefs have already joined your team.")
+                refresh_tile_states()
+                return
+            try:
+                self.session.add_chef(chef)
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Cannot recruit chef", str(exc))
+                close_dialog()
+                return
+            self.selected_indices.clear()
+            self.update_selection_label()
+            self.render_hand()
+            self.update_status()
+            if self.cookbook_tile:
+                self.cookbook_tile.set_entries(self.session.get_cookbook())
+            if self.team_tile:
+                self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
+            if self.seasoning_tile:
+                self.seasoning_tile.set_seasonings(
+                    self.session.get_seasonings(),
+                    len(self.session.available_seasonings()),
+                )
+            self.append_events(self.session.consume_events())
+            messagebox.showinfo("Chef Recruited", f"{chef.name} joins your team!")
+            close_dialog()
+
+        def choose_seasoning() -> None:
+            if not self.session:
+                return
+            seasoning = self.session.random_available_seasoning()
+            if not seasoning:
+                status_var.set("All seasonings have already been collected.")
+                refresh_tile_states()
+                return
+            try:
+                self.session.add_seasoning(seasoning)
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Cannot add seasoning", str(exc))
+                close_dialog()
+                return
+            if self.seasoning_tile:
+                self.seasoning_tile.set_seasonings(
+                    self.session.get_seasonings(),
+                    len(self.session.available_seasonings()),
+                )
+            self.append_events(self.session.consume_events())
+            display_name = seasoning.display_name or seasoning.name
+            perk_text = seasoning.perk.strip()
+            if perk_text:
+                message = f"You secured {display_name}!\n\n{perk_text}"
+            else:
+                message = f"You secured {display_name}!"
+            messagebox.showinfo("Seasoning Collected", message)
+            close_dialog()
+
+        def make_clickable(tile: tk.Widget, command: Callable[[], None]) -> None:
+            def handler(_event: tk.Event) -> None:
+                command()
+
+            tile.bind("<Button-1>", handler)
+            for child in tile.winfo_children():
+                child.bind("<Button-1>", handler)
 
         def on_skip() -> None:
             if self.session:
@@ -2689,44 +2966,16 @@ class FoodGameApp:
                 self.append_events(self.session.consume_events())
             close_dialog()
 
-        def on_recruit() -> None:
-            selection = listbox.curselection()
-            if not selection:
-                messagebox.showinfo(
-                    "Recruit a Chef", "Select a chef before recruiting."
-                )
-                return
-            chef = available[selection[0]]
-            try:
-                self.session.add_chef(chef)
-            except Exception as exc:  # pragma: no cover - user feedback path
-                messagebox.showerror("Cannot recruit chef", str(exc))
-                close_dialog()
-                return
-            close_dialog()
-            self.selected_indices.clear()
-            self.update_selection_label()
-            self.render_hand()
-            self.update_status()
-            self.append_events(self.session.consume_events())
-            if self.cookbook_tile:
-                self.cookbook_tile.set_entries(self.session.get_cookbook())
-            if self.team_tile:
-                self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
+        make_clickable(chef_tile, choose_chef)
+        make_clickable(seasoning_tile, choose_seasoning)
 
-        recruit_button = ttk.Button(button_frame, text="Recruit", command=on_recruit)
-        recruit_button.grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(button_frame, text="Skip", command=on_skip).grid(row=0, column=1)
+        ttk.Button(button_frame, text="Skip", command=on_skip).grid(row=0, column=0)
 
-        listbox.bind("<<ListboxSelect>>", update_details)
-        if available:
-            listbox.selection_set(0)
-            update_details()
+        refresh_tile_states()
 
         dialog.protocol("WM_DELETE_WINDOW", on_skip)
         dialog.bind("<Escape>", lambda _e: on_skip())
         dialog.grab_set()
-        listbox.focus_set()
         self._center_popup(dialog)
 
     def _format_outcome(self, outcome: TurnOutcome) -> str:

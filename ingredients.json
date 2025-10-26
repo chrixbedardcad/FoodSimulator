@@ -8,14 +8,6 @@
     "family": "Vegetable"
   },
   {
-    "name": "Parmesan",
-    "display_name": "Parmesan",
-    "ingredient_id": "ing.parmesan",
-    "taste": "Umami",
-    "Value": 18,
-    "family": "Dairy"
-  },
-  {
     "name": "Egg",
     "display_name": "Egg",
     "ingredient_id": "ing.egg",

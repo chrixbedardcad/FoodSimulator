@@ -607,20 +607,13 @@ class DishMatrixTile(ttk.Frame):
             justify="left",
         ).grid(row=1, column=0, sticky="w", pady=(4, 8))
 
-        ttk.Button(
-            self,
-            text="View Dish Matrix",
-            style="TileAction.TButton",
-            command=self.open_dialog,
-        ).grid(row=2, column=0, sticky="ew")
-
         ttk.Label(
             self,
-            text="Use the pop-up guide to match families and tastes for bonuses.",
+            text="Use the resource bar to open the pop-up guide and match families with tastes for bonuses.",
             style="TileInfo.TLabel",
             wraplength=260,
             justify="left",
-        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ).grid(row=2, column=0, sticky="w", pady=(8, 0))
 
     def open_dialog(self) -> None:
         if self.dialog and self.dialog.winfo_exists():
@@ -1731,7 +1724,7 @@ class FoodGameApp:
         )
 
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
-        self._seasoning_button_image: Optional[tk.PhotoImage] = None
+        self._action_button_images: Dict[str, tk.PhotoImage] = {}
 
         self._init_styles()
         self._build_layout()
@@ -2087,23 +2080,37 @@ class FoodGameApp:
 
         self.cook_button = ttk.Button(
             action_frame,
-            text="COOK",
+            text="Cook",
             command=self.cook_selected,
             state="disabled",
+            compound="left",
         )
         self.cook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
+        cook_icon = _load_button_image("cook.png", target_px=52)
+        if cook_icon is None:
+            cook_icon = _generate_button_icon("cook", "CK", size=64)
+        self._action_button_images["cook"] = cook_icon
+        self.cook_button.configure(image=cook_icon)
+
         self.discard_button = ttk.Button(
             action_frame,
-            text="DISCARD",
+            text="Discard",
             command=self.discard_selected,
             state="disabled",
+            compound="left",
         )
         self.discard_button.grid(row=0, column=1, sticky="ew")
 
+        discard_icon = _load_button_image("discard.png", target_px=52)
+        if discard_icon is None:
+            discard_icon = _generate_button_icon("discard", "DC", size=64)
+        self._action_button_images["discard"] = discard_icon
+        self.discard_button.configure(image=discard_icon)
+
         resource_frame = ttk.Frame(action_frame)
         resource_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-        for column in range(4):
+        for column in range(5):
             resource_frame.columnconfigure(column, weight=1)
 
         cookbook_icon = _load_button_image("cookbook.png")
@@ -2120,7 +2127,10 @@ class FoodGameApp:
         )
         self.cookbook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
 
-        self._resource_button_images["dish"] = _generate_button_icon("dish", "DM")
+        dish_icon = _load_button_image("dishmatrix.png")
+        if dish_icon is None:
+            dish_icon = _generate_button_icon("dish", "DM")
+        self._resource_button_images["dish"] = dish_icon
         self.dish_matrix_button = ttk.Button(
             resource_frame,
             text="Dish Matrix",
@@ -2131,19 +2141,25 @@ class FoodGameApp:
         )
         self.dish_matrix_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
 
+        seasoning_icon = _load_button_image("seasoning.png")
+        if seasoning_icon is None:
+            seasoning_icon = _generate_button_icon("seasoning", "SN")
+        self._resource_button_images["seasoning"] = seasoning_icon
         self.seasoning_button = ttk.Button(
             resource_frame,
-            text="Seasonings",
+            text="Seasonings\nNone",
+            image=self._resource_button_images["seasoning"],
             compound="top",
             style="ResourceButton.TButton",
             command=self.show_selected_seasoning_info,
             state="disabled",
         )
         self.seasoning_button.grid(row=0, column=2, sticky="ew", padx=(0, 6))
-        self._seasoning_button_image = _load_seasoning_icon(None)
-        self.seasoning_button.configure(image=self._seasoning_button_image)
 
-        self._resource_button_images["basket"] = _generate_button_icon("basket", "BK")
+        basket_icon = _load_button_image("basket.png")
+        if basket_icon is None:
+            basket_icon = _generate_button_icon("basket", "BK")
+        self._resource_button_images["basket"] = basket_icon
         self.basket_button = ttk.Button(
             resource_frame,
             text="Basket",
@@ -2153,8 +2169,24 @@ class FoodGameApp:
             command=self.show_deck_popup,
             state="disabled",
         )
-        self.basket_button.grid(row=0, column=3, sticky="ew")
+        self.basket_button.grid(row=0, column=3, sticky="ew", padx=(0, 6))
+
+        chef_icon = _load_button_image("chefs.png")
+        if chef_icon is None:
+            chef_icon = _generate_button_icon("chef", "CF")
+        self._resource_button_images["chef"] = chef_icon
+        self.chef_button = ttk.Button(
+            resource_frame,
+            text="Chefs\n0/0",
+            image=self._resource_button_images["chef"],
+            compound="top",
+            style="ResourceButton.TButton",
+            command=self.show_chef_team,
+            state="disabled",
+        )
+        self.chef_button.grid(row=0, column=4, sticky="ew")
         self._update_seasoning_button(None)
+        self._update_chef_button()
 
         self.result_text = tk.Text(
             self.game_frame,
@@ -2225,6 +2257,7 @@ class FoodGameApp:
         self.discard_button.configure(state="normal")
         self.basket_button.configure(state="normal")
         self.seasoning_button.configure(state="normal")
+        self.chef_button.configure(state="normal")
         self.reset_button.configure(state="normal")
         self.selected_indices.clear()
         self.update_selection_label()
@@ -2232,10 +2265,13 @@ class FoodGameApp:
         self.update_status()
         self.clear_events()
         self.append_events(self.session.consume_events())
+        self._update_seasoning_button(None)
+        self._update_chef_button()
         if not self.session.chefs and (
             self.session.available_chefs() or self.session.available_seasonings()
         ):
             self.session.pending_new_chef_offer = True
+            self._update_chef_button()
             self.append_events(["Choose a chef or seasoning to begin your run."])
             self.show_recruit_dialog()
         self.write_result("Run started. Select ingredients and press COOK!")
@@ -2260,6 +2296,7 @@ class FoodGameApp:
         self.discard_button.configure(state="disabled")
         self.basket_button.configure(state="disabled")
         self.seasoning_button.configure(state="disabled")
+        self.chef_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -2271,6 +2308,8 @@ class FoodGameApp:
             self.team_tile.set_team([], int(self.max_chefs_var.get()))
         if self.seasoning_tile:
             self.seasoning_tile.clear()
+        self._update_seasoning_button(None)
+        self._update_chef_button()
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
@@ -2396,6 +2435,32 @@ class FoodGameApp:
         message = f"Taste: {taste}\n\nPerk:\n{perk}"
         messagebox.showinfo(display_name, message)
 
+    def show_chef_team(self) -> None:
+        self._update_chef_button()
+        if not self.session:
+            messagebox.showinfo(
+                "Chef Team", "Start a run to recruit chefs and view your roster."
+            )
+            return
+        if self.session.can_recruit_chef():
+            self.show_recruit_dialog()
+            return
+
+        if not self.session.chefs:
+            message = "No chefs recruited yet. Complete a cook to earn a new offer."
+        else:
+            lines = ["Active chefs:"]
+            for chef in self.session.chefs:
+                recipes = (
+                    ", ".join(chef.recipe_names)
+                    if getattr(chef, "recipe_names", None)
+                    else "No signature recipes"
+                )
+                lines.append(f"• {chef.name} — {recipes}")
+            message = "\n".join(lines)
+
+        messagebox.showinfo("Chef Team", message)
+
     def _handle_seasoning_selected(self, seasoning: Optional[Seasoning]) -> None:
         self._update_seasoning_button(seasoning)
 
@@ -2404,15 +2469,42 @@ class FoodGameApp:
             return
         if seasoning is None and self.seasoning_tile:
             seasoning = self.seasoning_tile.get_selected_seasoning()
+
         if seasoning:
             display_name = seasoning.display_name or seasoning.name
             text = f"Seasonings\n{display_name}"
-            icon = _load_seasoning_icon(seasoning)
+        elif self.session and self.session.get_seasonings():
+            text = "Seasonings\nMultiple"
         else:
             text = "Seasonings\nNone"
-            icon = _load_seasoning_icon(None)
-        self._seasoning_button_image = icon
-        self.seasoning_button.configure(image=self._seasoning_button_image, text=text)
+
+        icon = self._resource_button_images.get("seasoning")
+        if icon is None:
+            icon = _generate_button_icon("seasoning", "SN")
+            self._resource_button_images["seasoning"] = icon
+
+        self.seasoning_button.configure(image=icon, text=text)
+
+    def _update_chef_button(self) -> None:
+        if not hasattr(self, "chef_button"):
+            return
+
+        if not self.session:
+            text = "Chefs\n0/0"
+        else:
+            count = len(self.session.chefs)
+            max_slots = self.session.max_chefs
+            if self.session.can_recruit_chef():
+                text = "Chefs\nRecruit!"
+            else:
+                text = f"Chefs\n{count}/{max_slots}"
+
+        icon = self._resource_button_images.get("chef")
+        if icon is None:
+            icon = _generate_button_icon("chef", "CF")
+            self._resource_button_images["chef"] = icon
+
+        self.chef_button.configure(image=icon, text=text)
 
     def toggle_card(self, index: int) -> None:
         if not self.session:
@@ -2500,6 +2592,8 @@ class FoodGameApp:
         self.chefs_var.set(
             f"Active chefs ({self.session.max_chefs} max): {chef_names}"
         )
+        self._update_chef_button()
+        self._update_seasoning_button()
 
     def append_events(self, messages: Iterable[str]) -> None:
         if not messages:
@@ -2624,6 +2718,7 @@ class FoodGameApp:
             self.discard_button.configure(state="disabled")
             self.basket_button.configure(state="disabled")
             self.seasoning_button.configure(state="disabled")
+            self.chef_button.configure(state="disabled")
             self._set_controls_active(True)
             self._close_recruit_dialog()
             messagebox.showinfo(
@@ -2675,6 +2770,7 @@ class FoodGameApp:
             self.discard_button.configure(state="disabled")
             self.basket_button.configure(state="disabled")
             self.seasoning_button.configure(state="disabled")
+            self.chef_button.configure(state="disabled")
             self._set_controls_active(True)
             self._close_recruit_dialog()
 
@@ -3038,11 +3134,15 @@ class FoodGameApp:
 
     def maybe_prompt_new_chef(self) -> None:
         if not self.session or self.session.is_finished():
+            self._update_chef_button()
             return
         if not self.session.can_recruit_chef():
+            self._update_chef_button()
             return
         if self.recruit_dialog and self.recruit_dialog.winfo_exists():
+            self._update_chef_button()
             return
+        self._update_chef_button()
         self.show_recruit_dialog()
 
     def show_recruit_dialog(self) -> None:
@@ -3211,6 +3311,8 @@ class FoodGameApp:
                     len(self.session.available_seasonings()),
                 )
             self.append_events(self.session.consume_events())
+            self._update_chef_button()
+            self._update_seasoning_button()
             messagebox.showinfo("Chef Recruited", f"{chef.name} joins your team!")
             close_dialog()
 
@@ -3240,6 +3342,8 @@ class FoodGameApp:
                 message = f"You secured {display_name}!\n\n{perk_text}"
             else:
                 message = f"You secured {display_name}!"
+            self._update_seasoning_button(seasoning)
+            self._update_chef_button()
             messagebox.showinfo("Seasoning Collected", message)
             close_dialog()
 
@@ -3255,6 +3359,7 @@ class FoodGameApp:
             if self.session:
                 self.session.skip_chef_recruitment()
                 self.append_events(self.session.consume_events())
+                self._update_chef_button()
             close_dialog()
 
         make_clickable(chef_tile, choose_chef)

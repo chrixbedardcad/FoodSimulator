@@ -1,4 +1,4 @@
-id,name,min_ingredients,max_ingredients,family_pattern,flavor_pattern,multiplier,tier,chance,hand_size,pick_size,theme,chefs,description,occurrences,original_chance
+id,name,min_ingredients,max_ingredients,family_pattern,flavor_pattern,multiplier,tier,chance,hand_size,pick_size,basket,chefs,description,occurrences,original_chance
 1,Tasting Flight,3,3,all_different,all_different,1.6,Common,0.64468,8,5,asian,,A simple but well-balanced tasting flight of different families and flavors.,64468,0.6376
 2,Signature Trio,3,3,all_same,all_different,4.0,Rare,0.14071,8,5,asian,,A unique dish expressing one family in multiple taste variations.,14071,0.1166
 10,Plain Trio,3,3,all_same,all_same,0.8,Rare,0.06002,8,5,asian,,"Three ingredients from the same family and taste, yielding a flat but serviceable plate.",6002,0.0686

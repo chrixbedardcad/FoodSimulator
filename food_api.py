@@ -24,7 +24,7 @@ DEFAULT_DISH_MATRIX_JSON = "dish_matrix.json"
 DEFAULT_RULES_JSON = "rules.json"
 DEFAULT_RECIPES_JSON = "recipes.json"
 DEFAULT_CHEFS_JSON = "chefs.json"
-DEFAULT_THEMES_JSON = "themes.json"
+DEFAULT_BASKETS_JSON = "basket.json"
 
 
 def quantize_multiplier(value: float) -> float:
@@ -135,7 +135,7 @@ class GameData:
     ingredients: Dict[str, Ingredient]
     recipes: List[Recipe]
     chefs: List[Chef]
-    themes: Dict[str, List[Tuple[str, int]]]
+    baskets: Dict[str, List[Tuple[str, int]]]
     taste_matrix: MutableMapping[str, MutableMapping[str, int]]
     dish_matrix: List[DishMatrixEntry]
     rules: Mapping[str, object] = field(default_factory=dict)
@@ -171,7 +171,7 @@ class GameData:
         recipes_path: str = DEFAULT_RECIPES_JSON,
         chefs_path: str = DEFAULT_CHEFS_JSON,
         taste_path: str = DEFAULT_TASTE_JSON,
-        themes_path: str = DEFAULT_THEMES_JSON,
+        baskets_path: str = DEFAULT_BASKETS_JSON,
         dish_matrix_path: str = DEFAULT_DISH_MATRIX_JSON,
         rules_path: Optional[str] = DEFAULT_RULES_JSON,
     ) -> "GameData":
@@ -180,7 +180,7 @@ class GameData:
             ingredients=_load_ingredients(ingredients_path),
             recipes=_load_recipes(recipes_path),
             chefs=_load_chefs(chefs_path),
-            themes=_load_themes(themes_path),
+            baskets=_load_baskets(baskets_path),
             taste_matrix=_load_taste_matrix(taste_path),
             dish_matrix=dish_matrix_entries,
             rules=_load_rules(rules_path) if rules_path else {},
@@ -558,11 +558,11 @@ def _load_rules(path: Optional[str]) -> Mapping[str, object]:
     return {}
 
 
-def _load_themes(path: str):
+def _load_baskets(path: str):
     raw = load_json(path)
     fixed: Dict[str, List[Tuple[str, int]]] = {}
-    for theme_name, items in raw.items():
-        fixed[theme_name] = [
+    for basket_name, items in raw.items():
+        fixed[basket_name] = [
             (item["ingredient"], int(item["copies"])) for item in items
         ]
     return fixed
@@ -575,17 +575,17 @@ TRIO_SIZE = 3
 
 def build_market_deck(
     data: GameData,
-    theme_name: str,
+    basket_name: str,
     chefs: Sequence[Chef],
     deck_size: int = 100,
     bias: float = 2.7,
     rng: Optional[random.Random] = None,
 ) -> List[Ingredient]:
     rng = rng or random
-    theme_pool = data.themes[theme_name]
+    basket_pool = data.baskets[basket_name]
     keyset = data.chefs_key_ingredients(chefs)
     weighted: List[Ingredient] = []
-    for ingredient_name, copies in theme_pool:
+    for ingredient_name, copies in basket_pool:
         ingredient = data.ingredients.get(ingredient_name)
         if not ingredient:
             continue
@@ -689,7 +689,7 @@ class SimulationConfig:
 
 def simulate_run(
     data: GameData,
-    theme_name: str = "Default",
+    basket_name: str = "Basic",
     start_chefs: Optional[Sequence[Chef]] = None,
     config: Optional[SimulationConfig] = None,
     rng: Optional[random.Random] = None,
@@ -726,7 +726,7 @@ def simulate_run(
     recipe_counts: Counter[str] = Counter()
     cookbook: Dict[str, Tuple[str, ...]] = {}
 
-    deck = build_market_deck(data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng)
+    deck = build_market_deck(data, basket_name, active_chefs, cfg.deck_size, cfg.bias, rng)
     hand: List[Ingredient] = []
     hand, deck = _refill_hand(hand, deck, cfg.hand_size)
     current_keys = data.chefs_key_ingredients(active_chefs)
@@ -743,7 +743,7 @@ def simulate_run(
             if len(hand) < pick_size:
                 if len(deck) < pick_size:
                     deck = build_market_deck(
-                        data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
+                        data, basket_name, active_chefs, cfg.deck_size, cfg.bias, rng
                     )
                     draws = 0
                 hand, deck = _refill_hand(hand, deck, cfg.hand_size)
@@ -752,7 +752,7 @@ def simulate_run(
 
             if len(deck) < pick_size or draws >= cfg.reshuffle_every:
                 deck = build_market_deck(
-                    data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng
+                    data, basket_name, active_chefs, cfg.deck_size, cfg.bias, rng
                 )
                 draws = 0
                 hand, deck = _refill_hand(hand, deck, cfg.hand_size)
@@ -811,7 +811,9 @@ def simulate_run(
         cumulative_total += round_total
         cumulative_scores.append(cumulative_total)
 
-        deck = build_market_deck(data, theme_name, active_chefs, cfg.deck_size, cfg.bias, rng)
+        deck = build_market_deck(
+            data, basket_name, active_chefs, cfg.deck_size, cfg.bias, rng
+        )
         hand = []
         hand, deck = _refill_hand(hand, deck, cfg.hand_size)
         current_keys = data.chefs_key_ingredients(active_chefs)
@@ -857,7 +859,7 @@ def summarize_scores(scores: Sequence[float]) -> Tuple[float, float, float, floa
 def simulate_many(
     data: GameData,
     n: int = 200,
-    theme_name: str = "Default",
+    basket_name: str = "Basic",
     seed: Optional[int] = None,
     config: Optional[SimulationConfig] = None,
 ) -> Tuple[Dict[str, object], Counter[str], Counter[str], Counter[str], List[float]]:
@@ -876,7 +878,7 @@ def simulate_many(
     cumulative_score_totals: List[float] = [0.0] * cfg.rounds
 
     for _ in range(n):
-        result = simulate_run(data, theme_name=theme_name, config=cfg, rng=rng)
+        result = simulate_run(data, basket_name=basket_name, config=cfg, rng=rng)
         score = float(result["score"])
         scores.append(score)
         mastered = result["mastered"]
@@ -918,7 +920,7 @@ def simulate_many(
 
     summary = {
         "runs": n,
-        "theme": theme_name,
+        "basket": basket_name,
         "seed": seed,
         "rounds": cfg.rounds,
         "cooks_per_round": cfg.cooks,

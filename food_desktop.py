@@ -1109,7 +1109,8 @@ class CardView(ttk.Frame):
 
         self.columnconfigure(0, weight=1)
 
-        name_text = ingredient.name
+        display_name = getattr(ingredient, "display_name", None) or ingredient.name
+        name_text = display_name
         if quantity and quantity > 1:
             name_text += f" ×{quantity}"
         if cookbook_hint:

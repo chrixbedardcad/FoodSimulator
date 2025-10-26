@@ -1,4 +1,42 @@
 {
+  "Default": [
+    {
+      "ingredient": "Tomato",
+      "copies": 4
+    },
+    {
+      "ingredient": "Parmesan",
+      "copies": 4
+    },
+    {
+      "ingredient": "Basil",
+      "copies": 4
+    },
+    {
+      "ingredient": "Pasta",
+      "copies": 4
+    },
+    {
+      "ingredient": "Egg",
+      "copies": 4
+    },
+    {
+      "ingredient": "Bacon",
+      "copies": 4
+    },
+    {
+      "ingredient": "Lemon",
+      "copies": 4
+    },
+    {
+      "ingredient": "Sugar",
+      "copies": 4
+    },
+    {
+      "ingredient": "Butter",
+      "copies": 4
+    }
+  ],
   "Mediterranean": [
     {
       "ingredient": "Tomato",

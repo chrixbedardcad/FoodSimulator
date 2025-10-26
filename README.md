@@ -71,7 +71,7 @@ Key CLI flags:
 |------|-------------|
 | `--nbplay` | Number of full game plays to simulate; each play chains `--runs` runs (default `1`). |
 | `--runs` | Number of runs executed within each play (default `200`). |
-| `--theme` | Market/theme name drawn from `themes.json` (default `Mediterranean`). |
+| `--theme` | Market/theme name drawn from `themes.json` (default `Default`). |
 | `--out` | Output directory for generated reports (default `reports/`). |
 | `--seed` | RNG seed. When omitted a random seed is chosen and printed for reproducibility. |
 | `--rounds` | Rounds per run; each round deals fresh hands (default `3`). |
@@ -84,6 +84,10 @@ Key CLI flags:
 `cooks-per-round` this mirrors the round/cook structure available in `food_game.py`.
 
 ### How rounds and cooks shape a run
+
+The starter `Default` theme keeps the deck to nine core ingredients that overlap across
+Caprese, Carbonara, and LemonTart, helping new players discover rewarding trios within
+their first few rounds before exploring the larger themed markets.
 
 Every simulated run (and every interactive session) uses the same nested loop:
 

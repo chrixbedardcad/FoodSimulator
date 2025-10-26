@@ -18,6 +18,7 @@ def _sample_cards() -> dict[str, Ingredient]:
             taste="Sour",
             Value=22,
             family="Fruit",
+            display_name="Tomato",
         ),
         "Basil": Ingredient(
             name="Basil",
@@ -25,6 +26,7 @@ def _sample_cards() -> dict[str, Ingredient]:
             taste="Sweet",
             Value=10,
             family="Herb",
+            display_name="Basil",
         ),
         "Mozzarella": Ingredient(
             name="Mozzarella",
@@ -32,6 +34,7 @@ def _sample_cards() -> dict[str, Ingredient]:
             taste="Sweet",
             Value=18,
             family="Dairy",
+            display_name="Mozzarella",
         ),
         "Onion": Ingredient(
             name="Onion",
@@ -39,6 +42,7 @@ def _sample_cards() -> dict[str, Ingredient]:
             taste="Sweet",
             Value=12,
             family="Vegetable",
+            display_name="Onion",
         ),
     }
 
@@ -92,6 +96,17 @@ def test_duplicate_penalty_alert_mentions_penalty():
 
     assert any("too much Tomato" in alert for alert in outcome.alerts)
     assert any("penalty -50%" in alert for alert in outcome.alerts)
+
+
+def test_duplicate_alert_uses_display_name():
+    data = _load_data()
+    olive = data.ingredients["OliveOil"]
+    tomato = data.ingredients["Tomato"]
+
+    outcome = data.evaluate_dish([olive, olive, tomato])
+
+    assert olive.display_name == "Olive Oil"
+    assert any("Olive Oil" in alert for alert in outcome.alerts)
 
 
 def test_global_duplicate_penalty_handles_multiple_types():

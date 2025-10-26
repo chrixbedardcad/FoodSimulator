@@ -45,6 +45,7 @@ class Ingredient:
     taste: str
     Value: int
     family: str
+    display_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -316,10 +317,17 @@ class GameData:
                             return str(value)
                     return item.name
 
+                def _ingredient_display_name(item: Ingredient) -> str:
+                    value = getattr(item, "display_name", "")
+                    text = str(value).strip()
+                    return text or item.name
+
                 identifiers = [_ingredient_identifier(ingredient) for ingredient in ingredients]
                 id_to_names: Dict[str, List[str]] = {}
                 for ingredient, identifier in zip(ingredients, identifiers):
-                    id_to_names.setdefault(identifier, []).append(ingredient.name)
+                    id_to_names.setdefault(identifier, []).append(
+                        _ingredient_display_name(ingredient)
+                    )
                 counts = Counter(identifiers)
                 duplicate_ids = [key for key, value in counts.items() if value > 1]
 
@@ -473,12 +481,14 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
     for entry in raw:
         name = entry["name"]
         identifier = entry.get("ingredient_id") or f"ing.{name.lower()}"
+        display_name = entry.get("display_name") or name
         ingredient = Ingredient(
-            name,
-            str(identifier),
-            entry["taste"],
-            int(entry["Value"]),
-            entry.get("family", "Unknown"),
+            name=name,
+            ingredient_id=str(identifier),
+            taste=entry["taste"],
+            Value=int(entry["Value"]),
+            family=entry.get("family", "Unknown"),
+            display_name=str(display_name),
         )
         ingredients[name] = ingredient
     return ingredients

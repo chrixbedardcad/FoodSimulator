@@ -2047,7 +2047,7 @@ class FoodGameApp:
         self.game_frame = ttk.Frame(main)
         self.game_frame.grid(row=0, column=1, sticky="nsew")
         self.game_frame.columnconfigure(0, weight=1)
-        self.game_frame.rowconfigure(2, weight=1)
+        self.game_frame.rowconfigure(1, weight=1)
 
         self._build_controls()
         self._build_game_panel()
@@ -2179,23 +2179,8 @@ class FoodGameApp:
             row=5, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
-        self.events_text = tk.Text(
-            self.game_frame,
-            height=5,
-            wrap="word",
-            background="#f8f8f8",
-            foreground="#242424",
-            relief="solid",
-            borderwidth=1,
-            padx=10,
-            pady=8,
-            font=("Helvetica", 10),
-        )
-        self.events_text.grid(row=1, column=0, sticky="ew", pady=(12, 12))
-        self.events_text.configure(state="disabled")
-
         hand_container = ttk.Frame(self.game_frame)
-        hand_container.grid(row=2, column=0, sticky="nsew")
+        hand_container.grid(row=1, column=0, sticky="nsew")
         hand_container.columnconfigure(0, weight=1)
         hand_container.rowconfigure(0, weight=1)
 
@@ -2216,7 +2201,7 @@ class FoodGameApp:
         )
 
         action_frame = ttk.Frame(self.game_frame)
-        action_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        action_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
 
@@ -2332,9 +2317,9 @@ class FoodGameApp:
         self._update_seasoning_button(None)
         self._update_chef_button()
 
-        self.result_text = tk.Text(
+        self.log_text = tk.Text(
             self.game_frame,
-            height=12,
+            height=17,
             wrap="word",
             background="#ffffff",
             foreground="#202020",
@@ -2344,8 +2329,8 @@ class FoodGameApp:
             pady=10,
             font=("Helvetica", 10),
         )
-        self.result_text.grid(row=4, column=0, sticky="ew", pady=(12, 0))
-        self.result_text.configure(state="disabled")
+        self.log_text.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        self.log_text.configure(state="disabled")
 
     # ----------------- Session management -----------------
     def start_run(self) -> None:
@@ -2821,19 +2806,23 @@ class FoodGameApp:
         self._update_chef_button()
         self._update_seasoning_button()
 
-    def append_events(self, messages: Iterable[str]) -> None:
-        if not messages:
+    def _append_log_lines(self, lines: Iterable[str]) -> None:
+        collected = list(lines)
+        if not collected:
             return
-        self.events_text.configure(state="normal")
-        for message in messages:
-            self.events_text.insert("end", f"• {message}\n")
-        self.events_text.see("end")
-        self.events_text.configure(state="disabled")
+        self.log_text.configure(state="normal")
+        for line in collected:
+            self.log_text.insert("end", f"{line}\n")
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
+
+    def append_events(self, messages: Iterable[str]) -> None:
+        self._append_log_lines(f"• {message}" for message in messages)
 
     def clear_events(self) -> None:
-        self.events_text.configure(state="normal")
-        self.events_text.delete("1.0", "end")
-        self.events_text.configure(state="disabled")
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.configure(state="disabled")
 
     def _close_recruit_dialog(self) -> None:
         if self.recruit_dialog and self.recruit_dialog.winfo_exists():
@@ -2868,13 +2857,10 @@ class FoodGameApp:
         entry = (
             f"Turn {outcome.turn_number} {outcome.final_score:+d} pts{note_text}"
         )
-        self.events_text.configure(state="normal")
-        self.events_text.insert("end", f"{entry}\n")
+        lines = [entry]
         if outcome.alerts:
-            for alert in outcome.alerts:
-                self.events_text.insert("end", f"    ⚠️ {alert}\n")
-        self.events_text.see("end")
-        self.events_text.configure(state="disabled")
+            lines.extend(f"    ⚠️ {alert}" for alert in outcome.alerts)
+        self._append_log_lines(lines)
 
     def _cookbook_summary_text(self) -> str:
         if not self.session:
@@ -2898,12 +2884,18 @@ class FoodGameApp:
 
     def write_result(self, text: str) -> None:
         extra = self._cookbook_summary_text()
+        lines: List[str] = []
+        try:
+            has_existing_text = self.log_text.index("end-1c") != "1.0"
+        except tk.TclError:  # pragma: no cover - defensive guard
+            has_existing_text = False
+        if has_existing_text:
+            lines.append("")
+        lines.extend(text.splitlines())
         if extra:
-            text = f"{text}\n\n{extra}"
-        self.result_text.configure(state="normal")
-        self.result_text.delete("1.0", "end")
-        self.result_text.insert("1.0", text)
-        self.result_text.configure(state="disabled")
+            lines.append("")
+            lines.extend(extra.splitlines())
+        self._append_log_lines(lines)
 
     # ----------------- Gameplay actions -----------------
     def cook_selected(self) -> None:

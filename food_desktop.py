@@ -20,7 +20,7 @@ from tkinter import messagebox
 from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from tkinter import ttk
-from PIL import Image, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from food_api import (
     DEFAULT_HAND_SIZE,
@@ -78,6 +78,8 @@ except AttributeError:  # Pillow<9.1 fallback
 
 _icon_cache: Dict[str, tk.PhotoImage] = {}
 _ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
+_seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
+_button_icon_cache: Dict[str, tk.PhotoImage] = {}
 
 
 def _load_icon(
@@ -178,6 +180,62 @@ def _load_ingredient_image(
     image = ImageTk.PhotoImage(working)
     _ingredient_image_cache[cache_key] = image
     return image
+
+
+def _load_seasoning_icon(
+    seasoning: Optional[Seasoning], *, target_px: int = 80
+) -> tk.PhotoImage:
+    if seasoning is None:
+        cache_key = f"seasoning:__blank__:{target_px}"
+        cached = _seasoning_icon_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        working = Image.new("RGBA", (target_px, target_px), (255, 255, 255, 255))
+        image = ImageTk.PhotoImage(working)
+        _seasoning_icon_cache[cache_key] = image
+        return image
+
+    name = getattr(seasoning, "seasoning_id", None) or seasoning.name
+    cache_key = f"seasoning:{name}:{target_px}"
+    cached = _seasoning_icon_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    image_path = _find_ingredient_image_path(seasoning)  # type: ignore[arg-type]
+    if image_path and image_path.exists():
+        with Image.open(image_path) as source_image:
+            working = source_image.convert("RGBA")
+            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+            working = working.copy()
+    else:
+        working = Image.new("RGBA", (target_px, target_px), (255, 255, 255, 255))
+
+    image = ImageTk.PhotoImage(working)
+    _seasoning_icon_cache[cache_key] = image
+    return image
+
+
+def _generate_button_icon(
+    key: str, text: str, *, size: int = 88, bg: str = "#f0f0f0", fg: str = "#1c1c1c"
+) -> tk.PhotoImage:
+    cache_key = f"button:{key}:{size}:{bg}:{fg}:{text}"
+    cached = _button_icon_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    base = Image.new("RGBA", (32, 32), bg)
+    draw = ImageDraw.Draw(base)
+    font = ImageFont.load_default()
+    text_width, text_height = draw.textsize(text, font=font)
+    text_x = (base.width - text_width) / 2
+    text_y = (base.height - text_height) / 2
+    draw.rectangle([(0, 0), (base.width - 1, base.height - 1)], outline=fg, width=1)
+    draw.text((text_x, text_y), text, font=font, fill=fg)
+    working = base.resize((size, size), Image.NEAREST)
+    image = ImageTk.PhotoImage(working)
+    _button_icon_cache[cache_key] = image
+    return image
+
 
 FAMILY_EXAMPLE_ORDER = ["Protein", "Vegetable", "Grain", "Dairy", "Fruit"]
 TASTE_EXAMPLE_ORDER = ["Sweet", "Salty", "Sour", "Umami", "Bitter"]
@@ -1199,9 +1257,19 @@ class ChefTeamTile(ttk.Frame):
 
 
 class SeasoningTile(ttk.Frame):
-    def __init__(self, master: tk.Widget) -> None:
+    def __init__(
+        self,
+        master: tk.Widget,
+        on_select: Optional[Callable[[Optional[Seasoning]], None]] = None,
+    ) -> None:
         super().__init__(master, style="Tile.TFrame", padding=(14, 12))
         self._entry_widgets: list[tk.Widget] = []
+        self._entry_frames: list[ttk.Frame] = []
+        self._entry_labels: list[ttk.Label] = []
+        self._icon_refs: list[tk.PhotoImage] = []
+        self._seasonings: list[Seasoning] = []
+        self._selected_name: Optional[str] = None
+        self._on_select: Optional[Callable[[Optional[Seasoning]], None]] = on_select
 
         self.columnconfigure(0, weight=1)
 
@@ -1231,15 +1299,25 @@ class SeasoningTile(ttk.Frame):
         self.entries_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         self.entries_frame.columnconfigure(0, weight=1)
 
+    def set_on_select(
+        self, callback: Optional[Callable[[Optional[Seasoning]], None]]
+    ) -> None:
+        self._on_select = callback
+
     def _clear_entries(self) -> None:
         for widget in self._entry_widgets:
             widget.destroy()
         self._entry_widgets.clear()
+        self._entry_frames.clear()
+        self._entry_labels.clear()
+        self._icon_refs.clear()
 
     def set_seasonings(
         self, seasonings: Sequence[Seasoning], remaining: int
     ) -> None:
-        count = len(seasonings)
+        previous = self._selected_name
+        self._seasonings = list(seasonings)
+        count = len(self._seasonings)
         self.header_var.set(f"🧂 Seasonings ({count})")
         if count == 0:
             if remaining > 0:
@@ -1255,7 +1333,8 @@ class SeasoningTile(ttk.Frame):
                 self.subtitle_var.set("Every seasoning wildcard is in your pantry.")
 
         self._clear_entries()
-        if not seasonings:
+        if not self._seasonings:
+            self._selected_name = None
             empty_label = ttk.Label(
                 self.entries_frame,
                 text="Seasonings appear here once you claim them.",
@@ -1265,23 +1344,98 @@ class SeasoningTile(ttk.Frame):
             )
             empty_label.grid(row=0, column=0, sticky="w")
             self._entry_widgets.append(empty_label)
+            self._notify_selection()
             return
 
-        for index, seasoning in enumerate(seasonings):
-            display_name = seasoning.display_name or seasoning.name
-            text = display_name
-            perk = seasoning.perk.strip()
-            if perk:
-                text += f" — {perk}"
-            label = ttk.Label(
-                self.entries_frame,
-                text=text,
-                style="TileInfo.TLabel",
-                wraplength=260,
-                justify="left",
+        for index, seasoning in enumerate(self._seasonings):
+            self._build_entry(index, seasoning)
+
+        if previous and any(seasoning.name == previous for seasoning in self._seasonings):
+            self._set_selected_name(previous, notify=False)
+        else:
+            first = self._seasonings[0]
+            self._set_selected_name(first.name, notify=False)
+
+        self._notify_selection()
+
+    def _build_entry(self, index: int, seasoning: Seasoning) -> None:
+        frame = ttk.Frame(
+            self.entries_frame,
+            style="SeasoningEntry.TFrame",
+            padding=(8, 6),
+        )
+        frame.grid(row=index, column=0, sticky="ew", pady=(0, 6))
+        frame.columnconfigure(1, weight=1)
+
+        icon = _load_seasoning_icon(seasoning, target_px=64)
+        icon_label = ttk.Label(frame, image=icon, style="SeasoningEntry.TLabel")
+        icon_label.grid(row=0, column=0, sticky="w")
+        self._icon_refs.append(icon)
+
+        display_name = seasoning.display_name or seasoning.name
+        perk = seasoning.perk.strip()
+        text_lines = [display_name]
+        if perk:
+            text_lines.append(perk)
+        text = "\n".join(text_lines)
+
+        label = ttk.Label(
+            frame,
+            text=text,
+            style="SeasoningEntry.TLabel",
+            wraplength=200,
+            justify="left",
+        )
+        label.grid(row=0, column=1, sticky="w", padx=(10, 0))
+
+        for widget in (frame, icon_label, label):
+            widget.bind(
+                "<Button-1>",
+                lambda _e, idx=index: self._handle_select(idx),
             )
-            label.grid(row=index, column=0, sticky="w", pady=(0, 6))
-            self._entry_widgets.append(label)
+
+        self._entry_widgets.extend([frame, icon_label, label])
+        self._entry_frames.append(frame)
+        self._entry_labels.append(label)
+
+    def _handle_select(self, index: int) -> None:
+        if index < 0 or index >= len(self._seasonings):
+            return
+        self._set_selected_name(self._seasonings[index].name)
+
+    def _set_selected_name(self, name: Optional[str], *, notify: bool = True) -> None:
+        self._selected_name = name
+        self._apply_selection_styles()
+        if notify:
+            self._notify_selection()
+
+    def _apply_selection_styles(self) -> None:
+        for frame, label, seasoning in zip(
+            self._entry_frames, self._entry_labels, self._seasonings
+        ):
+            selected = seasoning.name == self._selected_name
+            frame.configure(
+                style="SeasoningEntrySelected.TFrame"
+                if selected
+                else "SeasoningEntry.TFrame"
+            )
+            label.configure(
+                style="SeasoningEntrySelected.TLabel"
+                if selected
+                else "SeasoningEntry.TLabel"
+            )
+
+    def _notify_selection(self) -> None:
+        if self._on_select:
+            self._on_select(self.get_selected_seasoning())
+
+    def get_selected_seasoning(self) -> Optional[Seasoning]:
+        if not self._selected_name:
+            return None
+        for seasoning in self._seasonings:
+            if seasoning.name == self._selected_name:
+                return seasoning
+        return None
 
     def clear(self) -> None:
         self.set_seasonings([], 0)
@@ -1571,6 +1725,9 @@ class FoodGameApp:
             value=self._format_sort_label(self._current_sort_mode())
         )
 
+        self._resource_button_images: Dict[str, tk.PhotoImage] = {}
+        self._seasoning_button_image: Optional[tk.PhotoImage] = None
+
         self._init_styles()
         self._build_layout()
 
@@ -1681,6 +1838,35 @@ class FoodGameApp:
             background=tile_bg,
         )
         style.configure(
+            "SeasoningEntry.TFrame",
+            background=tile_bg,
+            borderwidth=1,
+            relief="solid",
+        )
+        style.configure(
+            "SeasoningEntrySelected.TFrame",
+            background=selected_bg,
+            borderwidth=2,
+            relief="solid",
+        )
+        style.configure(
+            "SeasoningEntry.TLabel",
+            font=body_font,
+            foreground="#3a3a3a",
+            background=tile_bg,
+        )
+        style.configure(
+            "SeasoningEntrySelected.TLabel",
+            font=body_font,
+            foreground="#1f1f1f",
+            background=selected_bg,
+        )
+        style.configure(
+            "ResourceButton.TButton",
+            font=("Helvetica", 14, "bold"),
+            padding=(8, 12),
+        )
+        style.configure(
             "TileRecipe.TButton",
             font=("Helvetica", 10),
             anchor="w",
@@ -1736,7 +1922,9 @@ class FoodGameApp:
         self.team_tile = ChefTeamTile(self.control_frame)
         self.team_tile.pack(fill="x", pady=(0, 12))
 
-        self.seasoning_tile = SeasoningTile(self.control_frame)
+        self.seasoning_tile = SeasoningTile(
+            self.control_frame, on_select=self._handle_seasoning_selected
+        )
         self.seasoning_tile.pack(fill="x", pady=(0, 12))
 
         ttk.Label(
@@ -1891,7 +2079,6 @@ class FoodGameApp:
         action_frame.grid(row=3, column=0, sticky="ew", pady=(12, 0))
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
-        action_frame.columnconfigure(2, weight=1)
 
         self.cook_button = ttk.Button(
             action_frame,
@@ -1907,15 +2094,61 @@ class FoodGameApp:
             command=self.discard_selected,
             state="disabled",
         )
-        self.discard_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        self.discard_button.grid(row=0, column=1, sticky="ew")
 
-        self.deck_button = ttk.Button(
-            action_frame,
-            text="VIEW BASKET",
+        resource_frame = ttk.Frame(action_frame)
+        resource_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        for column in range(4):
+            resource_frame.columnconfigure(column, weight=1)
+
+        self._resource_button_images["cookbook"] = _generate_button_icon(
+            "cookbook", "CB"
+        )
+        self.cookbook_button = ttk.Button(
+            resource_frame,
+            text="Cookbook",
+            image=self._resource_button_images["cookbook"],
+            compound="top",
+            style="ResourceButton.TButton",
+            command=self.show_cookbook_panel,
+        )
+        self.cookbook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        self._resource_button_images["dish"] = _generate_button_icon("dish", "DM")
+        self.dish_matrix_button = ttk.Button(
+            resource_frame,
+            text="Dish Matrix",
+            image=self._resource_button_images["dish"],
+            compound="top",
+            style="ResourceButton.TButton",
+            command=self.show_dish_matrix,
+        )
+        self.dish_matrix_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
+
+        self.seasoning_button = ttk.Button(
+            resource_frame,
+            text="Seasonings",
+            compound="top",
+            style="ResourceButton.TButton",
+            command=self.show_selected_seasoning_info,
+            state="disabled",
+        )
+        self.seasoning_button.grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        self._seasoning_button_image = _load_seasoning_icon(None)
+        self.seasoning_button.configure(image=self._seasoning_button_image)
+
+        self._resource_button_images["basket"] = _generate_button_icon("basket", "BK")
+        self.basket_button = ttk.Button(
+            resource_frame,
+            text="Basket",
+            image=self._resource_button_images["basket"],
+            compound="top",
+            style="ResourceButton.TButton",
             command=self.show_deck_popup,
             state="disabled",
         )
-        self.deck_button.grid(row=0, column=2, sticky="ew")
+        self.basket_button.grid(row=0, column=3, sticky="ew")
+        self._update_seasoning_button(None)
 
         self.result_text = tk.Text(
             self.game_frame,
@@ -1984,7 +2217,8 @@ class FoodGameApp:
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
         self.discard_button.configure(state="normal")
-        self.deck_button.configure(state="normal")
+        self.basket_button.configure(state="normal")
+        self.seasoning_button.configure(state="normal")
         self.reset_button.configure(state="normal")
         self.selected_indices.clear()
         self.update_selection_label()
@@ -2018,7 +2252,8 @@ class FoodGameApp:
         )
         self.cook_button.configure(state="disabled")
         self.discard_button.configure(state="disabled")
-        self.deck_button.configure(state="disabled")
+        self.basket_button.configure(state="disabled")
+        self.seasoning_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -2126,6 +2361,54 @@ class FoodGameApp:
         self.deck_popup.transient(self.root)
         self.deck_popup.focus_force()
         self._center_popup(self.deck_popup)
+
+    def show_cookbook_panel(self) -> None:
+        if not self.cookbook_tile:
+            messagebox.showinfo("Cookbook", "Cookbook details are unavailable.")
+            return
+        if not self.cookbook_tile.expanded:
+            self.cookbook_tile.toggle()
+        self.cookbook_tile.header_button.focus_set()
+
+    def show_dish_matrix(self) -> None:
+        if not self.dish_tile:
+            messagebox.showinfo("Dish Matrix", "Dish matrix data is unavailable.")
+            return
+        self.dish_tile.open_dialog()
+
+    def show_selected_seasoning_info(self) -> None:
+        if not self.seasoning_tile:
+            messagebox.showinfo("Seasonings", "Seasoning details are unavailable.")
+            return
+        seasoning = self.seasoning_tile.get_selected_seasoning()
+        if not seasoning:
+            messagebox.showinfo(
+                "Seasonings", "No seasonings collected yet. Finish a round to claim one."
+            )
+            return
+        display_name = seasoning.display_name or seasoning.name
+        taste = seasoning.taste
+        perk = seasoning.perk.strip() or "No perk description available."
+        message = f"Taste: {taste}\n\nPerk:\n{perk}"
+        messagebox.showinfo(display_name, message)
+
+    def _handle_seasoning_selected(self, seasoning: Optional[Seasoning]) -> None:
+        self._update_seasoning_button(seasoning)
+
+    def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
+        if not hasattr(self, "seasoning_button"):
+            return
+        if seasoning is None and self.seasoning_tile:
+            seasoning = self.seasoning_tile.get_selected_seasoning()
+        if seasoning:
+            display_name = seasoning.display_name or seasoning.name
+            text = f"Seasonings\n{display_name}"
+            icon = _load_seasoning_icon(seasoning)
+        else:
+            text = "Seasonings\nNone"
+            icon = _load_seasoning_icon(None)
+        self._seasoning_button_image = icon
+        self.seasoning_button.configure(image=self._seasoning_button_image, text=text)
 
     def toggle_card(self, index: int) -> None:
         if not self.session:
@@ -2335,6 +2618,8 @@ class FoodGameApp:
         if self.session.is_finished():
             self.cook_button.configure(state="disabled")
             self.discard_button.configure(state="disabled")
+            self.basket_button.configure(state="disabled")
+            self.seasoning_button.configure(state="disabled")
             self._set_controls_active(True)
             self._close_recruit_dialog()
             messagebox.showinfo(
@@ -2384,6 +2669,8 @@ class FoodGameApp:
         if self.session.is_finished():
             self.cook_button.configure(state="disabled")
             self.discard_button.configure(state="disabled")
+            self.basket_button.configure(state="disabled")
+            self.seasoning_button.configure(state="disabled")
             self._set_controls_active(True)
             self._close_recruit_dialog()
 

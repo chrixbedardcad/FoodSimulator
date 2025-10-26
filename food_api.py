@@ -272,7 +272,7 @@ class GameData:
 
         unique_tastes = set(tastes)
         if len(unique_tastes) == 1:
-            if len(unique_families) == len(families) and len(unique_families) > 1:
+            if family_pattern == "all_different" and len(unique_families) > 1:
                 flavor_pattern = "single_taste_varied_family"
             else:
                 flavor_pattern = "all_same"
@@ -291,7 +291,7 @@ class GameData:
         entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
         if entry:
             multiplier = float(entry.multiplier)
-        elif flavor_pattern == "all_same":
+        elif flavor_pattern == "all_same" and family_pattern == "all_same":
             multiplier = 0.0
 
         dish_value = float(base_value) * multiplier

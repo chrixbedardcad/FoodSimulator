@@ -5,8 +5,8 @@ This script offers a minimal text interface that mirrors the mechanics from
 implementing a richer front end (e.g., in Unreal Engine).
 
 Key features:
-* Shares the JSON-driven data sets (ingredients, recipes, chefs, themes).
-* Lets the user select chefs and market themes.
+* Shares the JSON-driven data sets (ingredients, recipes, chefs, baskets).
+* Lets the user select chefs and market baskets.
 * Uses the same round → cook structure as the automated simulator so a "run"
   represents a full game composed of multiple rounds, each with several cooks.
 * Deals configurable hand sizes (default eight cards), allows picking any trio size,
@@ -95,10 +95,10 @@ def _prompt_selection(prompt: str, options: Sequence[str], rng: random.Random) -
         print("Invalid selection. Please try again.")
 
 
-def choose_theme(rng: random.Random) -> str:
-    theme_names = sorted(DATA.themes.keys())
-    print("\n=== Choose a market theme ===")
-    return _prompt_selection("Theme", theme_names, rng)
+def choose_basket(rng: random.Random) -> str:
+    basket_names = sorted(DATA.baskets.keys())
+    print("\n=== Choose a market basket ===")
+    return _prompt_selection("Basket", basket_names, rng)
 
 
 def choose_chef(rng: random.Random) -> Chef:
@@ -434,7 +434,7 @@ def score_trio(
 
 
 def play_single_run(
-    theme_name: str,
+    basket_name: str,
     chefs: List[Chef],
     rounds: int,
     cooks_per_round: int,
@@ -472,7 +472,7 @@ def play_single_run(
     for round_index in range(1, rounds + 1):
         deck = build_market_deck(
             DATA,
-            theme_name,
+            basket_name,
             chefs,
             deck_size=DEFAULT_DECK_SIZE,
             bias=DEFAULT_BIAS,
@@ -489,7 +489,7 @@ def play_single_run(
                 if len(deck) < needed:
                     deck = build_market_deck(
                         DATA,
-                        theme_name,
+                        basket_name,
                         chefs,
                         deck_size=DEFAULT_DECK_SIZE,
                         bias=DEFAULT_BIAS,
@@ -544,7 +544,7 @@ def main() -> None:
  Version: {RULES_VERSION}
 -----------------------------------------------
  * Data shared with food_simulator.py (JSON-driven).
- * Pick a chef and theme, configure rounds, cooks per round, hand size, and
+ * Pick a chef and basket, configure rounds, cooks per round, hand size, and
    how many ingredients to keep each cook.
  * Scores are computed using the same trio scoring model.
  * Enter 'q' during a cook to stop the current run early.
@@ -559,7 +559,7 @@ def main() -> None:
             "  (Pass this seed to food_simulator.py with --seed to reproduce runs.)\n"
         )
 
-        theme = choose_theme(rng)
+        basket = choose_basket(rng)
         roster: List[Chef] = []
         start_with_chef = input(
             "Begin with a chef? (Y/n, blank for yes): "
@@ -585,12 +585,12 @@ def main() -> None:
         for run_index in range(1, runs + 1):
             chef_names = ", ".join(c.name for c in roster) or "None"
             print(
-                f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {theme} "
+                f"\n>>> Starting run {run_index}/{runs} with Chefs {chef_names} in {basket} "
                 f"({rounds} rounds × {cooks_per_round} cooks, hand {hand_size}, pick {pick_size}) "
                 f"[{total_turns} total turns, max chefs {max_chefs}] <<<"
             )
             score, run_cookbook, run_counts = play_single_run(
-                theme,
+                basket,
                 roster,
                 rounds,
                 cooks_per_round,

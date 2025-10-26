@@ -3,7 +3,7 @@
 This module provides a Tkinter-based application that reuses the shared
 `food_api` rules so designers can explore the card game with a richer visual
 interface.  The gameplay loop mirrors the CLI version in ``food_game.py``: pick
-chefs, choose a market theme, draw ingredient hands, and cook trios to chase high
+chefs, choose a market basket, draw ingredient hands, and cook trios to chase high
 scores.  No networking is involved—everything runs in-process on top of the
 existing data files.
 """
@@ -28,7 +28,7 @@ from food_api import (
     DEFAULT_INGREDIENTS_JSON,
     DEFAULT_RECIPES_JSON,
     DEFAULT_TASTE_JSON,
-    DEFAULT_THEMES_JSON,
+    DEFAULT_BASKETS_JSON,
     DEFAULT_DISH_MATRIX_JSON,
     Chef,
     DishMatrixEntry,
@@ -178,7 +178,7 @@ def _load_game_data() -> GameData:
         recipes_path=str(ASSET_DIR / DEFAULT_RECIPES_JSON),
         chefs_path=str(ASSET_DIR / DEFAULT_CHEFS_JSON),
         taste_path=str(ASSET_DIR / DEFAULT_TASTE_JSON),
-        themes_path=str(ASSET_DIR / DEFAULT_THEMES_JSON),
+        baskets_path=str(ASSET_DIR / DEFAULT_BASKETS_JSON),
         dish_matrix_path=str(ASSET_DIR / DEFAULT_DISH_MATRIX_JSON),
     )
 
@@ -502,7 +502,7 @@ class GameSession:
     def __init__(
         self,
         data: GameData,
-        theme_name: str,
+        basket_name: str,
         chefs: Sequence[Chef],
         rounds: int,
         cooks_per_round: int,
@@ -529,7 +529,7 @@ class GameSession:
             raise ValueError("Initial chef roster exceeds the configured maximum")
 
         self.data = data
-        self.theme_name = theme_name
+        self.basket_name = basket_name
         self.chefs = list(chefs)
         self.rounds = rounds
         self.cooks_per_round = cooks_per_round
@@ -597,7 +597,7 @@ class GameSession:
         self.cooks_completed_in_round = 0
         self.deck = build_market_deck(
             self.data,
-            self.theme_name,
+            self.basket_name,
             self.chefs,
             deck_size=self.deck_size,
             bias=self.bias,
@@ -623,7 +623,7 @@ class GameSession:
             if not self.deck:
                 self.deck = build_market_deck(
                     self.data,
-                    self.theme_name,
+                    self.basket_name,
                     self.chefs,
                     deck_size=self.deck_size,
                     bias=self.bias,
@@ -648,7 +648,7 @@ class GameSession:
             return
         self.deck = build_market_deck(
             self.data,
-            self.theme_name,
+            self.basket_name,
             self.chefs,
             deck_size=self.deck_size,
             bias=self.bias,
@@ -1500,19 +1500,21 @@ class FoodGameApp:
         self._build_game_panel()
 
     def _build_controls(self) -> None:
-        ttk.Label(self.control_frame, text="Theme", style="Header.TLabel").pack(anchor="w")
-        self.theme_var = tk.StringVar()
-        theme_names = sorted(DATA.themes.keys())
-        self.theme_combo = ttk.Combobox(
+        ttk.Label(self.control_frame, text="Basket", style="Header.TLabel").pack(anchor="w")
+        self.basket_var = tk.StringVar()
+        basket_names = sorted(DATA.baskets.keys())
+        if "Basic" in basket_names:
+            basket_names = ["Basic"] + [name for name in basket_names if name != "Basic"]
+        self.basket_combo = ttk.Combobox(
             self.control_frame,
-            textvariable=self.theme_var,
-            values=theme_names,
+            textvariable=self.basket_var,
+            values=basket_names,
             state="readonly",
             width=28,
         )
-        if theme_names:
-            self.theme_combo.current(0)
-        self.theme_combo.pack(anchor="w", pady=(4, 12))
+        if basket_names:
+            self.basket_combo.current(0)
+        self.basket_combo.pack(anchor="w", pady=(4, 12))
 
         self.cookbook_tile = CookbookTile(self.control_frame)
         self.cookbook_tile.pack(fill="x", pady=(0, 12))
@@ -1726,9 +1728,9 @@ class FoodGameApp:
         self.deck_popup = None
         self._close_recruit_dialog()
         try:
-            theme = self.theme_var.get()
-            if not theme:
-                raise ValueError("Select a theme before starting a run.")
+            basket = self.basket_var.get()
+            if not basket:
+                raise ValueError("Select a basket before starting a run.")
 
             rounds = int(self.round_var.get())
             cooks = int(self.cooks_var.get())
@@ -1743,7 +1745,7 @@ class FoodGameApp:
 
             self.session = GameSession(
                 DATA,
-                theme_name=theme,
+                basket_name=basket,
                 chefs=[],
                 rounds=rounds,
                 cooks_per_round=cooks,
@@ -1808,7 +1810,7 @@ class FoodGameApp:
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
-        self.theme_combo.configure(state="readonly" if active else "disabled")
+        self.basket_combo.configure(state="readonly" if active else "disabled")
         for spin in self.spinboxes:
             spin.configure(state=state)
         self.start_button.configure(state="normal" if active else "disabled")

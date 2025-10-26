@@ -22,7 +22,7 @@ PRIMARY_SUMMARY_KEYS: Tuple[str, ...] = (
     "nbplay",
     "runs_per_play",
     "runs",
-    "theme",
+    "basket",
     "seed",
     "rounds",
     "cooks_per_round",
@@ -59,10 +59,10 @@ def write_report_files(
     ensure_dir(out_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     seed = summary.get("seed")
-    theme = summary.get("theme")
+    basket = summary.get("basket")
     plays = summary.get("nbplay")
     runs = summary.get("runs")
-    base_name = f"report_{theme}_plays{plays}_runs{runs}_seed{seed}_{timestamp}"
+    base_name = f"report_{basket}_plays{plays}_runs{runs}_seed{seed}_{timestamp}"
 
     txt_path = os.path.join(out_dir, base_name + ".txt")
     with open(txt_path, "w", encoding="utf-8") as handle:
@@ -155,10 +155,10 @@ if __name__ == "__main__":
         help="Number of Monte Carlo runs executed per play (default=200)",
     )
     parser.add_argument(
-        "--theme",
+        "--basket",
         type=str,
-        default="Default",
-        help="Theme / Market name from themes.json",
+        default="Basic",
+        help="Basket / Market name from basket.json",
     )
     parser.add_argument(
         "--out",
@@ -206,9 +206,9 @@ if __name__ == "__main__":
 
     data = GameData.from_json()
 
-    if args.theme not in data.themes:
-        available = ", ".join(sorted(data.themes.keys()))
-        print(f"Theme '{args.theme}' not found. Available: {available}")
+    if args.basket not in data.baskets:
+        available = ", ".join(sorted(data.baskets.keys()))
+        print(f"Basket '{args.basket}' not found. Available: {available}")
         raise SystemExit(1)
 
     if args.nbplay <= 0:
@@ -249,7 +249,7 @@ if __name__ == "__main__":
     summary, ingredient_totals, taste_totals, recipe_totals, scores = simulate_many(
         data,
         n=total_simulated_runs,
-        theme_name=args.theme,
+        basket_name=args.basket,
         seed=seed_used,
         config=sim_config,
     )

@@ -2,7 +2,7 @@
 
 This script simulates ingredient draws and computes the chance of
 producing every entry in the dish matrix under configurable
-conditions. The simulation can use a specific theme and chef roster, or
+conditions. The simulation can use a specific basket and chef roster, or
 fall back to a general pool of all ingredients.
 """
 from __future__ import annotations
@@ -35,10 +35,10 @@ def parse_args() -> argparse.Namespace:
         help="Number of simulated draws to perform (default: 10000)",
     )
     parser.add_argument(
-        "--theme",
+        "--basket",
         type=str,
         default=None,
-        help="Name of the theme to use for the ingredient deck",
+        help="Name of the basket to use for the ingredient deck",
     )
     parser.add_argument(
         "--chefs",
@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
         "--bias",
         type=float,
         default=1.0,
-        help="Bias multiplier for key ingredients when using a theme deck",
+        help="Bias multiplier for key ingredients when using a basket deck",
     )
     parser.add_argument(
         "--guarantee-prob",
@@ -111,10 +111,10 @@ def parse_args() -> argparse.Namespace:
         help="Override path to taste_matrix.json",
     )
     parser.add_argument(
-        "--themes-json",
+        "--baskets-json",
         type=str,
         default=None,
-        help="Override path to themes.json",
+        help="Override path to basket.json",
     )
     parser.add_argument(
         "--dish-matrix-json",
@@ -135,8 +135,8 @@ def load_game_data(args: argparse.Namespace) -> GameData:
         kwargs["chefs_path"] = args.chefs_json
     if args.taste_json:
         kwargs["taste_path"] = args.taste_json
-    if args.themes_json:
-        kwargs["themes_path"] = args.themes_json
+    if args.baskets_json:
+        kwargs["baskets_path"] = args.baskets_json
     if args.dish_matrix_json:
         kwargs["dish_matrix_path"] = args.dish_matrix_json
     return GameData.from_json(**kwargs)
@@ -166,39 +166,39 @@ def build_general_deck(
     return deck
 
 
-def _resolve_theme_name(data: GameData, theme_name: str) -> str:
-    """Return the canonical theme name matching ``theme_name``.
+def _resolve_basket_name(data: GameData, basket_name: str) -> str:
+    """Return the canonical basket name matching ``basket_name``.
 
-    Theme names in ``themes.json`` are capitalized (e.g. ``"Asian"``), but the
+    Basket names in ``basket.json`` are capitalized (e.g. ``"Asian"``), but the
     command line argument is easy to provide in a different case.  To make the
     tool friendlier, resolve the name case-insensitively and fall back to the
     original error if no match exists.
     """
 
-    lookup = {name.lower(): name for name in data.themes}
-    resolved = lookup.get(theme_name.lower())
+    lookup = {name.lower(): name for name in data.baskets}
+    resolved = lookup.get(basket_name.lower())
     if resolved:
         return resolved
     raise ValueError(
-        "Unknown theme: {}. Available themes: {}".format(
-            theme_name, ", ".join(sorted(data.themes)) or "<none>"
+        "Unknown basket: {}. Available baskets: {}".format(
+            basket_name, ", ".join(sorted(data.baskets)) or "<none>"
         )
     )
 
 
 def build_deck(
     data: GameData,
-    theme_name: Optional[str],
+    basket_name: Optional[str],
     chefs: Sequence[Chef],
     deck_size: int,
     bias: float,
     rng: random.Random,
 ) -> List[Ingredient]:
-    if theme_name:
-        theme_name = _resolve_theme_name(data, theme_name)
+    if basket_name:
+        basket_name = _resolve_basket_name(data, basket_name)
         return build_market_deck(
             data,
-            theme_name,
+            basket_name,
             chefs,
             deck_size=deck_size,
             bias=bias,
@@ -209,7 +209,7 @@ def build_deck(
 
 def simulate(
     data: GameData,
-    theme_name: Optional[str],
+    basket_name: Optional[str],
     chefs: Sequence[Chef],
     iterations: int,
     hand_size: int,
@@ -231,12 +231,12 @@ def simulate(
     if not size_set:
         return counts
 
-    deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+    deck = build_deck(data, basket_name, chefs, deck_size, bias, rng)
     hand: List[Ingredient] = []
 
     for _ in range(iterations):
         if len(deck) < hand_size:
-            deck = build_deck(data, theme_name, chefs, deck_size, bias, rng)
+            deck = build_deck(data, basket_name, chefs, deck_size, bias, rng)
             hand = []
 
         picks, hand, deck = draw_cook(
@@ -283,7 +283,7 @@ def write_report(
     output_path: str,
     hand_size: int,
     pick_size: int,
-    theme_name: Optional[str],
+    basket_name: Optional[str],
     chefs: Sequence[Chef],
 ) -> None:
     ensure_output_dir(output_path)
@@ -299,7 +299,7 @@ def write_report(
         "chance",
         "hand_size",
         "pick_size",
-        "theme",
+        "basket",
         "chefs",
         "description",
         "occurrences",
@@ -326,7 +326,7 @@ def write_report(
                     "chance": round(chance, 6),
                     "hand_size": hand_size,
                     "pick_size": pick_size,
-                    "theme": theme_name or "",
+                    "basket": basket_name or "",
                     "chefs": ", ".join(chef.name for chef in chefs),
                     "description": entry.description,
                     "occurrences": count,
@@ -343,7 +343,7 @@ def main() -> None:
 
     counts = simulate(
         data,
-        args.theme,
+        args.basket,
         chefs,
         args.iterations,
         args.hand_size,
@@ -359,7 +359,7 @@ def main() -> None:
         args.output,
         args.hand_size,
         args.pick_size,
-        args.theme,
+        args.basket,
         chefs,
     )
     print(f"Report saved to {args.output}.")

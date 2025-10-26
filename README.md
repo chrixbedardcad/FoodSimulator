@@ -9,7 +9,7 @@ A toolkit for experimenting with the Food Card Deck video game concept. The repo
 * `food_game.py` — an interactive terminal mini-game that lets designers play short sessions using the exact same rules, decks, and scoring logic.
 * `food_desktop.py` — a Tkinter-powered desktop client with clickable ingredient cards, live score tracking, and instant trio breakdowns.
 
-Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and themes) so that data tweaks are immediately reflected everywhere.
+Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and baskets) so that data tweaks are immediately reflected everywhere.
 
 ---
 
@@ -33,7 +33,7 @@ FoodSimulator/
 ├── ingredients.json        ← Ingredient cards (taste tags + chip values)
 ├── recipes.json            ← Recipe trios that can be discovered and mastered
 ├── chefs.json              ← Chef definitions, signature recipes, and perks
-├── themes.json             ← Market/theme decks that feed the draw pile
+├── basket.json             ← Market/basket decks that feed the draw pile
 ├── taste_matrix.json       ← Taste synergy multipliers between flavour pairs
 └── README.md
 ```
@@ -58,9 +58,9 @@ terminal:
 2. Execute the simulator with Python:
 
 ```bash
-python food_simulator.py --runs 300 --theme Mediterranean
-python food_simulator.py --runs 500 --theme Asian --out reports
-python food_simulator.py --runs 200 --theme Mediterranean --seed 42
+python food_simulator.py --runs 300 --basket Mediterranean
+python food_simulator.py --runs 500 --basket Asian --out reports
+python food_simulator.py --runs 200 --basket Mediterranean --seed 42
 python food_simulator.py --runs 1 --seed 1 --active-chefs 3 --hand-size 8 --pick-size 5
 python food_simulator.py --help  # view every available option
 ```
@@ -71,7 +71,7 @@ Key CLI flags:
 |------|-------------|
 | `--nbplay` | Number of full game plays to simulate; each play chains `--runs` runs (default `1`). |
 | `--runs` | Number of runs executed within each play (default `200`). |
-| `--theme` | Market/theme name drawn from `themes.json` (default `Default`). |
+| `--basket` | Market/basket name drawn from `basket.json` (default `Basic`). |
 | `--out` | Output directory for generated reports (default `reports/`). |
 | `--seed` | RNG seed. When omitted a random seed is chosen and printed for reproducibility. |
 | `--rounds` | Rounds per run; each round deals fresh hands (default `3`). |
@@ -85,9 +85,9 @@ Key CLI flags:
 
 ### How rounds and cooks shape a run
 
-The starter `Default` theme keeps the deck to nine core ingredients that overlap across
+The starter `Basic` basket keeps the deck to nine core ingredients that overlap across
 Caprese, Carbonara, and LemonTart, helping new players discover rewarding trios within
-their first few rounds before exploring the larger themed markets.
+their first few rounds before exploring the larger basket-driven markets.
 
 Every simulated run (and every interactive session) uses the same nested loop:
 
@@ -108,7 +108,7 @@ After each batch completes the script prints a console summary including:
 - Average count of chef-favoured ingredients per trio.
 - Ingredient Herfindahl–Hirschman Index (HHI) to gauge draw diversity.
 
-Report files land in the requested output directory using the pattern `report_<theme>_plays<nbplay>_runs<runs>_seed<seed>_<timestamp>.*`.
+Report files land in the requested output directory using the pattern `report_<basket>_plays<nbplay>_runs<runs>_seed<seed>_<timestamp>.*`.
 
 ---
 
@@ -125,7 +125,7 @@ python food_game.py
 
 During each session you can:
 
-1. Pick a market theme and chef (or opt for random selection).
+1. Pick a market basket and chef (or opt for random selection).
 2. Decide how many rounds to play, how many cooks happen within each round, and how
    many runs to chain back-to-back.
 3. (Optionally) set an RNG seed for reproducible decks.
@@ -145,7 +145,7 @@ python food_desktop.py
 
 Key highlights:
 
-- Pick a market theme and one or more chefs from dropdowns and multi-select lists.
+- Pick a market basket and one or more chefs from dropdowns and multi-select lists.
 - See eight-card hands rendered as colour-coded tiles that highlight chef key ingredients.
 - Click cards to build your trio (the UI enforces the pick limit) and review chip totals, taste synergy, recipe bonuses, and cumulative score in a side panel.
 - Track round/turn progress, deck refresh events, and active chefs without leaving the window.
@@ -158,7 +158,7 @@ Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak imm
 
 | Mechanic | Description |
 |----------|-------------|
-| **Trio draws** | Eight-card hands are dealt from theme-driven decks; trios are cooked each turn. |
+| **Trio draws** | Eight-card hands are dealt from basket-driven decks; trios are cooked each turn. |
 | **Taste synergy** | Taste combinations look up multipliers in `taste_matrix.json` to scale chip totals. |
 | **Duplicate ingredient penalty** | Repeating the same ingredient ID applies the configurable penalty defined in `rules.json` (global 0.5× for a second copy, 0.1× for a third, and 0× thereafter by default). |
 | **Recipe mastery** | Cooking the same signature recipe twice in a row masters it and contributes to mastery rate metrics. |
@@ -204,7 +204,7 @@ Each Monte Carlo batch exports the following artefacts:
 ## 🔧 Extending the Sandbox
 
 - Add or tweak ingredient entries in `ingredients.json` to explore new taste/chip combinations.
-- Expand `recipes.json`, `chefs.json`, or `themes.json` to introduce fresh synergies and market flavours.
+- Expand `recipes.json`, `chefs.json`, or `basket.json` to introduce fresh synergies and market flavours.
 - Iterate quickly by playtesting in `food_game.py`, then run `food_simulator.py` to validate balance at scale.
 
 ---

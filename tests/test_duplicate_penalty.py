@@ -62,7 +62,7 @@ def test_three_unique_families_same_taste_match_harmony_roll():
 
     assert outcome.entry is not None
     assert outcome.entry.name == "Harmony Roll"
-    assert outcome.flavor_pattern == "single_taste_varied_family"
+    assert outcome.flavor_pattern == "all_same"
 
 
 def test_global_duplicate_penalty_applies_multiplier():
@@ -76,7 +76,7 @@ def test_global_duplicate_penalty_applies_multiplier():
 
     outcome = data.evaluate_dish(ingredients)
 
-    assert int(round(outcome.dish_value)) == 43
+    assert int(round(outcome.dish_value)) == 40
 
 
 def test_duplicate_penalty_alert_mentions_penalty():
@@ -91,7 +91,7 @@ def test_duplicate_penalty_alert_mentions_penalty():
     outcome = data.evaluate_dish(ingredients)
 
     assert any("too much Tomato" in alert for alert in outcome.alerts)
-    assert any("penalty -20%" in alert for alert in outcome.alerts)
+    assert any("penalty -25%" in alert for alert in outcome.alerts)
 
 
 def test_global_duplicate_penalty_handles_multiple_types():
@@ -106,7 +106,7 @@ def test_global_duplicate_penalty_handles_multiple_types():
 
     outcome = data.evaluate_dish(ingredients)
 
-    assert int(round(outcome.dish_value)) == 44
+    assert int(round(outcome.dish_value)) == 38
 
 
 def test_per_card_duplicate_penalty_scores_extra_copies_lower():
@@ -126,7 +126,7 @@ def test_per_card_duplicate_penalty_scores_extra_copies_lower():
 
     outcome = data.evaluate_dish(ingredients)
 
-    assert int(round(outcome.dish_value)) == 50
+    assert int(round(outcome.dish_value)) == 48
 
 
 def test_duplicate_alert_triggers_for_third_copy():
@@ -153,6 +153,6 @@ def test_duplicate_penalty_reduces_unmatched_all_same_flavor():
 
     outcome = data.evaluate_dish(ingredients)
 
-    assert round(outcome.dish_multiplier, 2) == 0.8
-    assert int(round(outcome.dish_value)) == int(round(outcome.base_value * 0.8))
+    assert round(outcome.dish_multiplier, 2) == 0.75
+    assert int(round(outcome.dish_value)) == int(round(outcome.base_value * 0.75))
     assert any("too much Rice" in alert for alert in outcome.alerts)

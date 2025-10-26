@@ -5,7 +5,7 @@ def _load_data() -> GameData:
     return GameData.from_json()
 
 
-def test_single_taste_varied_family_matches_matrix():
+def test_same_taste_mixed_families_matches_matrix():
     data = _load_data()
     ingredients = [
         data.ingredients["Tomato"],
@@ -17,7 +17,8 @@ def test_single_taste_varied_family_matches_matrix():
 
     assert outcome.entry is not None
     assert outcome.entry.name == "Harmony Roll"
-    assert round(outcome.dish_multiplier, 2) == 4.2
+    assert outcome.flavor_pattern == "all_same"
+    assert round(outcome.dish_multiplier, 2) == 4.12
 
 
 def test_same_taste_mixed_families_still_score_base_value():
@@ -31,12 +32,12 @@ def test_same_taste_mixed_families_still_score_base_value():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is None
-    assert outcome.family_pattern == "balanced"
+    assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_same"
     assert round(outcome.dish_multiplier, 2) == 1.0
 
 
-def test_balanced_five_all_different_unlocks_mosaic_feast():
+def test_mixed_five_all_different_unlocks_mosaic_feast():
     data = _load_data()
     ingredients = [
         data.ingredients["Onion"],
@@ -50,6 +51,6 @@ def test_balanced_five_all_different_unlocks_mosaic_feast():
 
     assert outcome.entry is not None
     assert outcome.entry.name == "Mosaic Feast"
-    assert outcome.family_pattern == "balanced"
+    assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_different"
-    assert round(outcome.dish_multiplier, 2) == 6.5
+    assert round(outcome.dish_multiplier, 2) == 7.62

@@ -226,7 +226,9 @@ def _generate_button_icon(
     base = Image.new("RGBA", (32, 32), bg)
     draw = ImageDraw.Draw(base)
     font = ImageFont.load_default()
-    text_width, text_height = draw.textsize(text, font=font)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
     text_x = (base.width - text_width) / 2
     text_y = (base.height - text_height) / 2
     draw.rectangle([(0, 0), (base.width - 1, base.height - 1)], outline=fg, width=1)

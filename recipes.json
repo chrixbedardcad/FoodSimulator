@@ -24,7 +24,7 @@
     "trio": [
       "Rice",
       "Parmesan",
-      "Butter"
+      "OliveOil"
     ],
     "base_multiplier": 2.0,
     "delta_multiplier": 0.5
@@ -53,8 +53,8 @@
     "name": "LemonTart",
     "trio": [
       "Lemon",
-      "Sugar",
-      "Butter"
+      "Honey",
+      "Yogurt"
     ],
     "base_multiplier": 2.0,
     "delta_multiplier": 0.5
@@ -70,11 +70,11 @@
     "delta_multiplier": 0.5
   },
   {
-    "name": "SugarCrash",
+    "name": "HoneyCrash",
     "trio": [
       "Honey",
-      "Sugar",
-      "Butter"
+      "Cream",
+      "Chocolate"
     ],
     "base_multiplier": 0.0,
     "delta_multiplier": 0.0

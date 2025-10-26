@@ -126,13 +126,6 @@
     "family": "Dairy"
   },
   {
-    "name": "Sugar",
-    "ingredient_id": "ing.sugar",
-    "taste": "Sweet",
-    "Value": 8,
-    "family": "Fruit"
-  },
-  {
     "name": "Onion",
     "ingredient_id": "ing.onion",
     "taste": "Sweet",
@@ -145,13 +138,6 @@
     "taste": "Umami",
     "Value": 10,
     "family": "Grain"
-  },
-  {
-    "name": "Butter",
-    "ingredient_id": "ing.butter",
-    "taste": "Sweet",
-    "Value": 10,
-    "family": "Dairy"
   },
   {
     "name": "Yogurt",

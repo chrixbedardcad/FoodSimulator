@@ -18,7 +18,7 @@ def test_same_taste_mixed_families_matches_matrix():
     assert outcome.entry is not None
     assert outcome.entry.name == "Harmony Roll"
     assert outcome.flavor_pattern == "all_same"
-    assert round(outcome.dish_multiplier, 2) == 4.12
+    assert round(outcome.dish_multiplier, 2) == 4.0
 
 
 def test_same_taste_mixed_families_still_score_base_value():
@@ -53,4 +53,4 @@ def test_mixed_five_all_different_unlocks_mosaic_feast():
     assert outcome.entry.name == "Mosaic Feast"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_different"
-    assert round(outcome.dish_multiplier, 2) == 7.62
+    assert round(outcome.dish_multiplier, 2) == 7.5

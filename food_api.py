@@ -26,6 +26,12 @@ DEFAULT_CHEFS_JSON = "chefs.json"
 DEFAULT_THEMES_JSON = "themes.json"
 
 
+def quantize_multiplier(value: float) -> float:
+    """Round dish multipliers to the nearest half-step."""
+
+    return round(float(value) * 2.0) / 2.0
+
+
 def load_json(path: str):
     with open(path, "r", encoding="utf-8") as handle:
         return json.load(handle)
@@ -530,7 +536,7 @@ def _load_dish_matrix(path: str) -> Tuple[List[DishMatrixEntry], Mapping[str, ob
                 max_ingredients=int(entry["max_ingredients"]),
                 family_pattern=str(entry["family_pattern"]),
                 flavor_pattern=str(entry["flavor_pattern"]),
-                multiplier=float(entry["multiplier"]),
+                multiplier=quantize_multiplier(entry["multiplier"]),
                 tier=str(entry["tier"]),
                 chance=float(entry["chance"]),
                 description=str(entry["description"]),

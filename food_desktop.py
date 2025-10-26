@@ -2335,13 +2335,36 @@ class FoodGameApp:
                 row = tk.Frame(ingredients_frame, bg=base_bg)
                 row.pack(anchor="w", fill="x", pady=(0, 4))
 
+                icon_container: Optional[tk.Frame] = None
+                taste_label: Optional[tk.Label] = None
+
+                taste_icon = _load_icon(
+                    "taste", ingredient.taste, target_px=DIALOG_ICON_TARGET_PX
+                )
+                if taste_icon is not None:
+                    if icon_container is None:
+                        icon_container = tk.Frame(row, bg=base_bg)
+                        icon_container.pack(side="left", padx=(0, 8))
+                    taste_label = tk.Label(
+                        icon_container, image=taste_icon, bg=base_bg
+                    )
+                    taste_label.image = taste_icon
+                    taste_label.pack(side="top")
+
                 family_icon = _load_icon(
                     "family", ingredient.family, target_px=DIALOG_ICON_TARGET_PX
                 )
                 if family_icon is not None:
-                    icon_label = tk.Label(row, image=family_icon, bg=base_bg)
-                    icon_label.image = family_icon
-                    icon_label.pack(side="left", padx=(0, 8))
+                    if icon_container is None:
+                        icon_container = tk.Frame(row, bg=base_bg)
+                        icon_container.pack(side="left", padx=(0, 8))
+                    family_label = tk.Label(
+                        icon_container, image=family_icon, bg=base_bg
+                    )
+                    family_label.image = family_icon
+                    family_label.pack(side="top")
+                    if taste_label is not None:
+                        taste_label.pack_configure(pady=(0, 4))
 
                 text_frame = tk.Frame(row, bg=base_bg)
                 text_frame.pack(side="left", fill="x", expand=True)

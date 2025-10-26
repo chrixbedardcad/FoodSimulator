@@ -704,6 +704,7 @@ class GameSession:
         self._refresh_chef_data()
         self.cookbook: Dict[str, CookbookEntry] = {}
 
+        self._current_deck_total = 0
         self._start_next_round(initial=True)
 
     def _refresh_chef_data(self) -> None:
@@ -747,6 +748,7 @@ class GameSession:
             rng=self.rng,
         )
         self.rng.shuffle(self.deck)
+        self._current_deck_total = len(self.deck)
         self.hand.clear()
         self.pending_new_chef_offer = False
         self._push_event(
@@ -773,6 +775,7 @@ class GameSession:
                     rng=self.rng,
                 )
                 self.rng.shuffle(self.deck)
+                self._current_deck_total = len(self.deck)
                 self._push_event("Market deck refreshed with new draws.")
                 deck_refreshed = True
             if not self.deck:
@@ -798,6 +801,7 @@ class GameSession:
             rng=self.rng,
         )
         self.rng.shuffle(self.deck)
+        self._current_deck_total = len(self.deck)
         self.hand.clear()
         self._push_event("Deck refreshed to reflect your expanded chef lineup.")
         self._refill_hand()
@@ -814,6 +818,9 @@ class GameSession:
 
     def get_remaining_deck(self) -> Sequence[Ingredient]:
         return list(self.deck)
+
+    def get_basket_counts(self) -> Tuple[int, int]:
+        return len(self.deck), self._current_deck_total
 
     def get_total_score(self) -> int:
         return self.total_score
@@ -2289,9 +2296,10 @@ class FoodGameApp:
         if basket_icon is None:
             basket_icon = _generate_button_icon("basket", "BK")
         self._resource_button_images["basket"] = basket_icon
+        self.basket_count_var = tk.StringVar(value="Basket\n0/0")
         self.basket_button = ttk.Button(
             resource_frame,
-            text="Basket",
+            textvariable=self.basket_count_var,
             image=self._resource_button_images["basket"],
             compound="top",
             style="ResourceButton.TButton",
@@ -2421,6 +2429,7 @@ class FoodGameApp:
         self.cookbook_popup = None
         self._close_recruit_dialog()
         self.session = None
+        self._update_basket_button()
         self.selected_indices.clear()
         self.update_selection_label()
         self.score_var.set("0")
@@ -2471,6 +2480,7 @@ class FoodGameApp:
     def render_hand(self) -> None:
         self.clear_hand()
         if not self.session:
+            self._update_basket_button()
             self._refresh_deck_popup()
             return
 
@@ -2497,6 +2507,7 @@ class FoodGameApp:
         self.hand_frame.update_idletasks()
         self.hand_canvas.configure(scrollregion=self.hand_canvas.bbox("all"))
         self._refresh_deck_popup()
+        self._update_basket_button()
 
     def _sorted_hand(
         self, hand_with_indices: Sequence[Tuple[int, Ingredient]]
@@ -2667,6 +2678,17 @@ class FoodGameApp:
             self._resource_button_images["cookbook"] = icon
 
         self.cookbook_button.configure(image=icon)
+
+    def _update_basket_button(self) -> None:
+        if not hasattr(self, "basket_button"):
+            return
+
+        if not self.session:
+            self.basket_count_var.set("Basket\n0/0")
+            return
+
+        remaining, total = self.session.get_basket_counts()
+        self.basket_count_var.set(f"Basket\n{remaining}/{total}")
 
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not hasattr(self, "seasoning_button"):

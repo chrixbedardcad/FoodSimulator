@@ -1862,6 +1862,142 @@ class CookbookPopup(tk.Toplevel):
 
         self.canvas.yview_moveto(0)
 
+class SeasoningPopup(tk.Toplevel):
+    def __init__(
+        self,
+        master: tk.Widget,
+        seasonings: Sequence[Seasoning],
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self._on_close = on_close
+        self._seasonings: List[Seasoning] = []
+        self._icon_refs: List[tk.PhotoImage] = []
+
+        self.title("Seasoning Pantry")
+        self.geometry("520x420")
+        self.minsize(380, 320)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(2, weight=1)
+
+        heading = ttk.Label(
+            container,
+            text="Seasonings you've discovered",
+            style="Header.TLabel",
+            anchor="w",
+        )
+        heading.grid(row=0, column=0, sticky="w")
+
+        self.count_var = tk.StringVar(value="")
+        self.count_label = ttk.Label(
+            container,
+            textvariable=self.count_var,
+            style="Info.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.count_label.grid(row=1, column=0, sticky="w", pady=(6, 8))
+
+        self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        self.canvas.grid(row=2, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(
+            container, orient="vertical", command=self.canvas.yview
+        )
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.entries_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.entries_frame, anchor="nw")
+        self.entries_frame.columnconfigure(0, weight=1)
+        self.entries_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._handle_close)
+        self.bind("<Escape>", lambda _e: self._handle_close())
+
+        self.set_seasonings(seasonings)
+
+    def _handle_close(self) -> None:
+        if self._on_close:
+            self._on_close()
+        self.destroy()
+
+    def set_seasonings(self, seasonings: Sequence[Seasoning]) -> None:
+        self._seasonings = list(seasonings)
+        self._render_entries()
+
+    def _render_entries(self) -> None:
+        for child in self.entries_frame.winfo_children():
+            child.destroy()
+        self._icon_refs.clear()
+
+        total = len(self._seasonings)
+        if total == 0:
+            self.count_var.set("No seasonings collected yet.")
+            ttk.Label(
+                self.entries_frame,
+                text="Finish a round to claim a seasoning wildcard for your pantry.",
+                style="Info.TLabel",
+                wraplength=440,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        plural = "seasoning" if total == 1 else "seasonings"
+        self.count_var.set(f"{total} {plural} collected.")
+
+        for row_index, seasoning in enumerate(
+            sorted(
+                self._seasonings,
+                key=lambda s: (s.display_name or s.name).lower(),
+            )
+        ):
+            frame = ttk.Frame(
+                self.entries_frame,
+                style="SeasoningEntry.TFrame",
+                padding=(10, 8),
+            )
+            frame.grid(row=row_index, column=0, sticky="ew", pady=(0, 10))
+            frame.columnconfigure(1, weight=1)
+
+            icon = _load_seasoning_icon(seasoning, target_px=96)
+            self._icon_refs.append(icon)
+            icon_label = ttk.Label(frame, image=icon, style="SeasoningEntry.TLabel")
+            icon_label.grid(row=0, column=0, rowspan=2, sticky="n")
+
+            display_name = seasoning.display_name or seasoning.name
+            name_label = ttk.Label(
+                frame,
+                text=display_name,
+                style="Header.TLabel",
+                anchor="w",
+                justify="left",
+            )
+            name_label.grid(row=0, column=1, sticky="w")
+
+            perk_text = seasoning.perk.strip() or "No perk description available."
+            info_text = f"Taste: {seasoning.taste}\n{perk_text}"
+            info_label = ttk.Label(
+                frame,
+                text=info_text,
+                style="SeasoningEntry.TLabel",
+                wraplength=360,
+                justify="left",
+            )
+            info_label.grid(row=1, column=1, sticky="w", pady=(4, 0))
+
+        self.canvas.yview_moveto(0)
+
+
 class FoodGameApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -1878,6 +2014,7 @@ class FoodGameApp:
         self.seasoning_tile: Optional[SeasoningTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.cookbook_popup: Optional["CookbookPopup"] = None
+        self.seasoning_popup: Optional["SeasoningPopup"] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
         self.dish_dialog: Optional[DishMatrixDialog] = None
@@ -2427,6 +2564,9 @@ class FoodGameApp:
         if self.cookbook_popup and self.cookbook_popup.winfo_exists():
             self.cookbook_popup.destroy()
         self.cookbook_popup = None
+        if self.seasoning_popup and self.seasoning_popup.winfo_exists():
+            self.seasoning_popup.destroy()
+        self.seasoning_popup = None
         self._close_recruit_dialog()
         self.session = None
         self._update_basket_button()
@@ -2477,13 +2617,27 @@ class FoodGameApp:
         else:
             self.deck_popup = None
 
+    def _refresh_seasoning_popup(self) -> None:
+        if not self.seasoning_popup:
+            return
+        if self.seasoning_popup.winfo_exists():
+            if self.session:
+                self.seasoning_popup.set_seasonings(self.session.get_seasonings())
+            else:
+                self.seasoning_popup.destroy()
+                self.seasoning_popup = None
+        else:
+            self.seasoning_popup = None
+
     def render_hand(self) -> None:
         self.clear_hand()
         if not self.session:
             self._update_basket_button()
             self._refresh_deck_popup()
+            self._refresh_seasoning_popup()
             return
 
+        self._refresh_seasoning_popup()
         hand_with_indices = list(enumerate(self.session.get_hand()))
         sorted_hand = self._sorted_hand(hand_with_indices)
 
@@ -2614,22 +2768,21 @@ class FoodGameApp:
             )
             return
 
-        if len(seasonings) == 1:
-            seasoning = seasonings[0]
-            display_name = seasoning.display_name or seasoning.name
-            taste = seasoning.taste
-            perk = seasoning.perk.strip() or "No perk description available."
-            message = f"Taste: {taste}\n\nPerk:\n{perk}"
-            messagebox.showinfo(display_name, message)
+        if self.seasoning_popup and self.seasoning_popup.winfo_exists():
+            self.seasoning_popup.set_seasonings(seasonings)
+            self.seasoning_popup.lift()
+            self.seasoning_popup.focus_force()
             return
 
-        lines = []
-        for seasoning in seasonings:
-            display_name = seasoning.display_name or seasoning.name
-            perk = seasoning.perk.strip() or "No perk description available."
-            lines.append(f"• {display_name}\n  {perk}")
-        message = "Seasonings collected:\n\n" + "\n\n".join(lines)
-        messagebox.showinfo("Seasonings", message)
+        def handle_close() -> None:
+            self.seasoning_popup = None
+
+        self.seasoning_popup = SeasoningPopup(
+            self.root, seasonings, on_close=handle_close
+        )
+        self.seasoning_popup.transient(self.root)
+        self._center_popup(self.seasoning_popup)
+        self.seasoning_popup.focus_force()
 
     def show_chef_team(self) -> None:
         self._update_chef_button()
@@ -3587,6 +3740,7 @@ class FoodGameApp:
             else:
                 message = f"You secured {display_name}!"
             self._update_seasoning_button(seasoning)
+            self._refresh_seasoning_popup()
             self._update_chef_button()
             messagebox.showinfo("Seasoning Collected", message)
             close_dialog()

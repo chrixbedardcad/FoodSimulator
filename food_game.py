@@ -27,6 +27,7 @@ from food_api import (
     GameData,
     SimulationConfig,
     build_market_deck,
+    quantize_multiplier,
 )
 from taste_icons import get_taste_icon
 from seed_utils import resolve_seed
@@ -45,10 +46,10 @@ DEFAULT_MAX_CHEFS = DEFAULT_CONFIG.active_chefs
 
 
 def format_multiplier(multiplier: float) -> str:
-    rounded = round(multiplier)
-    if abs(multiplier - rounded) < 1e-9:
-        return f"x{int(rounded)}"
-    return f"x{multiplier:.2f}"
+    quantized = quantize_multiplier(multiplier)
+    if quantized.is_integer():
+        return f"x{int(quantized)}"
+    return f"x{quantized:.1f}"
 
 
 def describe_taste_and_family(ingredient: Ingredient) -> str:

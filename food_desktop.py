@@ -37,6 +37,7 @@ from food_api import (
     SimulationConfig,
     describe_family_pattern,
     describe_flavor_pattern,
+    quantize_multiplier,
     build_market_deck,
 )
 ASSET_DIR = Path(__file__).resolve().parent
@@ -186,10 +187,10 @@ DATA = _load_game_data()
 
 
 def format_multiplier(multiplier: float) -> str:
-    rounded = round(multiplier)
-    if math.isclose(multiplier, rounded):
-        return f"x{int(rounded)}"
-    return f"x{multiplier:.2f}"
+    quantized = quantize_multiplier(multiplier)
+    if quantized.is_integer():
+        return f"x{int(quantized)}"
+    return f"x{quantized:.1f}"
 
 
 class DishMatrixDialog(tk.Toplevel):
@@ -256,7 +257,7 @@ class DishMatrixDialog(tk.Toplevel):
     def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
         for child in self.entries_frame.winfo_children():
             child.destroy()
-        self.entries = list(entries)
+        self.entries = list(sorted(entries, key=lambda item: item.chance, reverse=True))
         self._icon_refs.clear()
 
         if not self.entries:
@@ -434,7 +435,7 @@ class DishMatrixTile(ttk.Frame):
         self, master: tk.Widget, entries: Sequence[DishMatrixEntry]
     ) -> None:
         super().__init__(master, style="Tile.TFrame", padding=(14, 12))
-        self.entries = list(entries)
+        self.entries = list(sorted(entries, key=lambda item: item.chance, reverse=True))
         self.dialog: Optional[DishMatrixDialog] = None
 
         self.columnconfigure(0, weight=1)
@@ -488,7 +489,7 @@ class DishMatrixTile(ttk.Frame):
         self.dialog.focus_force()
 
     def set_entries(self, entries: Sequence[DishMatrixEntry]) -> None:
-        self.entries = list(entries)
+        self.entries = list(sorted(entries, key=lambda item: item.chance, reverse=True))
         if self.dialog and self.dialog.winfo_exists():
             self.dialog.set_entries(self.entries)
         else:

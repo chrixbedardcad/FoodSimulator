@@ -9,7 +9,7 @@
       "flavor_pattern": "all_different",
       "multiplier": 1.5,
       "tier": "Common",
-      "chance": 0.6376,
+      "chance": 0.63679,
       "description": "A simple but well-balanced tasting flight of different families and flavors."
     },
     {
@@ -19,9 +19,9 @@
       "max_ingredients": 3,
       "family_pattern": "all_same",
       "flavor_pattern": "all_different",
-      "multiplier": 3.5,
+      "multiplier": 5.0,
       "tier": "Rare",
-      "chance": 0.1166,
+      "chance": 0.11566,
       "description": "A unique dish expressing one family in multiple taste variations."
     },
     {
@@ -30,11 +30,11 @@
       "min_ingredients": 3,
       "max_ingredients": 3,
       "family_pattern": "all_different",
-      "flavor_pattern": "single_taste_varied_family",
-      "multiplier": 4.2,
+      "flavor_pattern": "all_same",
+      "multiplier": 4.12,
       "tier": "Uncommon",
-      "chance": 0.0943,
-      "description": "Three distinct families wrapped in one taste — perfect for sushi-style spreads."
+      "chance": 0.15044,
+      "description": "Three distinct families wrapped in one taste \u2014 perfect for sushi-style spreads."
     },
     {
       "id": 10,
@@ -43,9 +43,9 @@
       "max_ingredients": 3,
       "family_pattern": "all_same",
       "flavor_pattern": "all_same",
-      "multiplier": 4.6,
+      "multiplier": 5.88,
       "tier": "Rare",
-      "chance": 0.0686,
+      "chance": 0.06855,
       "description": "Three ingredients from the same family and taste, yielding a flat but serviceable plate."
     },
     {
@@ -55,9 +55,9 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "mixed",
-      "multiplier": 5.1,
+      "multiplier": 6.75,
       "tier": "Rare",
-      "chance": 0.0551,
+      "chance": 0.055235,
       "description": "A crafted composition from a single family with subtle flavor diversity."
     },
     {
@@ -67,9 +67,9 @@
       "max_ingredients": 4,
       "family_pattern": "all_different",
       "flavor_pattern": "mixed",
-      "multiplier": 2.1,
+      "multiplier": 2.38,
       "tier": "Uncommon",
-      "chance": 0.3287,
+      "chance": 0.358135,
       "description": "Four distinct families coming together with varied tastes for a rich special."
     },
     {
@@ -77,11 +77,11 @@
       "name": "Fusion Quartet",
       "min_ingredients": 4,
       "max_ingredients": 4,
-      "family_pattern": "balanced",
+      "family_pattern": "mixed",
       "flavor_pattern": "all_different",
-      "multiplier": 2.4,
+      "multiplier": 3.25,
       "tier": "Uncommon",
-      "chance": 0.2552,
+      "chance": 0.25441,
       "description": "A fusion of two core families and distinct flavors blending cultures and ideas."
     },
     {
@@ -91,9 +91,9 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "all_different",
-      "multiplier": 12.0,
+      "multiplier": 8.5,
       "tier": "Legendary",
-      "chance": 0.008,
+      "chance": 0.007745,
       "description": "A perfect flavor ensemble from one family, balanced across all taste tones."
     },
     {
@@ -103,9 +103,9 @@
       "max_ingredients": 4,
       "family_pattern": "all_same",
       "flavor_pattern": "all_same",
-      "multiplier": 12.0,
+      "multiplier": 10.25,
       "tier": "Legendary",
-      "chance": 0.0038,
+      "chance": 0.003635,
       "description": "Four matching ingredients that play it safe, resulting in a muted experience."
     },
     {
@@ -113,11 +113,11 @@
       "name": "Mosaic Feast",
       "min_ingredients": 5,
       "max_ingredients": 5,
-      "family_pattern": "balanced",
+      "family_pattern": "mixed",
       "flavor_pattern": "all_different",
-      "multiplier": 6.5,
+      "multiplier": 7.62,
       "tier": "Legendary",
-      "chance": 0.0189,
+      "chance": 0.017695,
       "description": "Five distinct tastes woven through a patchwork of culinary families."
     },
     {
@@ -127,9 +127,9 @@
       "max_ingredients": 5,
       "family_pattern": "all_different",
       "flavor_pattern": "all_different",
-      "multiplier": 12.0,
+      "multiplier": 11.12,
       "tier": "Legendary",
-      "chance": 0.0011,
+      "chance": 0.000985,
       "description": "A grand abundance of diverse ingredients and flavors from all families."
     },
     {
@@ -139,9 +139,9 @@
       "max_ingredients": 5,
       "family_pattern": "all_same",
       "flavor_pattern": "mixed",
-      "multiplier": 12.0,
+      "multiplier": 9.38,
       "tier": "Legendary",
-      "chance": 0.0052,
+      "chance": 0.004985,
       "description": "A refined centerpiece dish, unified in family but layered in taste."
     },
     {
@@ -153,8 +153,8 @@
       "flavor_pattern": "all_different",
       "multiplier": 12.0,
       "tier": "Legendary",
-      "chance": 0.0001,
-      "description": "The ultimate creation — one family, every flavor, pure culinary art."
+      "chance": 0.000095,
+      "description": "The ultimate creation \u2014 one family, every flavor, pure culinary art."
     }
   ],
   "rules": {

@@ -127,11 +127,6 @@ def _family_example(pattern: str, length: int) -> List[str]:
         return [FAMILY_EXAMPLE_ORDER[0]] * length
     if pattern == "all_different":
         return _cycle_example(FAMILY_EXAMPLE_ORDER, length)
-    if pattern == "balanced":
-        half = max(1, length // 2)
-        primary = FAMILY_EXAMPLE_ORDER[0]
-        secondary = FAMILY_EXAMPLE_ORDER[1]
-        return [primary] * half + [secondary] * (length - half)
     if pattern == "mixed":
         base = [FAMILY_EXAMPLE_ORDER[0], FAMILY_EXAMPLE_ORDER[0]]
         remainder = max(0, length - len(base))
@@ -146,11 +141,6 @@ def _flavor_example(pattern: str, length: int) -> List[str]:
         return [TASTE_EXAMPLE_ORDER[0]] * length
     if pattern == "all_different":
         return _cycle_example(TASTE_EXAMPLE_ORDER, length)
-    if pattern == "balanced":
-        half = max(1, length // 2)
-        primary = TASTE_EXAMPLE_ORDER[0]
-        secondary = TASTE_EXAMPLE_ORDER[1]
-        return [primary] * half + [secondary] * (length - half)
     if pattern == "mixed":
         base = [TASTE_EXAMPLE_ORDER[0], TASTE_EXAMPLE_ORDER[0]]
         remainder = max(0, length - len(base))
@@ -163,14 +153,12 @@ def _pattern_explanation(dimension: str, pattern: str) -> str:
         mapping = {
             "all_same": "All ingredients come from the same family.",
             "all_different": "Each ingredient uses a different family.",
-            "balanced": "Families split evenly between two core groups.",
             "mixed": "A dominant family supported by contrasting partners.",
         }
     else:
         mapping = {
             "all_same": "Every ingredient shares the same taste.",
             "all_different": "Each ingredient highlights a unique taste.",
-            "balanced": "Tastes split evenly across two profiles.",
             "mixed": "Repeating tastes blended with contrasting accents.",
         }
     return mapping.get(pattern, pattern.replace("_", " ").title())

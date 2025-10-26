@@ -164,10 +164,12 @@
       "applies_to": "same_ingredient_exact",
       "stacking_model": "per_type_once",
       "per_copy_multipliers": {
-        "2": 0.8
+        "2": 0.75,
+        "3": 0.5,
+        "4": 0.3
       },
-      "default_after_defined": 0.8,
-      "max_copies_scored": 2
+      "default_after_defined": 0.2,
+      "max_copies_scored": 4
     }
   }
 }

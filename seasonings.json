@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Spice Mix",
+    "display_name": "Spice Mix",
+    "seasoning_id": "seasoning.spice_mix",
+    "taste": "Umami",
+    "perk": "Wild spice blend that counts as any savory taste when completing a combo."
+  },
+  {
+    "name": "Salt",
+    "display_name": "Salt",
+    "seasoning_id": "seasoning.salt",
+    "taste": "Salty",
+    "perk": "Doubles the contribution of salty ingredients for one dish."
+  },
+  {
+    "name": "Sugar",
+    "display_name": "Sugar",
+    "seasoning_id": "seasoning.sugar",
+    "taste": "Sweet",
+    "perk": "Adds an extra hit of sweetness, counting as an additional sweet ingredient."
+  },
+  {
+    "name": "Pepper",
+    "display_name": "Pepper",
+    "seasoning_id": "seasoning.pepper",
+    "taste": "Bitter",
+    "perk": "Sharpens bitter flavors, canceling any penalty from matching bitters."
+  },
+  {
+    "name": "Ketchup",
+    "display_name": "Ketchup",
+    "seasoning_id": "seasoning.ketchup",
+    "taste": "Sour",
+    "perk": "Splashes in tangy acidity so one dish counts as having the sour taste."
+  },
+  {
+    "name": "Mustard",
+    "display_name": "Mustard",
+    "seasoning_id": "seasoning.mustard",
+    "taste": "Salty",
+    "perk": "Spicy kick that boosts salty and savory pairings for the next combo."
+  },
+  {
+    "name": "Oil",
+    "display_name": "Oil",
+    "seasoning_id": "seasoning.oil",
+    "taste": "Umami",
+    "perk": "Silky finish that lets one ingredient count as any rich umami note you need."
+  },
+  {
+    "name": "Butter",
+    "display_name": "Butter",
+    "seasoning_id": "seasoning.butter",
+    "taste": "Sweet",
+    "perk": "Adds mellow sweetness and richness, completing sweet-based trios."
+  }
+]

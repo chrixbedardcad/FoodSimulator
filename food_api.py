@@ -450,6 +450,16 @@ class GameData:
         for entry in self.dish_matrix:
             if entry.matches(count, family_pattern, flavor_pattern):
                 return entry
+
+        if flavor_pattern == "all_different":
+            for entry in self.dish_matrix:
+                if (
+                    entry.min_ingredients <= count <= entry.max_ingredients
+                    and entry.family_pattern == family_pattern
+                    and entry.flavor_pattern == "mixed"
+                ):
+                    return entry
+
         return None
 
 

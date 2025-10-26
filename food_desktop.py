@@ -215,6 +215,26 @@ def _load_seasoning_icon(
     return image
 
 
+def _load_button_image(filename: str, *, target_px: int = 88) -> Optional[tk.PhotoImage]:
+    cache_key = f"button_image:{filename}:{target_px}"
+    cached = _button_icon_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    icon_path = ICON_ASSET_DIR / filename
+    if not icon_path.exists():
+        return None
+
+    with Image.open(icon_path) as source_image:
+        working = source_image.convert("RGBA")
+        working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+        working = working.copy()
+
+    image = ImageTk.PhotoImage(working)
+    _button_icon_cache[cache_key] = image
+    return image
+
+
 def _generate_button_icon(
     key: str, text: str, *, size: int = 88, bg: str = "#f0f0f0", fg: str = "#1c1c1c"
 ) -> tk.PhotoImage:
@@ -1067,20 +1087,20 @@ class CookbookTile(ttk.Frame):
     def __init__(self, master: tk.Widget) -> None:
         super().__init__(master, style="Tile.TFrame", padding=(14, 12))
         self.entries: Dict[str, CookbookEntry] = {}
-        self.expanded = False
         self._entry_widgets: list[tk.Widget] = []
         self._empty_label: Optional[ttk.Label] = None
 
         self.columnconfigure(0, weight=1)
 
         self.header_var = tk.StringVar(value="📖 Cookbook")
-        self.header_button = ttk.Button(
+        self.header_label = ttk.Label(
             self,
             textvariable=self.header_var,
-            style="TileHeader.TButton",
-            command=self.toggle,
+            style="TileHeader.TLabel",
+            anchor="w",
+            justify="left",
         )
-        self.header_button.grid(row=0, column=0, sticky="ew")
+        self.header_label.grid(row=0, column=0, sticky="ew")
 
         self.subtitle_var = tk.StringVar(value="No recipes unlocked yet.")
         self.subtitle_label = ttk.Label(
@@ -1095,21 +1115,10 @@ class CookbookTile(ttk.Frame):
         self.body_frame = ttk.Frame(self, style="TileBody.TFrame")
         self.body_frame.columnconfigure(0, weight=1)
         self.body_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
-        self.body_frame.grid_remove()
 
         self.entries_frame = ttk.Frame(self.body_frame, style="TileBody.TFrame")
         self.entries_frame.grid(row=0, column=0, sticky="ew")
         self.entries_frame.columnconfigure(0, weight=1)
-
-    def toggle(self) -> None:
-        if self.expanded:
-            self.body_frame.grid_remove()
-            self.expanded = False
-        else:
-            self.body_frame.grid()
-            self.expanded = True
-        self._refresh_entries()
-        self._update_subtitle()
 
     def set_entries(self, entries: Mapping[str, CookbookEntry]) -> None:
         self.entries = {name: entry.clone() for name, entry in entries.items()}
@@ -1128,9 +1137,6 @@ class CookbookTile(ttk.Frame):
         if self._empty_label:
             self._empty_label.destroy()
             self._empty_label = None
-
-        if not self.expanded:
-            return
 
         if not self.entries:
             self._empty_label = ttk.Label(
@@ -1176,10 +1182,7 @@ class CookbookTile(ttk.Frame):
             return
         count = len(self.entries)
         plural = "recipe" if count == 1 else "recipes"
-        if self.expanded:
-            self.subtitle_var.set("Unlocked recipes:")
-        else:
-            self.subtitle_var.set(f"{count} {plural} discovered. Click to view details.")
+        self.subtitle_var.set(f"{count} {plural} discovered.")
 
 
 class ChefTeamTile(ttk.Frame):
@@ -2103,9 +2106,10 @@ class FoodGameApp:
         for column in range(4):
             resource_frame.columnconfigure(column, weight=1)
 
-        self._resource_button_images["cookbook"] = _generate_button_icon(
-            "cookbook", "CB"
-        )
+        cookbook_icon = _load_button_image("cookbook.png")
+        if cookbook_icon is None:
+            cookbook_icon = _generate_button_icon("cookbook", "CB")
+        self._resource_button_images["cookbook"] = cookbook_icon
         self.cookbook_button = ttk.Button(
             resource_frame,
             text="Cookbook",
@@ -2368,9 +2372,7 @@ class FoodGameApp:
         if not self.cookbook_tile:
             messagebox.showinfo("Cookbook", "Cookbook details are unavailable.")
             return
-        if not self.cookbook_tile.expanded:
-            self.cookbook_tile.toggle()
-        self.cookbook_tile.header_button.focus_set()
+        self.cookbook_tile.focus_set()
 
     def show_dish_matrix(self) -> None:
         if not self.dish_tile:

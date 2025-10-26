@@ -88,6 +88,7 @@ FLAVOR_LABELS = {
     "all_same": "Terrible",
     "all_different": "Tasteful",
     "mixed": "Neutral",
+    "single_taste_varied_family": "Unified",
 }
 
 
@@ -271,7 +272,10 @@ class GameData:
 
         unique_tastes = set(tastes)
         if len(unique_tastes) == 1:
-            flavor_pattern = "all_same"
+            if len(unique_families) == len(families) and len(unique_families) > 1:
+                flavor_pattern = "single_taste_varied_family"
+            else:
+                flavor_pattern = "all_same"
         elif len(unique_tastes) == len(tastes):
             flavor_pattern = "all_different"
         else:

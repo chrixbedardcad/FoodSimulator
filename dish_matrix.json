@@ -30,7 +30,7 @@
       "min_ingredients": 3,
       "max_ingredients": 3,
       "family_pattern": "all_different",
-      "flavor_pattern": "all_same",
+      "flavor_pattern": "single_taste_varied_family",
       "multiplier": 4.2,
       "tier": "Uncommon",
       "chance": 0.0943,

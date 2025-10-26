@@ -1,102 +1,146 @@
 [
   {
-    "name": "Caprese",
+    "name": "MarketPastaTrio",
+    "trio": [
+      "Pasta",
+      "Tomato",
+      "Bacon"
+    ],
+    "base_multiplier": 3.2,
+    "delta_multiplier": 0.9
+  },
+  {
+    "name": "FarmersFrittata",
+    "trio": [
+      "Tomato",
+      "Egg",
+      "Mushroom"
+    ],
+    "base_multiplier": 3.1,
+    "delta_multiplier": 0.8
+  },
+  {
+    "name": "CheesyTomatoStack",
     "trio": [
       "Tomato",
       "Parmesan",
-      "Basil"
-    ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
-  },
-  {
-    "name": "Carbonara",
-    "trio": [
-      "Pasta",
-      "Egg",
       "Bacon"
     ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
+    "base_multiplier": 3.3,
+    "delta_multiplier": 0.9
   },
   {
-    "name": "Risotto",
+    "name": "HeartyToast",
     "trio": [
-      "Rice",
-      "Parmesan",
-      "OliveOil"
-    ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
-  },
-  {
-    "name": "Sushi",
-    "trio": [
-      "Rice",
-      "Fish",
-      "Seaweed"
-    ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
-  },
-  {
-    "name": "Mousse",
-    "trio": [
-      "Chocolate",
-      "Cream",
-      "Egg"
-    ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
-  },
-  {
-    "name": "LemonTart",
-    "trio": [
-      "Lemon",
-      "Honey",
-      "Yogurt"
-    ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
-  },
-  {
-    "name": "BeefStew",
-    "trio": [
-      "Beef",
-      "Onion",
+      "Tomato",
+      "Bacon",
       "Bread"
     ],
-    "base_multiplier": 2.0,
-    "delta_multiplier": 0.5
+    "base_multiplier": 3.0,
+    "delta_multiplier": 0.8
   },
   {
-    "name": "HoneyCrash",
+    "name": "UmamiMedley",
     "trio": [
-      "Honey",
+      "Pasta",
+      "Mushroom",
+      "Parmesan"
+    ],
+    "base_multiplier": 3.4,
+    "delta_multiplier": 0.9
+  },
+  {
+    "name": "RiceMarketBowl",
+    "trio": [
+      "Rice",
+      "Tomato",
+      "Egg"
+    ],
+    "base_multiplier": 3.0,
+    "delta_multiplier": 0.8
+  },
+  {
+    "name": "CoastalCatch",
+    "trio": [
+      "Fish",
+      "Lemon",
+      "Capers"
+    ],
+    "base_multiplier": 3.2,
+    "delta_multiplier": 0.9
+  },
+  {
+    "name": "DairySampler",
+    "trio": [
       "Cream",
-      "Chocolate"
+      "Yogurt",
+      "Parmesan"
+    ],
+    "base_multiplier": 3.3,
+    "delta_multiplier": 0.8
+  },
+  {
+    "name": "PantrySkillet",
+    "trio": [
+      "Pasta",
+      "Tomato",
+      "Mushroom",
+      "Bacon"
+    ],
+    "base_multiplier": 4.6,
+    "delta_multiplier": 1.1
+  },
+  {
+    "name": "GardenRiceBake",
+    "trio": [
+      "Rice",
+      "Tomato",
+      "Mushroom",
+      "Egg"
+    ],
+    "base_multiplier": 4.3,
+    "delta_multiplier": 1.0
+  },
+  {
+    "name": "HarvestFestival",
+    "trio": [
+      "Pasta",
+      "Tomato",
+      "Bacon",
+      "Onion",
+      "Garlic"
+    ],
+    "base_multiplier": 6.0,
+    "delta_multiplier": 1.4
+  },
+  {
+    "name": "CurdledForest",
+    "trio": [
+      "Yogurt",
+      "Mushroom",
+      "Honey"
     ],
     "base_multiplier": 0.0,
     "delta_multiplier": 0.0
   },
   {
-    "name": "GarlicGanache",
+    "name": "SharpEggDrop",
     "trio": [
-      "Chocolate",
-      "Cream",
+      "Egg",
+      "Lemon",
       "Garlic"
     ],
-    "base_multiplier": -0.5,
+    "base_multiplier": 0.0,
     "delta_multiplier": 0.0
   },
   {
-    "name": "SourCurdle",
+    "name": "MuddyMeltdown",
     "trio": [
-      "Lemon",
-      "Yogurt",
-      "Cream"
+      "Chocolate",
+      "Fish",
+      "Garlic"
     ],
-    "base_multiplier": -0.25,
+    "base_multiplier": 0.0,
     "delta_multiplier": 0.0
   }
 ]

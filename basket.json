@@ -1,40 +1,36 @@
 {
   "Basic": [
     {
+      "ingredient": "Pasta",
+      "copies": 5
+    },
+    {
+      "ingredient": "Rice",
+      "copies": 5
+    },
+    {
       "ingredient": "Tomato",
-      "copies": 4
+      "copies": 5
     },
     {
       "ingredient": "Parmesan",
-      "copies": 4
-    },
-    {
-      "ingredient": "Basil",
-      "copies": 4
-    },
-    {
-      "ingredient": "Pasta",
-      "copies": 4
+      "copies": 5
     },
     {
       "ingredient": "Egg",
-      "copies": 4
+      "copies": 5
     },
     {
       "ingredient": "Bacon",
-      "copies": 4
+      "copies": 5
     },
     {
-      "ingredient": "Lemon",
-      "copies": 4
+      "ingredient": "Mushroom",
+      "copies": 5
     },
     {
-      "ingredient": "Honey",
-      "copies": 4
-    },
-    {
-      "ingredient": "OliveOil",
-      "copies": 4
+      "ingredient": "Bread",
+      "copies": 5
     }
   ],
   "Mediterranean": [
@@ -55,8 +51,8 @@
       "copies": 4
     },
     {
-      "ingredient": "OliveOil",
-      "copies": 4
+      "ingredient": "Egg",
+      "copies": 3
     },
     {
       "ingredient": "Pasta",
@@ -68,11 +64,7 @@
     },
     {
       "ingredient": "Parmesan",
-      "copies": 3
-    },
-    {
-      "ingredient": "Basil",
-      "copies": 3
+      "copies": 4
     },
     {
       "ingredient": "Lemon",
@@ -197,12 +189,8 @@
       "copies": 1
     },
     {
-      "ingredient": "Basil",
+      "ingredient": "Bread",
       "copies": 1
-    },
-    {
-      "ingredient": "OliveOil",
-      "copies": 2
     },
     {
       "ingredient": "Tomato",
@@ -211,10 +199,6 @@
     {
       "ingredient": "Capers",
       "copies": 1
-    },
-    {
-      "ingredient": "PickledCucumber",
-      "copies": 3
     }
   ]
 }

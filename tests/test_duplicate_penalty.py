@@ -100,13 +100,13 @@ def test_duplicate_penalty_alert_mentions_penalty():
 
 def test_duplicate_alert_uses_display_name():
     data = _load_data()
-    olive = data.ingredients["OliveOil"]
+    pickle = data.ingredients["PickledCucumber"]
     tomato = data.ingredients["Tomato"]
 
-    outcome = data.evaluate_dish([olive, olive, tomato])
+    outcome = data.evaluate_dish([pickle, pickle, tomato])
 
-    assert olive.display_name == "Olive Oil"
-    assert any("Olive Oil" in alert for alert in outcome.alerts)
+    assert pickle.display_name == "Pickled Cucumber"
+    assert any("Pickled Cucumber" in alert for alert in outcome.alerts)
 
 
 def test_global_duplicate_penalty_handles_multiple_types():

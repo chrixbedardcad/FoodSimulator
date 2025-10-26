@@ -1,51 +1,59 @@
 [
   {
-    "name": "Chef Italiano",
+    "name": "Chef Pantry",
     "recipe_names": [
-      "Caprese",
-      "Carbonara",
-      "Risotto"
+      "MarketPastaTrio",
+      "PantrySkillet",
+      "HarvestFestival"
     ],
     "perks": {
       "recipe_multipliers": {
-        "Caprese": 1.5,
-        "Carbonara": 2.0,
-        "Risotto": 1.8
+        "MarketPastaTrio": 1.8,
+        "PantrySkillet": 2.1,
+        "HarvestFestival": 2.5
       }
     }
   },
   {
-    "name": "Chef Asian",
+    "name": "Chef Hearth",
     "recipe_names": [
-      "Sushi"
+      "FarmersFrittata",
+      "HeartyToast",
+      "RiceMarketBowl",
+      "GardenRiceBake"
     ],
     "perks": {
       "recipe_multipliers": {
-        "Sushi": 2.5
+        "FarmersFrittata": 1.7,
+        "HeartyToast": 1.6,
+        "RiceMarketBowl": 1.6,
+        "GardenRiceBake": 2.0
       }
     }
   },
   {
-    "name": "Chef Sweettooth",
+    "name": "Chef Larder",
     "recipe_names": [
-      "Mousse",
-      "LemonTart"
+      "CheesyTomatoStack",
+      "UmamiMedley",
+      "DairySampler"
     ],
     "perks": {
       "recipe_multipliers": {
-        "Mousse": 2.0,
-        "LemonTart": 1.7
+        "CheesyTomatoStack": 1.8,
+        "UmamiMedley": 1.9,
+        "DairySampler": 1.7
       }
     }
   },
   {
-    "name": "Chef Rustic",
+    "name": "Chef Coastal",
     "recipe_names": [
-      "BeefStew"
+      "CoastalCatch"
     ],
     "perks": {
       "recipe_multipliers": {
-        "BeefStew": 2.2
+        "CoastalCatch": 2.0
       }
     }
   }

@@ -40,14 +40,6 @@
     "family": "Vegetable"
   },
   {
-    "name": "OliveOil",
-    "display_name": "Olive Oil",
-    "ingredient_id": "ing.oliveoil",
-    "taste": "Umami",
-    "Value": 10,
-    "family": "Vegetable"
-  },
-  {
     "name": "Mushroom",
     "display_name": "Mushroom",
     "ingredient_id": "ing.mushroom",

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 import tkinter as tk
 from collections import Counter
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ from food_api import (
 )
 ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
+INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 
 
 TASTE_ICON_FILES: Mapping[str, str] = {
@@ -64,6 +66,7 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 ICON_TARGET_PX = 64
 DIALOG_ICON_TARGET_PX = 40
+INGREDIENT_IMAGE_TARGET_PX = 160
 
 try:
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -72,6 +75,7 @@ except AttributeError:  # Pillow<9.1 fallback
 
 
 _icon_cache: Dict[str, tk.PhotoImage] = {}
+_ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
 
 
 def _load_icon(
@@ -109,6 +113,68 @@ def _load_icon(
 
     image = ImageTk.PhotoImage(working)
     _icon_cache[cache_key] = image
+    return image
+
+
+def _candidate_image_basenames(values: Iterable[Optional[str]]) -> List[str]:
+    seen: List[str] = []
+    for value in values:
+        if not value:
+            continue
+        variants = {
+            value,
+            value.lower(),
+            value.replace(" ", "_"),
+            value.replace(" ", "_").lower(),
+            re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_"),
+        }
+        for candidate in variants:
+            if candidate and candidate not in seen:
+                seen.append(candidate)
+    return seen
+
+
+def _find_ingredient_image_path(ingredient: Ingredient) -> Optional[Path]:
+    if not INGREDIENT_ASSET_DIR.exists():
+        return None
+
+    candidates = _candidate_image_basenames(
+        (
+            getattr(ingredient, "display_name", None),
+            ingredient.name,
+            getattr(ingredient, "ingredient_id", None),
+            (getattr(ingredient, "ingredient_id", None) or "").split(".")[-1],
+        )
+    )
+
+    extensions = (".png", ".jpg", ".jpeg", ".gif")
+    for base in candidates:
+        for ext in extensions:
+            path = INGREDIENT_ASSET_DIR / f"{base}{ext}"
+            if path.exists():
+                return path
+    return None
+
+
+def _load_ingredient_image(
+    ingredient: Ingredient, *, target_px: int = INGREDIENT_IMAGE_TARGET_PX
+) -> tk.PhotoImage:
+    cache_key = f"ingredient:{getattr(ingredient, 'ingredient_id', ingredient.name)}:{target_px}"
+    cached = _ingredient_image_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    image_path = _find_ingredient_image_path(ingredient)
+    if image_path and image_path.exists():
+        with Image.open(image_path) as source_image:
+            working = source_image.convert("RGBA")
+            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+            working = working.copy()
+    else:
+        working = Image.new("RGBA", (target_px, target_px), (255, 255, 255, 255))
+
+    image = ImageTk.PhotoImage(working)
+    _ingredient_image_cache[cache_key] = image
     return image
 
 FAMILY_EXAMPLE_ORDER = ["Protein", "Vegetable", "Grain", "Dairy", "Fruit"]
@@ -1129,6 +1195,15 @@ class CardView(ttk.Frame):
         separator.grid(row=1, column=0, sticky="ew", pady=(6, 8))
 
         row_index = 2
+
+        self.ingredient_image = _load_ingredient_image(ingredient)
+        self.ingredient_image_label = ttk.Label(
+            self,
+            image=self.ingredient_image,
+            anchor="center",
+        )
+        self.ingredient_image_label.grid(row=row_index, column=0, sticky="n", pady=(0, 6))
+        row_index += 1
 
         self.taste_image = _load_icon("taste", ingredient.taste)
         taste_text = f"Taste: {ingredient.taste}"

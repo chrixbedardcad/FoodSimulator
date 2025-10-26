@@ -1,6 +1,7 @@
 [
   {
     "name": "Truffle",
+    "display_name": "Truffle",
     "ingredient_id": "ing.truffle",
     "taste": "Umami",
     "Value": 30,
@@ -8,6 +9,7 @@
   },
   {
     "name": "Parmesan",
+    "display_name": "Parmesan",
     "ingredient_id": "ing.parmesan",
     "taste": "Umami",
     "Value": 18,
@@ -15,6 +17,7 @@
   },
   {
     "name": "Egg",
+    "display_name": "Egg",
     "ingredient_id": "ing.egg",
     "taste": "Salty",
     "Value": 12,
@@ -22,6 +25,7 @@
   },
   {
     "name": "Tomato",
+    "display_name": "Tomato",
     "ingredient_id": "ing.tomato",
     "taste": "Sour",
     "Value": 22,
@@ -29,6 +33,7 @@
   },
   {
     "name": "Basil",
+    "display_name": "Basil",
     "ingredient_id": "ing.basil",
     "taste": "Bitter",
     "Value": 6,
@@ -36,6 +41,7 @@
   },
   {
     "name": "OliveOil",
+    "display_name": "Olive Oil",
     "ingredient_id": "ing.oliveoil",
     "taste": "Umami",
     "Value": 10,
@@ -43,6 +49,7 @@
   },
   {
     "name": "Mushroom",
+    "display_name": "Mushroom",
     "ingredient_id": "ing.mushroom",
     "taste": "Umami",
     "Value": 10,
@@ -50,6 +57,7 @@
   },
   {
     "name": "Garlic",
+    "display_name": "Garlic",
     "ingredient_id": "ing.garlic",
     "taste": "Bitter",
     "Value": 6,
@@ -57,6 +65,7 @@
   },
   {
     "name": "Lemon",
+    "display_name": "Lemon",
     "ingredient_id": "ing.lemon",
     "taste": "Sour",
     "Value": 8,
@@ -64,6 +73,7 @@
   },
   {
     "name": "Honey",
+    "display_name": "Honey",
     "ingredient_id": "ing.honey",
     "taste": "Sweet",
     "Value": 12,
@@ -71,6 +81,7 @@
   },
   {
     "name": "Chocolate",
+    "display_name": "Chocolate",
     "ingredient_id": "ing.chocolate",
     "taste": "Sweet",
     "Value": 12,
@@ -78,6 +89,7 @@
   },
   {
     "name": "Beef",
+    "display_name": "Beef",
     "ingredient_id": "ing.beef",
     "taste": "Umami",
     "Value": 18,
@@ -85,6 +97,7 @@
   },
   {
     "name": "Bacon",
+    "display_name": "Bacon",
     "ingredient_id": "ing.bacon",
     "taste": "Salty",
     "Value": 14,
@@ -92,6 +105,7 @@
   },
   {
     "name": "Pasta",
+    "display_name": "Pasta",
     "ingredient_id": "ing.pasta",
     "taste": "Umami",
     "Value": 12,
@@ -99,6 +113,7 @@
   },
   {
     "name": "Rice",
+    "display_name": "Rice",
     "ingredient_id": "ing.rice",
     "taste": "Umami",
     "Value": 10,
@@ -106,6 +121,7 @@
   },
   {
     "name": "Fish",
+    "display_name": "Fish",
     "ingredient_id": "ing.fish",
     "taste": "Umami",
     "Value": 14,
@@ -113,6 +129,7 @@
   },
   {
     "name": "Seaweed",
+    "display_name": "Seaweed",
     "ingredient_id": "ing.seaweed",
     "taste": "Umami",
     "Value": 8,
@@ -120,6 +137,7 @@
   },
   {
     "name": "Cream",
+    "display_name": "Cream",
     "ingredient_id": "ing.cream",
     "taste": "Sweet",
     "Value": 10,
@@ -127,6 +145,7 @@
   },
   {
     "name": "Onion",
+    "display_name": "Onion",
     "ingredient_id": "ing.onion",
     "taste": "Sweet",
     "Value": 8,
@@ -134,6 +153,7 @@
   },
   {
     "name": "Bread",
+    "display_name": "Bread",
     "ingredient_id": "ing.bread",
     "taste": "Umami",
     "Value": 10,
@@ -141,6 +161,7 @@
   },
   {
     "name": "Yogurt",
+    "display_name": "Yogurt",
     "ingredient_id": "ing.yogurt",
     "taste": "Sour",
     "Value": 10,
@@ -148,6 +169,7 @@
   },
   {
     "name": "Capers",
+    "display_name": "Capers",
     "ingredient_id": "ing.capers",
     "taste": "Salty",
     "Value": 6,
@@ -155,6 +177,7 @@
   },
   {
     "name": "PickledCucumber",
+    "display_name": "Pickled Cucumber",
     "ingredient_id": "ing.pickledcucumber",
     "taste": "Sour",
     "Value": 6,

@@ -1710,12 +1710,12 @@ class FoodGameApp:
         self.selected_indices: set[int] = set()
         self.spinboxes: List[ttk.Spinbox] = []
         self.cookbook_tile: Optional[CookbookTile] = None
-        self.dish_tile: Optional[DishMatrixTile] = None
         self.team_tile: Optional[ChefTeamTile] = None
         self.seasoning_tile: Optional[SeasoningTile] = None
         self.active_popup: Optional[tk.Toplevel] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
+        self.dish_dialog: Optional[DishMatrixDialog] = None
 
         self.hand_sort_modes: Tuple[str, ...] = ("name", "family", "taste")
         self.hand_sort_index = 0
@@ -1911,20 +1911,6 @@ class FoodGameApp:
             self.basket_combo.current(0)
         self.basket_combo.pack(anchor="w", pady=(4, 12))
 
-        self.cookbook_tile = CookbookTile(self.control_frame)
-        self.cookbook_tile.pack(fill="x", pady=(0, 12))
-
-        self.dish_tile = DishMatrixTile(self.control_frame, DATA.dish_matrix)
-        self.dish_tile.pack(fill="x", pady=(0, 12))
-
-        self.team_tile = ChefTeamTile(self.control_frame)
-        self.team_tile.pack(fill="x", pady=(0, 12))
-
-        self.seasoning_tile = SeasoningTile(
-            self.control_frame, on_select=self._handle_seasoning_selected
-        )
-        self.seasoning_tile.pack(fill="x", pady=(0, 12))
-
         ttk.Label(
             self.control_frame,
             text="You'll be prompted to recruit chefs or claim seasonings once a run begins.",
@@ -1953,8 +1939,6 @@ class FoodGameApp:
             1,
             max(1, len(DATA.chefs)),
         )
-
-        self.team_tile.set_team([], self.max_chefs_var.get())
 
         self.start_button = ttk.Button(
             self.control_frame, text="Start Run", command=self.start_run
@@ -2408,32 +2392,78 @@ class FoodGameApp:
         self._center_popup(self.deck_popup)
 
     def show_cookbook_panel(self) -> None:
-        if not self.cookbook_tile:
-            messagebox.showinfo("Cookbook", "Cookbook details are unavailable.")
+        if not self.session:
+            messagebox.showinfo(
+                "Cookbook", "Start a run to discover recipes and view your cookbook."
+            )
             return
-        self.cookbook_tile.focus_set()
+        entries = self.session.get_cookbook()
+        if not entries:
+            messagebox.showinfo(
+                "Cookbook", "No recipes unlocked yet. Cook dishes to discover more."
+            )
+            return
+
+        lines = []
+        for name, entry in sorted(entries.items()):
+            times = "time" if entry.count == 1 else "times"
+            ingredients = ", ".join(entry.ingredients)
+            multiplier_text = format_multiplier(entry.multiplier)
+            source_note = " (Personal discovery)" if entry.personal_discovery else ""
+            lines.append(
+                f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}{source_note}\n"
+                f"Ingredients: {ingredients}"
+            )
+
+        message = "\n\n".join(lines)
+        messagebox.showinfo("Cookbook", message)
 
     def show_dish_matrix(self) -> None:
-        if not self.dish_tile:
-            messagebox.showinfo("Dish Matrix", "Dish matrix data is unavailable.")
+        if self.dish_dialog and self.dish_dialog.winfo_exists():
+            self.dish_dialog.lift()
+            self.dish_dialog.focus_force()
             return
-        self.dish_tile.open_dialog()
+
+        def handle_close() -> None:
+            self.dish_dialog = None
+
+        self.dish_dialog = DishMatrixDialog(
+            self.root, DATA.dish_matrix, on_close=handle_close
+        )
+        self.dish_dialog.transient(self.root)
+        self._center_popup(self.dish_dialog)
+        self.dish_dialog.focus_force()
 
     def show_selected_seasoning_info(self) -> None:
-        if not self.seasoning_tile:
-            messagebox.showinfo("Seasonings", "Seasoning details are unavailable.")
+        if not self.session:
+            messagebox.showinfo(
+                "Seasonings", "Start a run to collect seasonings for your pantry."
+            )
             return
-        seasoning = self.seasoning_tile.get_selected_seasoning()
-        if not seasoning:
+
+        seasonings = self.session.get_seasonings()
+        if not seasonings:
             messagebox.showinfo(
                 "Seasonings", "No seasonings collected yet. Finish a round to claim one."
             )
             return
-        display_name = seasoning.display_name or seasoning.name
-        taste = seasoning.taste
-        perk = seasoning.perk.strip() or "No perk description available."
-        message = f"Taste: {taste}\n\nPerk:\n{perk}"
-        messagebox.showinfo(display_name, message)
+
+        if len(seasonings) == 1:
+            seasoning = seasonings[0]
+            display_name = seasoning.display_name or seasoning.name
+            taste = seasoning.taste
+            perk = seasoning.perk.strip() or "No perk description available."
+            message = f"Taste: {taste}\n\nPerk:\n{perk}"
+            messagebox.showinfo(display_name, message)
+            return
+
+        lines = []
+        for seasoning in seasonings:
+            display_name = seasoning.display_name or seasoning.name
+            perk = seasoning.perk.strip() or "No perk description available."
+            lines.append(f"• {display_name}\n  {perk}")
+        message = "Seasonings collected:\n\n" + "\n\n".join(lines)
+        messagebox.showinfo("Seasonings", message)
 
     def show_chef_team(self) -> None:
         self._update_chef_button()
@@ -2467,10 +2497,17 @@ class FoodGameApp:
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not hasattr(self, "seasoning_button"):
             return
-        if seasoning is None and self.seasoning_tile:
-            seasoning = self.seasoning_tile.get_selected_seasoning()
-
-        if seasoning:
+        if seasoning is None and self.session:
+            seasonings = self.session.get_seasonings()
+            if len(seasonings) == 1:
+                seasoning = seasonings[0]
+            elif seasonings:
+                seasoning = None
+                text = "Seasonings\nMultiple"
+            else:
+                seasoning = None
+                text = "Seasonings\nNone"
+        if seasoning is not None:
             display_name = seasoning.display_name or seasoning.name
             text = f"Seasonings\n{display_name}"
         elif self.session and self.session.get_seasonings():

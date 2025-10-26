@@ -21,6 +21,7 @@ RULES_VERSION = "1.0.1"
 DEFAULT_INGREDIENTS_JSON = "ingredients.json"
 DEFAULT_TASTE_JSON = "taste_matrix.json"
 DEFAULT_DISH_MATRIX_JSON = "dish_matrix.json"
+DEFAULT_RULES_JSON = "rules.json"
 DEFAULT_RECIPES_JSON = "recipes.json"
 DEFAULT_CHEFS_JSON = "chefs.json"
 DEFAULT_THEMES_JSON = "themes.json"
@@ -172,8 +173,9 @@ class GameData:
         taste_path: str = DEFAULT_TASTE_JSON,
         themes_path: str = DEFAULT_THEMES_JSON,
         dish_matrix_path: str = DEFAULT_DISH_MATRIX_JSON,
+        rules_path: Optional[str] = DEFAULT_RULES_JSON,
     ) -> "GameData":
-        dish_matrix_entries, rules = _load_dish_matrix(dish_matrix_path)
+        dish_matrix_entries = _load_dish_matrix(dish_matrix_path)
         return cls(
             ingredients=_load_ingredients(ingredients_path),
             recipes=_load_recipes(recipes_path),
@@ -181,7 +183,7 @@ class GameData:
             themes=_load_themes(themes_path),
             taste_matrix=_load_taste_matrix(taste_path),
             dish_matrix=dish_matrix_entries,
-            rules=rules,
+            rules=_load_rules(rules_path) if rules_path else {},
         )
 
     # --- Helpers that operate on the loaded data ---
@@ -524,7 +526,7 @@ def _load_taste_matrix(path: str):
     return raw["matrix"]
 
 
-def _load_dish_matrix(path: str) -> Tuple[List[DishMatrixEntry], Mapping[str, object]]:
+def _load_dish_matrix(path: str) -> List[DishMatrixEntry]:
     raw = load_json(path)
     entries: List[DishMatrixEntry] = []
     for entry in raw.get("dish_matrix", []):
@@ -542,12 +544,18 @@ def _load_dish_matrix(path: str) -> Tuple[List[DishMatrixEntry], Mapping[str, ob
                 description=str(entry["description"]),
             )
         )
-    rules_raw = raw.get("rules", {})
-    if isinstance(rules_raw, Mapping):
-        rules: Mapping[str, object] = dict(rules_raw)
-    else:
-        rules = {}
-    return entries, rules
+    return entries
+
+
+def _load_rules(path: Optional[str]) -> Mapping[str, object]:
+    if not path:
+        return {}
+    if not os.path.exists(path):
+        return {}
+    raw = load_json(path)
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    return {}
 
 
 def _load_themes(path: str):

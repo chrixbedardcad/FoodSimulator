@@ -1,0 +1,14 @@
+{
+  "duplicate_ingredient_penalty": {
+    "enabled": true,
+    "application": "global",
+    "applies_to": "same_ingredient_exact",
+    "stacking_model": "per_type_once",
+    "per_copy_multipliers": {
+      "2": 0.5,
+      "3": 0.1
+    },
+    "default_after_defined": 0.0,
+    "max_copies_scored": 4
+  }
+}

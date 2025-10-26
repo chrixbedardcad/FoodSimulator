@@ -160,7 +160,7 @@ Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak imm
 |----------|-------------|
 | **Trio draws** | Eight-card hands are dealt from theme-driven decks; trios are cooked each turn. |
 | **Taste synergy** | Taste combinations look up multipliers in `taste_matrix.json` to scale chip totals. |
-| **Duplicate ingredient penalty** | Repeating the same ingredient ID applies the configurable penalty defined in `dish_matrix.json` (global 0.8× per duplicated type by default). |
+| **Duplicate ingredient penalty** | Repeating the same ingredient ID applies the configurable penalty defined in `rules.json` (global 0.5× for a second copy, 0.1× for a third, and 0× thereafter by default). |
 | **Recipe mastery** | Cooking the same signature recipe twice in a row masters it and contributes to mastery rate metrics. |
 | **Chef bias** | Signature ingredients appear more frequently thanks to weighted deck construction. |
 | **Chef perks** | Additional modifiers (such as recipe multipliers) are pulled from `chefs.json` and applied during scoring. |
@@ -168,8 +168,8 @@ Because the GUI reuses the shared `food_api.py` helpers, any JSON data tweak imm
 
 ## 🔁 Duplicate Ingredient Penalty
 
-- Configure the penalty in `dish_matrix.json` under `rules.duplicate_ingredient_penalty`.
-- The default global model multiplies the dish score by **0.8** once for each ingredient ID that appears more than once.
+- Configure the penalty in `rules.json` under `duplicate_ingredient_penalty`.
+- The default global model multiplies the dish score by **0.5** when a second copy appears and by **0.1** when a third copy appears; fourth or later copies contribute **0** to the score.
 - Switch to the per-card model by setting `"application": "per_card"` to score only the extra copies at the reduced multiplier.
 - When three or more of the same ingredient are cooked, the simulator surfaces an alert noting the dish is "over taste" on that ingredient to help balance review.
 

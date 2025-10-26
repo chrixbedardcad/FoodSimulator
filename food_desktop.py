@@ -2318,12 +2318,6 @@ class FoodGameApp:
             )
             recipe_banner.pack(anchor="w", pady=(0, 8))
 
-        ingredient_lines = [
-            f"• {ingredient.name} — Taste {ingredient.taste}, Value {ingredient.Value}"
-            for ingredient in outcome.selected
-        ]
-        ingredients_text = "\n".join(ingredient_lines) or "• —"
-
         tk.Label(
             content,
             text="Cooked ingredients:",
@@ -2333,15 +2327,54 @@ class FoodGameApp:
             anchor="w",
         ).pack(anchor="w")
 
-        tk.Label(
-            content,
-            text=ingredients_text,
-            font=("Helvetica", 10),
-            fg="#26313a",
-            bg=base_bg,
-            justify="left",
-            anchor="w",
-        ).pack(anchor="w", fill="x", pady=(0, 10))
+        ingredients_frame = tk.Frame(content, bg=base_bg)
+        ingredients_frame.pack(anchor="w", fill="x", pady=(0, 10))
+
+        if outcome.selected:
+            for ingredient in outcome.selected:
+                row = tk.Frame(ingredients_frame, bg=base_bg)
+                row.pack(anchor="w", fill="x", pady=(0, 4))
+
+                family_icon = _load_icon(
+                    "family", ingredient.family, target_px=DIALOG_ICON_TARGET_PX
+                )
+                if family_icon is not None:
+                    icon_label = tk.Label(row, image=family_icon, bg=base_bg)
+                    icon_label.image = family_icon
+                    icon_label.pack(side="left", padx=(0, 8))
+
+                text_frame = tk.Frame(row, bg=base_bg)
+                text_frame.pack(side="left", fill="x", expand=True)
+
+                tk.Label(
+                    text_frame,
+                    text=f"{ingredient.name} — Taste {ingredient.taste}, Value {ingredient.Value}",
+                    font=("Helvetica", 10, "bold"),
+                    fg="#1d2730",
+                    bg=base_bg,
+                    anchor="w",
+                    justify="left",
+                ).pack(anchor="w")
+
+                tk.Label(
+                    text_frame,
+                    text=f"Family: {ingredient.family}",
+                    font=("Helvetica", 10),
+                    fg="#26313a",
+                    bg=base_bg,
+                    anchor="w",
+                    justify="left",
+                ).pack(anchor="w")
+        else:
+            tk.Label(
+                ingredients_frame,
+                text="• —",
+                font=("Helvetica", 10),
+                fg="#26313a",
+                bg=base_bg,
+                anchor="w",
+                justify="left",
+            ).pack(anchor="w")
 
         family_desc = outcome.family_pattern.replace("_", " ")
         flavor_desc = outcome.flavor_pattern.replace("_", " ")
@@ -2435,9 +2468,7 @@ class FoodGameApp:
         footer = tk.Frame(content, bg=base_bg)
         footer.pack(fill="x")
 
-        ttk.Button(footer, text="Close", command=close_popup).pack(
-            side="right", pady=(6, 0)
-        )
+        ttk.Button(footer, text="OK", command=close_popup).pack(pady=(6, 0))
 
         popup.update_idletasks()
         self._center_popup(popup)

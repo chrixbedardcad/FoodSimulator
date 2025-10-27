@@ -48,6 +48,15 @@ ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 
+# Some historical bundles of the simulator stored recipe artwork in a directory
+# spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
+# folder, but we still want to support the existing assets without requiring
+# players to rename files manually.  If the preferred directory is missing we
+# fall back to the legacy location.
+_LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
+if not RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR.exists():
+    RECIPE_ASSET_DIR = _LEGACY_RECIPE_ASSET_DIR
+
 
 TASTE_ICON_FILES: Mapping[str, str] = {
     "Sweet": "Sweet.png",

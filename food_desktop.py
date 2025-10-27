@@ -94,6 +94,20 @@ _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 
 
+def _recipe_asset_directories() -> List[Path]:
+    """Return available recipe artwork directories in preferred order."""
+
+    directories: List[Path] = []
+    for candidate in (RECIPE_ASSET_DIR, _LEGACY_RECIPE_ASSET_DIR):
+        if candidate.exists() and candidate not in directories:
+            directories.append(candidate)
+    if not directories:
+        # Preserve the original path so relative references remain stable even
+        # when the directory has not been created yet.
+        directories.append(RECIPE_ASSET_DIR)
+    return directories
+
+
 def _load_icon(
     category: str, name: str, *, target_px: Optional[int] = None
 ) -> Optional[tk.PhotoImage]:
@@ -223,10 +237,14 @@ def _load_recipe_image(
 
     image_path = _find_recipe_image_path(recipe_name, display_name)
     if image_path and image_path.exists():
-        with Image.open(image_path) as source_image:
-            working = source_image.convert("RGBA")
-            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
-            working = working.copy()
+        try:
+            with Image.open(image_path) as source_image:
+                working = source_image.convert("RGBA")
+                working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+                working = working.copy()
+        except OSError:
+            _recipe_image_cache[cache_key] = None
+            return None
         image = ImageTk.PhotoImage(working)
         _recipe_image_cache[cache_key] = image
         return image

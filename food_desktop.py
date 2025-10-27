@@ -17,7 +17,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 from tkinter import ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -34,6 +34,7 @@ from food_api import (
     DEFAULT_DISH_MATRIX_JSON,
     Chef,
     DishMatrixEntry,
+    DishOutcome,
     GameData,
     Ingredient,
     Seasoning,
@@ -78,6 +79,13 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 ICON_TARGET_PX = 64
 DIALOG_ICON_TARGET_PX = 40
+RUINED_SEASONING_MESSAGES = [
+    "You seasoned with your heart… and your heart was too salty.",
+    "The dish called— it wants a lifeguard. It’s drowning in mustard.",
+    "Bold choice. Jury’s still chewing.",
+    "Somewhere, a nonna just shook her head.",
+    "We discovered a new taste today: Regret.",
+]
 INGREDIENT_IMAGE_TARGET_PX = 160
 RECIPE_IMAGE_TARGET_PX = 240
 
@@ -620,6 +628,22 @@ class DishMatrixDialog(tk.Toplevel):
                 )
                 fallback.pack(side="left", padx=1)
 
+@dataclass(frozen=True)
+class SeasoningUsage:
+    seasoning: Seasoning
+    count: int
+
+
+@dataclass(frozen=True)
+class SeasoningCalculation:
+    base_score: int
+    total_boost_pct: float
+    total_penalty: float
+    seasoned_score: int
+    ruined: bool
+    usage: Tuple[SeasoningUsage, ...] = ()
+
+
 @dataclass
 class TurnOutcome:
     selected: Sequence[Ingredient]
@@ -649,6 +673,11 @@ class TurnOutcome:
     discovered_recipe: bool
     personal_discovery: bool
     alerts: Tuple[str, ...] = ()
+    seasoning_boost_pct: float = 0.0
+    seasoning_penalty: float = 0.0
+    seasoned_score: int = 0
+    ruined: bool = False
+    applied_seasonings: Tuple[Tuple[str, int], ...] = ()
 
 
 @dataclass
@@ -785,6 +814,7 @@ class GameSession:
         self.hand: List[Ingredient] = []
         self.deck: List[Ingredient] = []
         self.seasonings: List[Seasoning] = []
+        self._seasoning_charges: Dict[str, Optional[int]] = {}
         self._events: List[str] = []
 
         self._cookbook_ingredients: set[str] = set()
@@ -963,6 +993,7 @@ class GameSession:
         if self.finished:
             raise RuntimeError("Cannot add seasonings after the run has finished.")
         self.seasonings.append(seasoning)
+        self._seasoning_charges[seasoning.seasoning_id] = seasoning.charges
         self.pending_new_chef_offer = False
         display_name = seasoning.display_name or seasoning.name
         perk_text = seasoning.perk.strip()
@@ -995,6 +1026,24 @@ class GameSession:
     def get_seasonings(self) -> Sequence[Seasoning]:
         return list(self.seasonings)
 
+    def get_seasoning_charges(self, seasoning_id: str) -> Optional[int]:
+        if seasoning_id in self._seasoning_charges:
+            return self._seasoning_charges[seasoning_id]
+        base = self.data.seasoning_by_id.get(seasoning_id)
+        if base is None:
+            return None
+        self._seasoning_charges[seasoning_id] = base.charges
+        return base.charges
+
+    def get_active_seasonings(self) -> List[Tuple[Seasoning, Optional[int]]]:
+        active: List[Tuple[Seasoning, Optional[int]]] = []
+        for seasoning in self.seasonings:
+            remaining = self.get_seasoning_charges(seasoning.seasoning_id)
+            if remaining == 0:
+                continue
+            active.append((seasoning, remaining))
+        return active
+
     def preview_recipe_multiplier(self, recipe_name: Optional[str]) -> float:
         return self.data.recipe_multiplier(
             recipe_name,
@@ -1013,10 +1062,106 @@ class GameSession:
 
     def get_recipe_hints(self, ingredient: Ingredient) -> List[str]:
         hints: List[str] = []
-        for recipe_name in self._ingredient_recipe_map.get(ingredient.name, ()):
+        for recipe_name in self._ingredient_recipe_map.get(ingredient.name, ()): 
             display = self.data.recipe_display_name(recipe_name)
             hints.append(display or recipe_name)
         return sorted(hints, key=lambda value: value.lower())
+
+    def _normalize_seasoning_usage(
+        self,
+        applied_seasonings: Union[Mapping[str, int], Sequence[Tuple[str, int]]],
+    ) -> Dict[str, int]:
+        usage: Dict[str, int] = {}
+        items: Iterable[Tuple[str, int]]
+        if isinstance(applied_seasonings, Mapping):
+            items = applied_seasonings.items()
+        else:
+            items = applied_seasonings
+        for key, raw_count in items:
+            if raw_count is None:
+                continue
+            try:
+                count = int(raw_count)
+            except (TypeError, ValueError):
+                continue
+            if count <= 0:
+                continue
+            identifier = str(key)
+            usage[identifier] = usage.get(identifier, 0) + count
+        return usage
+
+    def calculate_seasoning_adjustments(
+        self,
+        ingredients: Sequence[Ingredient],
+        base_score: float,
+        applied_seasonings: Union[Mapping[str, int], Sequence[Tuple[str, int]]],
+    ) -> SeasoningCalculation:
+        usage_map = self._normalize_seasoning_usage(applied_seasonings)
+        if not usage_map:
+            rounded_base = int(round(base_score))
+            return SeasoningCalculation(
+                base_score=rounded_base,
+                total_boost_pct=0.0,
+                total_penalty=0.0,
+                seasoned_score=max(0, rounded_base),
+                ruined=rounded_base <= 0,
+                usage=(),
+            )
+
+        owned_ids = {seasoning.seasoning_id for seasoning in self.seasonings}
+        usages: List[SeasoningUsage] = []
+        total_boost_pct = 0.0
+        total_penalty = 0.0
+        rounded_base = int(round(base_score))
+
+        dish_tastes = Counter(ingredient.taste for ingredient in ingredients)
+        dish_families = {ingredient.family for ingredient in ingredients}
+
+        for seasoning_id, count in usage_map.items():
+            if seasoning_id not in owned_ids:
+                raise ValueError(f"Seasoning {seasoning_id} is not in the player's pantry.")
+            seasoning = self.data.seasoning_by_id.get(seasoning_id)
+            if not seasoning:
+                raise ValueError(f"Unknown seasoning identifier: {seasoning_id}")
+            stack_limit = max(1, seasoning.stack_limit)
+            if count > stack_limit:
+                display_name = seasoning.display_name or seasoning.name
+                raise ValueError(
+                    f"Cannot apply {display_name} more than {stack_limit} time(s) to one dish."
+                )
+            remaining = self.get_seasoning_charges(seasoning_id)
+            if remaining is not None and count > remaining:
+                display_name = seasoning.display_name or seasoning.name
+                raise ValueError(
+                    f"{display_name} only has {remaining} charge(s) remaining."
+                )
+
+            per_pct = 0.0
+            for taste, boost in seasoning.boosts.items():
+                if dish_tastes.get(taste, 0) > 0:
+                    per_pct += float(boost)
+            total_boost_pct += per_pct * count
+
+            if seasoning.conflicts and seasoning.conflict_penalty > 0:
+                matches = sum(1 for family in seasoning.conflicts if family in dish_families)
+                if matches:
+                    total_penalty += float(seasoning.conflict_penalty) * matches * count
+
+            usages.append(SeasoningUsage(seasoning=seasoning, count=count))
+
+        adjusted_value = math.floor(rounded_base * (1 + total_boost_pct) - total_penalty)
+        if adjusted_value < 0:
+            adjusted_value = 0
+        ruined = adjusted_value <= 0
+
+        return SeasoningCalculation(
+            base_score=rounded_base,
+            total_boost_pct=total_boost_pct,
+            total_penalty=total_penalty,
+            seasoned_score=adjusted_value,
+            ruined=ruined,
+            usage=tuple(usages),
+        )
 
     def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
         if self.finished:
@@ -1051,7 +1196,13 @@ class GameSession:
 
         return removed, deck_refreshed
 
-    def play_turn(self, indices: Sequence[int]) -> TurnOutcome:
+    def play_turn(
+        self,
+        indices: Sequence[int],
+        applied_seasonings: Optional[
+            Union[Mapping[str, int], Sequence[Tuple[str, int]]]
+        ] = None,
+    ) -> TurnOutcome:
         if self.finished:
             raise RuntimeError("The session has already finished.")
         if not indices:
@@ -1070,8 +1221,9 @@ class GameSession:
 
         selected = [self.hand[index] for index in unique]
         dish = self.data.evaluate_dish(selected)
-        if dish.alerts:
-            for alert in dish.alerts:
+        alerts = list(dish.alerts)
+        if alerts:
+            for alert in alerts:
                 self._push_event(alert)
         Value = dish.base_value
         recipe_name = self.data.which_recipe(selected)
@@ -1084,7 +1236,16 @@ class GameSession:
             chefs=self.chefs,
             times_cooked=times_cooked_before,
         )
-        final_score = int(round(dish.dish_value * recipe_multiplier))
+        applied = applied_seasonings or {}
+        seasoning_calc = self.calculate_seasoning_adjustments(
+            selected, dish.dish_value, applied
+        )
+        if seasoning_calc.ruined and seasoning_calc.usage:
+            ruined_message = self.rng.choice(RUINED_SEASONING_MESSAGES)
+            alerts.append(ruined_message)
+            self._push_event(ruined_message)
+        base_value = seasoning_calc.seasoned_score
+        final_score = int(round(base_value * recipe_multiplier))
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
@@ -1142,6 +1303,30 @@ class GameSession:
         for ingredient in selected:
             self.hand.remove(ingredient)
 
+        if seasoning_calc.usage:
+            boost_pct = seasoning_calc.total_boost_pct
+            penalty_value = seasoning_calc.total_penalty
+            boost_text = f"+{int(round(boost_pct * 100))}%" if boost_pct else "+0%"
+            penalty_text = f"-{int(round(penalty_value))}" if penalty_value else "0"
+            self._push_event(
+                f"Seasonings applied: {boost_text} to base score, penalty {penalty_text}."
+            )
+            for usage in seasoning_calc.usage:
+                charges = self.get_seasoning_charges(usage.seasoning.seasoning_id)
+                if charges is not None:
+                    remaining = max(charges - usage.count, 0)
+                    self._seasoning_charges[usage.seasoning.seasoning_id] = remaining
+                    display_name = usage.seasoning.display_name or usage.seasoning.name
+                    if remaining > 0:
+                        plural = "uses" if remaining != 1 else "use"
+                        self._push_event(
+                            f"{display_name} has {remaining} {plural} remaining this run."
+                        )
+                    else:
+                        self._push_event(
+                            f"{display_name} is tapped out for the rest of the run."
+                        )
+
         deck_refreshed = False
 
         if self.cooks_completed_in_round >= self.cooks_per_round:
@@ -1154,7 +1339,7 @@ class GameSession:
         return TurnOutcome(
             selected=selected,
             Value=Value,
-            dish_value=dish.dish_value,
+            dish_value=float(base_value),
             dish_multiplier=dish.dish_multiplier,
             dish_name=dish.name,
             dish_tier=dish.tier,
@@ -1167,7 +1352,15 @@ class GameSession:
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
             times_cooked_total=times_cooked_total,
-            base_score=int(round(dish.dish_value)),
+            base_score=seasoning_calc.base_score,
+            seasoning_boost_pct=seasoning_calc.total_boost_pct,
+            seasoning_penalty=seasoning_calc.total_penalty,
+            seasoned_score=base_value,
+            ruined=seasoning_calc.ruined,
+            applied_seasonings=tuple(
+                (usage.seasoning.seasoning_id, usage.count)
+                for usage in seasoning_calc.usage
+            ),
             chef_hits=chef_hits,
             round_index=current_round,
             total_rounds=self.rounds,
@@ -1178,7 +1371,7 @@ class GameSession:
             deck_refreshed=deck_refreshed,
             discovered_recipe=discovered,
             personal_discovery=personal_discovery,
-            alerts=tuple(dish.alerts),
+            alerts=tuple(alerts),
         )
 
     def is_finished(self) -> bool:
@@ -2149,6 +2342,7 @@ class FoodGameApp:
         self.session: Optional[GameSession] = None
         self.card_views: Dict[int, CardView] = {}
         self.selected_indices: set[int] = set()
+        self.applied_seasonings: Dict[str, int] = {}
         self.spinboxes: List[ttk.Spinbox] = []
         self.cookbook_tile: Optional[CookbookTile] = None
         self.team_tile: Optional[ChefTeamTile] = None
@@ -2259,6 +2453,11 @@ class FoodGameApp:
         style.configure("Header.TLabel", font=("Helvetica", 14, "bold"), foreground="#1f1f1f")
         style.configure("Score.TLabel", font=("Helvetica", 18, "bold"), foreground="#1f1f1f")
         style.configure("Summary.TLabel", font=("Helvetica", 16, "bold"), foreground="#1c1c1c")
+        style.configure(
+            "Estimate.TLabel",
+            font=("Helvetica", 13, "bold"),
+            foreground="#185339",
+        )
         style.configure(
             "Tile.TFrame",
             background=tile_bg,
@@ -2462,19 +2661,63 @@ class FoodGameApp:
             row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0)
         )
 
+        self.estimated_score_var = tk.StringVar(value="Estimated Score: —")
+        self.estimated_score_label = ttk.Label(
+            score_frame,
+            textvariable=self.estimated_score_var,
+            style="Estimate.TLabel",
+            anchor="center",
+            justify="center",
+        )
+        self.estimated_score_label.grid(
+            row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+        )
+
         self.sort_button = ttk.Button(
             score_frame,
             textvariable=self.hand_sort_var,
             command=self.cycle_hand_sort_mode,
         )
-        self.sort_button.grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.sort_button.grid(row=5, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         self.chefs_var = tk.StringVar(
             value=f"Active chefs ({DEFAULT_MAX_CHEFS} max): —"
         )
         ttk.Label(score_frame, textvariable=self.chefs_var, style="Info.TLabel").grid(
-            row=5, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            row=6, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
+
+        seasoning_frame = ttk.LabelFrame(score_frame, text="Seasoning Prep", padding=(10, 6))
+        seasoning_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        seasoning_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            seasoning_frame,
+            text="Seasoning hand — click to add to the dish.",
+            style="Info.TLabel",
+        ).grid(row=0, column=0, sticky="w")
+
+        self.seasoning_hand_frame = ttk.Frame(seasoning_frame)
+        self.seasoning_hand_frame.grid(row=1, column=0, sticky="ew", pady=(4, 2))
+        self.seasoning_hand_frame.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            seasoning_frame,
+            text="Applied to dish:",
+            style="Info.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(6, 0))
+
+        self.applied_seasonings_frame = ttk.Frame(seasoning_frame)
+        self.applied_seasonings_frame.grid(row=3, column=0, sticky="ew", pady=(4, 2))
+        self.applied_seasonings_frame.columnconfigure(0, weight=1)
+
+        self.clear_seasonings_button = ttk.Button(
+            seasoning_frame,
+            text="Clear Seasonings",
+            command=self.clear_applied_seasonings,
+            state="disabled",
+        )
+        self.clear_seasonings_button.grid(row=4, column=0, sticky="e", pady=(4, 0))
 
         hand_container = ttk.Frame(self.game_frame)
         hand_container.grid(row=1, column=0, sticky="nsew")
@@ -2690,6 +2933,9 @@ class FoodGameApp:
         self.seasoning_button.configure(state="normal")
         self.chef_button.configure(state="normal")
         self.reset_button.configure(state="normal")
+        self.applied_seasonings.clear()
+        self.estimated_score_var.set("Estimated Score: —")
+        self._update_seasoning_panels()
         self.selected_indices.clear()
         self.update_selection_label()
         self.render_hand()
@@ -2730,6 +2976,8 @@ class FoodGameApp:
         self.chefs_var.set(
             f"Active chefs ({self.max_chefs_var.get()} max): —"
         )
+        self.applied_seasonings.clear()
+        self.estimated_score_var.set("Estimated Score: —")
         self.cook_button.configure(state="disabled")
         self.discard_button.configure(state="disabled")
         self.basket_button.configure(state="disabled")
@@ -2749,6 +2997,7 @@ class FoodGameApp:
             self.seasoning_tile.clear()
         self._update_seasoning_button(None)
         self._update_chef_button()
+        self._update_seasoning_panels()
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
@@ -2788,6 +3037,7 @@ class FoodGameApp:
             self._update_basket_button()
             self._refresh_deck_popup()
             self._refresh_seasoning_popup()
+            self._update_seasoning_panels()
             return
 
         self._refresh_seasoning_popup()
@@ -2815,6 +3065,7 @@ class FoodGameApp:
         self.hand_canvas.configure(scrollregion=self.hand_canvas.bbox("all"))
         self._refresh_deck_popup()
         self._update_basket_button()
+        self._update_seasoning_panels()
 
     def _sorted_hand(
         self, hand_with_indices: Sequence[Tuple[int, Ingredient]]
@@ -3024,6 +3275,192 @@ class FoodGameApp:
 
         self.seasoning_button.configure(image=icon, text=text)
 
+    def _seasoning_boost_summary(self, seasoning: Seasoning) -> str:
+        parts = []
+        for taste, boost in sorted(seasoning.boosts.items()):
+            percent = int(round(float(boost) * 100))
+            if percent == 0:
+                continue
+            parts.append(f"{taste}: +{percent}%")
+        return ", ".join(parts) if parts else "No boosts"
+
+    def _can_apply_seasoning(self, seasoning: Seasoning) -> bool:
+        if not self.session or self.session.is_finished():
+            return False
+        if not self.selected_indices:
+            return False
+        count = self.applied_seasonings.get(seasoning.seasoning_id, 0)
+        if count >= max(1, seasoning.stack_limit):
+            return False
+        charges = self.session.get_seasoning_charges(seasoning.seasoning_id)
+        if charges is not None and count >= charges:
+            return False
+        return True
+
+    def _render_seasoning_hand(self) -> None:
+        if not hasattr(self, "seasoning_hand_frame"):
+            return
+        for child in self.seasoning_hand_frame.winfo_children():
+            child.destroy()
+
+        if not self.session:
+            ttk.Label(
+                self.seasoning_hand_frame,
+                text="Start a run to discover seasonings.",
+                style="Info.TLabel",
+                wraplength=320,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        active = self.session.get_active_seasonings()
+        if not active:
+            ttk.Label(
+                self.seasoning_hand_frame,
+                text="No seasonings ready. Collect more during the run.",
+                style="Info.TLabel",
+                wraplength=320,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        sorted_active = sorted(
+            active,
+            key=lambda pair: (pair[0].display_name or pair[0].name).lower(),
+        )
+        for row, (seasoning, charges) in enumerate(sorted_active):
+            display_name = seasoning.display_name or seasoning.name
+            uses_text = "Uses ∞" if charges is None else f"Uses {charges}"
+            stack_text = f"Stack {max(1, seasoning.stack_limit)}"
+            info = self._seasoning_boost_summary(seasoning)
+            lines = [f"{display_name}", info, f"{uses_text} · {stack_text}"]
+            button = ttk.Button(
+                self.seasoning_hand_frame,
+                text="\n".join(lines),
+                command=lambda s=seasoning: self.apply_seasoning_to_dish(s),
+                style="TileAction.TButton",
+            )
+            button.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+            if not self._can_apply_seasoning(seasoning):
+                button.state(["disabled"])
+
+    def _render_applied_seasonings(self) -> None:
+        if not hasattr(self, "applied_seasonings_frame"):
+            return
+        for child in self.applied_seasonings_frame.winfo_children():
+            child.destroy()
+
+        if not self.session:
+            ttk.Label(
+                self.applied_seasonings_frame,
+                text="No run in progress.",
+                style="Info.TLabel",
+            ).grid(row=0, column=0, sticky="w")
+            if hasattr(self, "clear_seasonings_button"):
+                self.clear_seasonings_button.configure(state="disabled")
+            return
+
+        if not self.applied_seasonings:
+            ttk.Label(
+                self.applied_seasonings_frame,
+                text="No seasonings applied yet.",
+                style="Info.TLabel",
+            ).grid(row=0, column=0, sticky="w")
+            if hasattr(self, "clear_seasonings_button"):
+                self.clear_seasonings_button.configure(state="disabled")
+            return
+
+        if hasattr(self, "clear_seasonings_button"):
+            self.clear_seasonings_button.configure(state="normal")
+
+        sorted_items = sorted(
+            self.applied_seasonings.items(),
+            key=lambda item: (
+                (self.session.data.seasoning_by_id.get(item[0]).display_name or
+                 self.session.data.seasoning_by_id.get(item[0]).name)
+                if self.session and item[0] in self.session.data.seasoning_by_id
+                else item[0]
+            ).lower(),
+        )
+        for row, (seasoning_id, count) in enumerate(sorted_items):
+            seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+            display_name = seasoning.display_name or seasoning.name if seasoning else seasoning_id
+            charges = self.session.get_seasoning_charges(seasoning_id)
+            if charges is not None:
+                after_cook = max(charges - count, 0)
+                label_text = f"{display_name} ×{count} (after cook: {after_cook} left)"
+            else:
+                label_text = f"{display_name} ×{count}"
+
+            row_frame = ttk.Frame(self.applied_seasonings_frame)
+            row_frame.grid(row=row, column=0, sticky="ew", pady=(0, 4))
+            row_frame.columnconfigure(0, weight=1)
+
+            ttk.Label(row_frame, text=label_text, style="Info.TLabel").grid(
+                row=0, column=0, sticky="w"
+            )
+            ttk.Button(
+                row_frame,
+                text="Remove",
+                command=lambda sid=seasoning_id: self.remove_applied_seasoning(sid),
+            ).grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+    def _update_seasoning_panels(self) -> None:
+        self._render_seasoning_hand()
+        self._render_applied_seasonings()
+
+    def apply_seasoning_to_dish(self, seasoning: Seasoning) -> None:
+        if not self.session:
+            messagebox.showinfo("No run in progress", "Start a run before seasoning a dish.")
+            return
+        if self.session.is_finished():
+            messagebox.showinfo("Run complete", "The run has finished. Start a new run to keep seasoning dishes.")
+            return
+        if not self.selected_indices:
+            messagebox.showinfo(
+                "No ingredients selected",
+                "Select ingredients for the dish before adding seasonings.",
+            )
+            return
+
+        current = self.applied_seasonings.get(seasoning.seasoning_id, 0)
+        stack_limit = max(1, seasoning.stack_limit)
+        if current >= stack_limit:
+            messagebox.showinfo(
+                "Stack limit reached",
+                f"{seasoning.display_name or seasoning.name} can only be applied {stack_limit} time(s) per dish.",
+            )
+            return
+        charges = self.session.get_seasoning_charges(seasoning.seasoning_id)
+        if charges is not None and current >= charges:
+            messagebox.showinfo(
+                "No charges remaining",
+                f"{seasoning.display_name or seasoning.name} has no charges left for this run.",
+            )
+            return
+
+        self.applied_seasonings[seasoning.seasoning_id] = current + 1
+        self._update_seasoning_panels()
+        self.update_selection_summary()
+
+    def remove_applied_seasoning(self, seasoning_id: str) -> None:
+        if seasoning_id not in self.applied_seasonings:
+            return
+        remaining = self.applied_seasonings.get(seasoning_id, 0)
+        if remaining <= 1:
+            self.applied_seasonings.pop(seasoning_id, None)
+        else:
+            self.applied_seasonings[seasoning_id] = remaining - 1
+        self._update_seasoning_panels()
+        self.update_selection_summary()
+
+    def clear_applied_seasonings(self) -> None:
+        if not self.applied_seasonings:
+            return
+        self.applied_seasonings.clear()
+        self._update_seasoning_panels()
+        self.update_selection_summary()
+
     def _update_chef_button(self) -> None:
         if not hasattr(self, "chef_button"):
             return
@@ -3088,8 +3525,19 @@ class FoodGameApp:
 
     def update_selection_summary(self) -> None:
         default_text = "Value × Dish = Score"
-        if not self.session or not self.selected_indices:
+        default_estimate = "Estimated Score: —"
+        if not self.session:
             self.selection_summary_var.set(default_text)
+            self.estimated_score_var.set(default_estimate)
+            self._update_seasoning_panels()
+            return
+
+        if not self.selected_indices:
+            self.selection_summary_var.set(default_text)
+            self.estimated_score_var.set(default_estimate)
+            if self.applied_seasonings:
+                self.applied_seasonings.clear()
+            self._update_seasoning_panels()
             return
 
         hand = self.session.get_hand()
@@ -3097,6 +3545,8 @@ class FoodGameApp:
             selected = [hand[index] for index in sorted(self.selected_indices)]
         except IndexError:
             self.selection_summary_var.set(default_text)
+            self.estimated_score_var.set(default_estimate)
+            self._update_seasoning_panels()
             return
 
         Value = sum(card.Value for card in selected)
@@ -3113,6 +3563,51 @@ class FoodGameApp:
                 f"Value {Value} × Dish {format_multiplier(multiplier)} = {total}"
             )
         self.selection_summary_var.set(summary)
+
+        self._update_seasoning_panels()
+        self._update_estimated_score(selected, dish_outcome)
+
+    def _update_estimated_score(
+        self, selected: Sequence[Ingredient], dish_outcome: DishOutcome
+    ) -> None:
+        if not self.session:
+            self.estimated_score_var.set("Estimated Score: —")
+            return
+
+        try:
+            seasoning_calc = self.session.calculate_seasoning_adjustments(
+                selected,
+                dish_outcome.dish_value,
+                self.applied_seasonings,
+            )
+        except ValueError as exc:
+            self.estimated_score_var.set(f"Estimated Score: {exc}")
+            return
+
+        base_value = seasoning_calc.seasoned_score
+        recipe_name = self.session.data.which_recipe(selected)
+        recipe_multiplier = self.session.preview_recipe_multiplier(recipe_name)
+        estimated_total = int(round(base_value * recipe_multiplier))
+
+        multiplier_text = f"{recipe_multiplier:.2f}".rstrip("0").rstrip(".")
+        if not multiplier_text:
+            multiplier_text = "0"
+
+        extras: List[str] = []
+        boost_pct = int(round(seasoning_calc.total_boost_pct * 100))
+        if boost_pct:
+            extras.append(f"+{boost_pct}%")
+        penalty_value = int(round(seasoning_calc.total_penalty))
+        if penalty_value:
+            extras.append(f"-{penalty_value}")
+        extras_text = f" [{' ,'.join(extras)}]" if extras else ""
+        ruined_text = " — Ruined" if seasoning_calc.ruined else ""
+
+        self.estimated_score_var.set(
+            f"Estimated Score: {estimated_total} "
+            f"(Base {base_value} × Recipe {multiplier_text})"
+            f"{extras_text}{ruined_text}"
+        )
 
     def update_status(self) -> None:
         if not self.session:
@@ -3182,6 +3677,29 @@ class FoodGameApp:
                 parts.append(f"total cooks {outcome.times_cooked_total}")
             notes.append("; ".join(parts))
 
+        if outcome.applied_seasonings:
+            boost_pct = int(round(outcome.seasoning_boost_pct * 100))
+            penalty_value = int(round(outcome.seasoning_penalty))
+            seasoning_parts = [
+                f"seasonings {outcome.base_score}->{outcome.seasoned_score}"
+            ]
+            if boost_pct:
+                seasoning_parts.append(f"+{boost_pct}%")
+            if penalty_value:
+                seasoning_parts.append(f"-{penalty_value}")
+            if self.session:
+                applied = []
+                for seasoning_id, count in outcome.applied_seasonings:
+                    seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+                    if seasoning:
+                        display = seasoning.display_name or seasoning.name
+                    else:
+                        display = seasoning_id
+                    applied.append(f"{display}×{count}")
+                if applied:
+                    seasoning_parts.append(", ".join(applied))
+            notes.append("; ".join(seasoning_parts))
+
         note_text = f" ({'; '.join(notes)})" if notes else ""
         entry = (
             f"Turn {outcome.turn_number} {outcome.final_score:+d} pts{note_text}"
@@ -3243,13 +3761,17 @@ class FoodGameApp:
 
         try:
             indices = sorted(self.selected_indices)
-            outcome = self.session.play_turn(indices)
+            outcome = self.session.play_turn(indices, self.applied_seasonings)
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Unable to cook selection", str(exc))
             return
 
         self.selected_indices.clear()
+        if self.applied_seasonings:
+            self.applied_seasonings.clear()
+        self.estimated_score_var.set("Estimated Score: —")
         self.update_selection_label()
+        self._update_seasoning_panels()
 
         summary = self._format_outcome(outcome)
         self.write_result(summary)
@@ -3303,6 +3825,10 @@ class FoodGameApp:
 
         self.selected_indices.clear()
         self.update_selection_label()
+        if self.applied_seasonings:
+            self.applied_seasonings.clear()
+        self.estimated_score_var.set("Estimated Score: —")
+        self._update_seasoning_panels()
         self.render_hand()
         self.update_status()
 
@@ -3594,6 +4120,29 @@ class FoodGameApp:
         points_lines.append(
             f"Dish value before recipes: {outcome.dish_value:.2f}"
         )
+        if outcome.applied_seasonings:
+            boost_pct = int(round(outcome.seasoning_boost_pct * 100))
+            penalty_value = int(round(outcome.seasoning_penalty))
+            summary = [
+                f"Base {outcome.base_score} → {outcome.seasoned_score}",
+                f"boost {boost_pct:+d}%",
+            ]
+            if penalty_value:
+                summary.append(f"penalty -{penalty_value}")
+            points_lines.append("Seasonings: " + ", ".join(summary))
+            if self.session:
+                applied = []
+                for seasoning_id, count in outcome.applied_seasonings:
+                    seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+                    if seasoning:
+                        display = seasoning.display_name or seasoning.name
+                    else:
+                        display = seasoning_id
+                    applied.append(f"{display} ×{count}")
+                if applied:
+                    points_lines.append("Applied: " + ", ".join(applied))
+            if outcome.ruined:
+                points_lines.append("Seasonings ruined this dish — score reduced to zero.")
         if outcome.recipe_name:
             points_lines.append(
                 f"Recipe multiplier: {format_multiplier(outcome.recipe_multiplier)}"
@@ -3916,6 +4465,7 @@ class FoodGameApp:
             self._update_seasoning_button(seasoning)
             self._refresh_seasoning_popup()
             self._update_chef_button()
+            self._update_seasoning_panels()
             messagebox.showinfo("Seasoning Collected", message)
             close_dialog()
 
@@ -3978,6 +4528,30 @@ class FoodGameApp:
         parts.append(
             f"Dish value before recipe bonus: {outcome.dish_value:.2f}"
         )
+        if outcome.applied_seasonings:
+            boost_pct = int(round(outcome.seasoning_boost_pct * 100))
+            penalty_value = int(round(outcome.seasoning_penalty))
+            summary_bits = [
+                f"{outcome.base_score} → {outcome.seasoned_score}",
+                f"boost {boost_pct:+d}%",
+            ]
+            if penalty_value:
+                summary_bits.append(f"penalty -{penalty_value}")
+            applied_line = "Seasonings: " + ", ".join(summary_bits)
+            parts.append(applied_line)
+            if self.session:
+                applied_names: List[str] = []
+                for seasoning_id, count in outcome.applied_seasonings:
+                    seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+                    if seasoning:
+                        display = seasoning.display_name or seasoning.name
+                    else:
+                        display = seasoning_id
+                    applied_names.append(f"{display} ×{count}")
+                if applied_names:
+                    parts.append("Applied: " + ", ".join(applied_names))
+            if outcome.ruined:
+                parts.append("Seasonings ruined this dish — value clamped to zero.")
         if outcome.alerts:
             parts.append("")
             for alert in outcome.alerts:
@@ -3999,9 +4573,11 @@ class FoodGameApp:
         else:
             parts.append("No recipe completed this turn.")
         base_text = f"base Value: {outcome.base_score}"
-        parts.append(
-            f"Score gained: {outcome.final_score:+d} ({base_text})"
-        )
+        if outcome.applied_seasonings:
+            base_text = (
+                f"base Value: {outcome.base_score} → seasoned {outcome.seasoned_score}"
+            )
+        parts.append(f"Score gained: {outcome.final_score:+d} ({base_text})")
         parts.append(
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"
         )

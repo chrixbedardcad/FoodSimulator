@@ -4,55 +4,95 @@
     "display_name": "Spice Mix",
     "seasoning_id": "seasoning.spice_mix",
     "taste": "Umami",
-    "perk": "Wild spice blend that counts as any savory taste when completing a combo."
+    "perk": "Wild spice blend that counts as any savory taste when completing a combo.",
+    "boosts": { "Umami": 0.10, "Bitter": 0.05, "Salty": 0.05 },
+    "conflicts": [],
+    "conflict_penalty": 0,
+    "stack_limit": 2,
+    "charges": null
   },
   {
     "name": "Salt",
     "display_name": "Salt",
     "seasoning_id": "seasoning.salt",
     "taste": "Salty",
-    "perk": "Doubles the contribution of salty ingredients for one dish."
+    "perk": "Doubles the contribution of salty ingredients for one dish.",
+    "boosts": { "Salty": 0.20, "Umami": 0.05 },
+    "conflicts": [],
+    "conflict_penalty": 0,
+    "stack_limit": 1,
+    "charges": null
   },
   {
     "name": "Sugar",
     "display_name": "Sugar",
     "seasoning_id": "seasoning.sugar",
     "taste": "Sweet",
-    "perk": "Adds an extra hit of sweetness, counting as an additional sweet ingredient."
+    "perk": "Adds an extra hit of sweetness, counting as an additional sweet ingredient.",
+    "boosts": { "Sweet": 0.25 },
+    "conflicts": ["Protein"],
+    "conflict_penalty": 4,
+    "stack_limit": 2,
+    "charges": null
   },
   {
     "name": "Pepper",
     "display_name": "Pepper",
     "seasoning_id": "seasoning.pepper",
     "taste": "Bitter",
-    "perk": "Sharpens bitter flavors, canceling any penalty from matching bitters."
+    "perk": "Sharpens bitter flavors, canceling any penalty from matching bitters.",
+    "boosts": { "Bitter": 0.20, "Umami": 0.05 },
+    "conflicts": ["Fruit"],
+    "conflict_penalty": 3,
+    "stack_limit": 1,
+    "charges": 5
   },
   {
     "name": "Ketchup",
     "display_name": "Ketchup",
     "seasoning_id": "seasoning.ketchup",
     "taste": "Sour",
-    "perk": "Splashes in tangy acidity so one dish counts as having the sour taste."
+    "perk": "Splashes in tangy acidity so one dish counts as having the sour taste.",
+    "boosts": { "Sour": 0.20, "Sweet": 0.10 },
+    "conflicts": ["Dairy"],
+    "conflict_penalty": 5,
+    "stack_limit": 1,
+    "charges": 4
   },
   {
     "name": "Mustard",
     "display_name": "Mustard",
     "seasoning_id": "seasoning.mustard",
     "taste": "Salty",
-    "perk": "Spicy kick that boosts salty and savory pairings for the next combo."
+    "perk": "Spicy kick that boosts salty and savory pairings for the next combo.",
+    "boosts": { "Umami": 0.10, "Sour": 0.05, "Salty": 0.10 },
+    "conflicts": ["Fruit"],
+    "conflict_penalty": 6,
+    "stack_limit": 1,
+    "charges": null
   },
   {
     "name": "Oil",
     "display_name": "Oil",
     "seasoning_id": "seasoning.oil",
     "taste": "Umami",
-    "perk": "Silky finish that lets one ingredient count as any rich umami note you need."
+    "perk": "Silky finish that lets one ingredient count as any rich umami note you need.",
+    "boosts": { "Umami": 0.12, "Salty": 0.08, "Bitter": 0.05 },
+    "conflicts": ["Fruit"],
+    "conflict_penalty": 4,
+    "stack_limit": 2,
+    "charges": 6
   },
   {
     "name": "Butter",
     "display_name": "Butter",
     "seasoning_id": "seasoning.butter",
     "taste": "Sweet",
-    "perk": "Adds mellow sweetness and richness, completing sweet-based trios."
+    "perk": "Adds mellow sweetness and richness, completing sweet-based trios.",
+    "boosts": { "Sweet": 0.15, "Umami": 0.05 },
+    "conflicts": ["Vegetable"],
+    "conflict_penalty": 4,
+    "stack_limit": 1,
+    "charges": null
   }
 ]

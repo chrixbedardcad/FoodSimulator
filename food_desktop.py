@@ -3475,23 +3475,22 @@ class FoodGameApp:
             )
             recipe_banner.pack(anchor="w", pady=(0, 8))
 
-            if outcome.discovered_recipe:
-                recipe_image = _load_recipe_image(
-                    outcome.recipe_name,
-                    recipe_display,
-                    target_px=RECIPE_IMAGE_TARGET_PX,
+            recipe_image = _load_recipe_image(
+                outcome.recipe_name,
+                recipe_display,
+                target_px=RECIPE_IMAGE_TARGET_PX,
+            )
+            if recipe_image is not None:
+                image_container = tk.Frame(content, bg=base_bg)
+                image_container.pack(anchor="center", pady=(0, 12))
+                image_label = tk.Label(
+                    image_container,
+                    image=recipe_image,
+                    bg=base_bg,
+                    bd=0,
                 )
-                if recipe_image is not None:
-                    image_container = tk.Frame(content, bg=base_bg)
-                    image_container.pack(anchor="center", pady=(0, 12))
-                    image_label = tk.Label(
-                        image_container,
-                        image=recipe_image,
-                        bg=base_bg,
-                        bd=0,
-                    )
-                    image_label.image = recipe_image
-                    image_label.pack(anchor="center")
+                image_label.image = recipe_image
+                image_label.pack(anchor="center")
 
         tk.Label(
             content,

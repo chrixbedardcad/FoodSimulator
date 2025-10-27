@@ -48,6 +48,14 @@ ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 
+# Some historical bundles of the simulator stored recipe artwork in a directory
+# spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
+# folder, but we still want to support the existing assets without requiring
+# players to rename files manually.  We therefore search both locations at
+# runtime, preferring the modern directory while gracefully falling back to the
+# legacy one whenever a specific asset is missing.
+_LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
+
 
 TASTE_ICON_FILES: Mapping[str, str] = {
     "Sweet": "Sweet.png",
@@ -83,6 +91,20 @@ _ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
 _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
+
+
+def _recipe_asset_directories() -> List[Path]:
+    """Return available recipe artwork directories in preferred order."""
+
+    directories: List[Path] = []
+    for candidate in (RECIPE_ASSET_DIR, _LEGACY_RECIPE_ASSET_DIR):
+        if candidate.exists() and candidate not in directories:
+            directories.append(candidate)
+    if not directories:
+        # Preserve the original path so relative references remain stable even
+        # when the directory has not been created yet.
+        directories.append(RECIPE_ASSET_DIR)
+    return directories
 
 
 def _load_icon(
@@ -188,15 +210,44 @@ def _load_ingredient_image(
 def _find_recipe_image_path(
     recipe_name: str, display_name: Optional[str] = None
 ) -> Optional[Path]:
-    if not RECIPE_ASSET_DIR.exists():
+    candidates = _candidate_image_basenames((recipe_name, display_name))
+    if not candidates:
         return None
 
-    candidates = _candidate_image_basenames((recipe_name, display_name))
     extensions = (".png", ".jpg", ".jpeg", ".gif")
-    for base in candidates:
-        for ext in extensions:
-            path = RECIPE_ASSET_DIR / f"{base}{ext}"
-            if path.exists():
+    extension_set = {ext.lower() for ext in extensions}
+    directories = _recipe_asset_directories()
+
+    # First attempt exact filename matches for the common variants.
+    for directory in directories:
+        for base in candidates:
+            for ext in extensions:
+                path = directory / f"{base}{ext}"
+                if path.exists():
+                    return path
+
+    # Fall back to a case-insensitive lookup so ``CheesyTomatoStack.PNG`` or
+    # similar assets are still discovered.
+    lowered = [value.lower() for value in candidates]
+    for directory in directories:
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            continue
+
+        matching: Dict[str, Path] = {}
+        for entry in entries:
+            if not entry.is_file():
+                continue
+            suffix = entry.suffix.lower()
+            if suffix not in extension_set:
+                continue
+            key = entry.stem.lower()
+            matching.setdefault(key, entry)
+
+        for base in lowered:
+            path = matching.get(base)
+            if path is not None:
                 return path
     return None
 
@@ -216,10 +267,14 @@ def _load_recipe_image(
 
     image_path = _find_recipe_image_path(recipe_name, display_name)
     if image_path and image_path.exists():
-        with Image.open(image_path) as source_image:
-            working = source_image.convert("RGBA")
-            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
-            working = working.copy()
+        try:
+            with Image.open(image_path) as source_image:
+                working = source_image.convert("RGBA")
+                working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+                working = working.copy()
+        except OSError:
+            _recipe_image_cache[cache_key] = None
+            return None
         image = ImageTk.PhotoImage(working)
         _recipe_image_cache[cache_key] = image
         return image

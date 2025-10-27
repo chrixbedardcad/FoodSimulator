@@ -51,10 +51,11 @@ RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 # Some historical bundles of the simulator stored recipe artwork in a directory
 # spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
 # folder, but we still want to support the existing assets without requiring
-# players to rename files manually.  We therefore search both locations at
-# runtime, preferring the modern directory while gracefully falling back to the
-# legacy one whenever a specific asset is missing.
+# players to rename files manually.  If the preferred directory is missing we
+# fall back to the legacy location.
 _LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
+if not RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR.exists():
+    RECIPE_ASSET_DIR = _LEGACY_RECIPE_ASSET_DIR
 
 
 TASTE_ICON_FILES: Mapping[str, str] = {
@@ -211,44 +212,13 @@ def _find_recipe_image_path(
     recipe_name: str, display_name: Optional[str] = None
 ) -> Optional[Path]:
     candidates = _candidate_image_basenames((recipe_name, display_name))
-    if not candidates:
-        return None
-
     extensions = (".png", ".jpg", ".jpeg", ".gif")
-    extension_set = {ext.lower() for ext in extensions}
-    directories = _recipe_asset_directories()
-
-    # First attempt exact filename matches for the common variants.
-    for directory in directories:
-        for base in candidates:
-            for ext in extensions:
+    for base in candidates:
+        for ext in extensions:
+            for directory in _RECIPE_ASSET_DIRS:
                 path = directory / f"{base}{ext}"
                 if path.exists():
                     return path
-
-    # Fall back to a case-insensitive lookup so ``CheesyTomatoStack.PNG`` or
-    # similar assets are still discovered.
-    lowered = [value.lower() for value in candidates]
-    for directory in directories:
-        try:
-            entries = list(directory.iterdir())
-        except OSError:
-            continue
-
-        matching: Dict[str, Path] = {}
-        for entry in entries:
-            if not entry.is_file():
-                continue
-            suffix = entry.suffix.lower()
-            if suffix not in extension_set:
-                continue
-            key = entry.stem.lower()
-            matching.setdefault(key, entry)
-
-        for base in lowered:
-            path = matching.get(base)
-            if path is not None:
-                return path
     return None
 
 

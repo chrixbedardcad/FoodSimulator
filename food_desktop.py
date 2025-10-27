@@ -78,6 +78,7 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 
 ICON_TARGET_PX = 64
+INGREDIENT_DIALOG_ICON_PX = 72
 DIALOG_ICON_TARGET_PX = 40
 RESOURCE_BUTTON_ICON_PX = 72
 RUINED_SEASONING_MESSAGES = [
@@ -4090,36 +4091,46 @@ class FoodGameApp:
                 row = tk.Frame(ingredients_frame, bg=base_bg)
                 row.pack(anchor="w", fill="x", pady=(0, 4))
 
-                icon_container: Optional[tk.Frame] = None
-                taste_label: Optional[tk.Label] = None
+                icon_cluster = tk.Frame(row, bg=base_bg)
+                icon_cluster.pack(side="left", padx=(0, 12))
 
-                taste_icon = _load_icon(
-                    "taste", ingredient.taste, target_px=DIALOG_ICON_TARGET_PX
+                ingredient_icon = _load_ingredient_image(
+                    ingredient, target_px=INGREDIENT_DIALOG_ICON_PX
                 )
-                if taste_icon is not None:
-                    if icon_container is None:
-                        icon_container = tk.Frame(row, bg=base_bg)
-                        icon_container.pack(side="left", padx=(0, 8))
-                    taste_label = tk.Label(
-                        icon_container, image=taste_icon, bg=base_bg
-                    )
-                    taste_label.image = taste_icon
-                    taste_label.pack(side="top")
+                ingredient_label = tk.Label(
+                    icon_cluster, image=ingredient_icon, bg=base_bg
+                )
+                ingredient_label.image = ingredient_icon
+                ingredient_label.pack(side="left")
+
+                meta_icon_column: Optional[tk.Frame] = None
+
+                def ensure_meta_column() -> tk.Frame:
+                    nonlocal meta_icon_column
+                    if meta_icon_column is None:
+                        meta_icon_column = tk.Frame(icon_cluster, bg=base_bg)
+                        meta_icon_column.pack(side="left", padx=(8, 0))
+                    return meta_icon_column
 
                 family_icon = _load_icon(
                     "family", ingredient.family, target_px=DIALOG_ICON_TARGET_PX
                 )
                 if family_icon is not None:
-                    if icon_container is None:
-                        icon_container = tk.Frame(row, bg=base_bg)
-                        icon_container.pack(side="left", padx=(0, 8))
                     family_label = tk.Label(
-                        icon_container, image=family_icon, bg=base_bg
+                        ensure_meta_column(), image=family_icon, bg=base_bg
                     )
                     family_label.image = family_icon
                     family_label.pack(side="top")
-                    if taste_label is not None:
-                        taste_label.pack_configure(pady=(0, 4))
+
+                taste_icon = _load_icon(
+                    "taste", ingredient.taste, target_px=DIALOG_ICON_TARGET_PX
+                )
+                if taste_icon is not None:
+                    taste_label = tk.Label(
+                        ensure_meta_column(), image=taste_icon, bg=base_bg
+                    )
+                    taste_label.image = taste_icon
+                    taste_label.pack(side="top", pady=(4, 0))
 
                 text_frame = tk.Frame(row, bg=base_bg)
                 text_frame.pack(side="left", fill="x", expand=True)

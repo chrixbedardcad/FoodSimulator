@@ -50,6 +50,9 @@ class Ingredient:
     display_name: str = ""
 
 
+ALLOWED_TASTES = {"Sweet", "Salty", "Sour", "Umami", "Bitter"}
+
+
 @dataclass(frozen=True)
 class Seasoning:
     name: str
@@ -57,6 +60,11 @@ class Seasoning:
     taste: str
     perk: str
     display_name: str = ""
+    boosts: Mapping[str, float] = field(default_factory=dict)
+    conflicts: Tuple[str, ...] = field(default_factory=tuple)
+    conflict_penalty: float = 0.0
+    stack_limit: int = 1
+    charges: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +165,7 @@ class GameData:
     recipe_trio_lookup: Dict[Tuple[str, str, str], str] = field(init=False)
     recipe_multipliers: Dict[str, float] = field(init=False)
     ingredient_recipes: Dict[str, List[str]] = field(init=False)
+    seasoning_by_id: Dict[str, Seasoning] = field(init=False)
 
     def __post_init__(self) -> None:
         self.recipe_by_name = {recipe.name: recipe for recipe in self.recipes}
@@ -165,6 +174,9 @@ class GameData:
         }
         self.recipe_multipliers = self._build_recipe_multipliers()
         self.ingredient_recipes = self._build_ingredient_recipes()
+        self.seasoning_by_id = {
+            seasoning.seasoning_id: seasoning for seasoning in self.seasonings
+        }
 
     def _build_recipe_multipliers(self) -> Dict[str, float]:
         return {recipe.name: float(recipe.base_multiplier) for recipe in self.recipes}
@@ -529,6 +541,50 @@ def _load_seasonings(path: str) -> List[Seasoning]:
         )
         display_name = entry.get("display_name") or name
         perk = entry.get("perk", "")
+        boosts: Dict[str, float] = {}
+        boosts_raw = entry.get("boosts", {})
+        if isinstance(boosts_raw, Mapping):
+            for taste, value in boosts_raw.items():
+                taste_name = str(taste)
+                if taste_name not in ALLOWED_TASTES:
+                    continue
+                try:
+                    boosts[taste_name] = float(value)
+                except (TypeError, ValueError):
+                    continue
+
+        conflicts_raw = entry.get("conflicts", [])
+        conflicts: List[str] = []
+        if isinstance(conflicts_raw, Sequence) and not isinstance(conflicts_raw, (str, bytes)):
+            for item in conflicts_raw:
+                if isinstance(item, str) and item:
+                    conflicts.append(item)
+
+        conflict_penalty_raw = entry.get("conflict_penalty", 0)
+        try:
+            conflict_penalty = float(conflict_penalty_raw)
+        except (TypeError, ValueError):
+            conflict_penalty = 0.0
+        conflict_penalty = max(conflict_penalty, 0.0)
+
+        stack_limit_raw = entry.get("stack_limit", 1)
+        try:
+            stack_limit = int(stack_limit_raw)
+        except (TypeError, ValueError):
+            stack_limit = 1
+        stack_limit = max(stack_limit, 1)
+
+        charges_value = entry.get("charges", None)
+        charges: Optional[int]
+        if charges_value is None:
+            charges = None
+        else:
+            try:
+                parsed = int(charges_value)
+            except (TypeError, ValueError):
+                parsed = 0
+            charges = max(parsed, 0)
+
         seasonings.append(
             Seasoning(
                 name=name,
@@ -536,6 +592,11 @@ def _load_seasonings(path: str) -> List[Seasoning]:
                 taste=str(entry.get("taste", "")),
                 perk=str(perk),
                 display_name=str(display_name),
+                boosts=boosts,
+                conflicts=tuple(conflicts),
+                conflict_penalty=conflict_penalty,
+                stack_limit=stack_limit,
+                charges=charges,
             )
         )
     return seasonings

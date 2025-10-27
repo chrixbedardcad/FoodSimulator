@@ -46,6 +46,7 @@ from food_api import (
 ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
+RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 
 
 TASTE_ICON_FILES: Mapping[str, str] = {
@@ -69,6 +70,7 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 ICON_TARGET_PX = 64
 DIALOG_ICON_TARGET_PX = 40
 INGREDIENT_IMAGE_TARGET_PX = 160
+RECIPE_IMAGE_TARGET_PX = 240
 
 try:
     RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -80,6 +82,7 @@ _icon_cache: Dict[str, tk.PhotoImage] = {}
 _ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
 _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
+_recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 
 
 def _load_icon(
@@ -180,6 +183,49 @@ def _load_ingredient_image(
     image = ImageTk.PhotoImage(working)
     _ingredient_image_cache[cache_key] = image
     return image
+
+
+def _find_recipe_image_path(
+    recipe_name: str, display_name: Optional[str] = None
+) -> Optional[Path]:
+    if not RECIPE_ASSET_DIR.exists():
+        return None
+
+    candidates = _candidate_image_basenames((recipe_name, display_name))
+    extensions = (".png", ".jpg", ".jpeg", ".gif")
+    for base in candidates:
+        for ext in extensions:
+            path = RECIPE_ASSET_DIR / f"{base}{ext}"
+            if path.exists():
+                return path
+    return None
+
+
+def _load_recipe_image(
+    recipe_name: str,
+    display_name: Optional[str] = None,
+    *,
+    target_px: int = RECIPE_IMAGE_TARGET_PX,
+) -> Optional[tk.PhotoImage]:
+    if not recipe_name:
+        return None
+
+    cache_key = f"recipe:{recipe_name}:{target_px}"
+    if cache_key in _recipe_image_cache:
+        return _recipe_image_cache[cache_key]
+
+    image_path = _find_recipe_image_path(recipe_name, display_name)
+    if image_path and image_path.exists():
+        with Image.open(image_path) as source_image:
+            working = source_image.convert("RGBA")
+            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+            working = working.copy()
+        image = ImageTk.PhotoImage(working)
+        _recipe_image_cache[cache_key] = image
+        return image
+
+    _recipe_image_cache[cache_key] = None
+    return None
 
 
 def _load_seasoning_icon(
@@ -544,6 +590,7 @@ class TurnOutcome:
     family_pattern: str
     flavor_pattern: str
     recipe_name: Optional[str]
+    recipe_display_name: Optional[str]
     recipe_multiplier: float
     final_score: int
     times_cooked_total: int
@@ -566,6 +613,7 @@ class CookbookEntry:
     """Track a discovered recipe and how often it has been cooked."""
 
     ingredients: Tuple[str, ...]
+    display_name: str = ""
     count: int = 0
     multiplier: float = 1.0
     personal_discovery: bool = False
@@ -573,6 +621,7 @@ class CookbookEntry:
     def clone(self) -> "CookbookEntry":
         return CookbookEntry(
             self.ingredients,
+            self.display_name,
             self.count,
             self.multiplier,
             self.personal_discovery,
@@ -920,7 +969,11 @@ class GameSession:
         return markers, in_cookbook
 
     def get_recipe_hints(self, ingredient: Ingredient) -> List[str]:
-        return list(self._ingredient_recipe_map.get(ingredient.name, ()))
+        hints: List[str] = []
+        for recipe_name in self._ingredient_recipe_map.get(ingredient.name, ()):
+            display = self.data.recipe_display_name(recipe_name)
+            hints.append(display or recipe_name)
+        return sorted(hints, key=lambda value: value.lower())
 
     def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
         if self.finished:
@@ -979,6 +1032,9 @@ class GameSession:
                 self._push_event(alert)
         Value = dish.base_value
         recipe_name = self.data.which_recipe(selected)
+        recipe_display_name = (
+            self.data.recipe_display_name(recipe_name) if recipe_name else None
+        )
         times_cooked_before = self._times_cooked(recipe_name)
         recipe_multiplier = self.data.recipe_multiplier(
             recipe_name,
@@ -1002,7 +1058,8 @@ class GameSession:
                 recipe_name in chef.recipe_names for chef in self.chefs
             )
             if not entry:
-                entry = CookbookEntry(combo, 0)
+                display_name = recipe_display_name or recipe_name or ", ".join(combo)
+                entry = CookbookEntry(combo, display_name)
                 entry.personal_discovery = not chef_has_recipe
                 self.cookbook[recipe_name] = entry
                 discovered = True
@@ -1021,13 +1078,14 @@ class GameSession:
                 times_cooked=display_times,
             )
             if discovered:
+                event_name = recipe_display_name or recipe_name
                 if personal_discovery:
                     self._push_event(
-                        f"You personally discovered {recipe_name}! Added to your cookbook."
+                        f"You personally discovered {event_name}! Added to your cookbook."
                     )
                 else:
                     self._push_event(
-                        f"{recipe_name} added to your cookbook thanks to your chef team."
+                        f"{event_name} added to your cookbook thanks to your chef team."
                     )
 
         current_round = self.round_index
@@ -1062,6 +1120,7 @@ class GameSession:
             family_pattern=dish.family_pattern,
             flavor_pattern=dish.flavor_pattern,
             recipe_name=recipe_name,
+            recipe_display_name=recipe_display_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,
             times_cooked_total=times_cooked_total,
@@ -1149,15 +1208,18 @@ class CookbookTile(ttk.Frame):
             self._empty_label.grid(row=0, column=0, sticky="w")
             return
 
-        for row, (name, entry) in enumerate(sorted(self.entries.items())):
+        sorted_entries = sorted(
+            self.entries.values(), key=lambda entry: entry.display_name.lower()
+        )
+        for row, entry in enumerate(sorted_entries):
             times = "time" if entry.count == 1 else "times"
             multiplier_text = format_multiplier(entry.multiplier)
             source_note = " (Personal discovery)" if entry.personal_discovery else ""
             header = ttk.Label(
                 self.entries_frame,
                 text=(
-                    f"{name} — multiplier {multiplier_text}; cooked {entry.count} {times}"
-                    f"{source_note}"
+                    f"{entry.display_name} — multiplier {multiplier_text}; "
+                    f"cooked {entry.count} {times}{source_note}"
                 ),
                 style="TileInfo.TLabel",
                 wraplength=260,
@@ -1800,16 +1862,23 @@ class CookbookPopup(tk.Toplevel):
         plural = "recipe" if total == 1 else "recipes"
         self.count_var.set(f"{total} {plural} discovered.")
 
-        for row_index, (name, entry) in enumerate(sorted(self.entries.items())):
+        sorted_entries = sorted(
+            self.entries.items(), key=lambda item: item[1].display_name.lower()
+        )
+        for row_index, (name, entry) in enumerate(sorted_entries):
             wrapper = ttk.Frame(self.entries_frame, padding=(0, 0))
             wrapper.grid(row=row_index, column=0, sticky="ew", pady=(0, 14))
             wrapper.columnconfigure(0, weight=1)
 
-            title_text = name
+            text_frame = ttk.Frame(wrapper)
+            text_frame.grid(row=0, column=0, sticky="ew")
+            text_frame.columnconfigure(0, weight=1)
+
+            title_text = entry.display_name or name
             if entry.personal_discovery:
                 title_text += " ⭐"
             ttk.Label(
-                wrapper,
+                text_frame,
                 text=title_text,
                 style="Header.TLabel",
                 anchor="w",
@@ -1824,14 +1893,14 @@ class CookbookPopup(tk.Toplevel):
             if entry.personal_discovery:
                 info_parts.append("Personal discovery")
             ttk.Label(
-                wrapper,
+                text_frame,
                 text=" • ".join(info_parts),
                 style="Info.TLabel",
                 wraplength=640,
                 justify="left",
             ).grid(row=1, column=0, sticky="w", pady=(4, 8))
 
-            ingredients_frame = ttk.Frame(wrapper)
+            ingredients_frame = ttk.Frame(text_frame)
             ingredients_frame.grid(row=2, column=0, sticky="w")
 
             for col_index, ingredient_name in enumerate(entry.ingredients):
@@ -1859,6 +1928,20 @@ class CookbookPopup(tk.Toplevel):
                     padding=(6, 0),
                 )
                 label.grid(row=0, column=col_index, padx=6)
+
+            recipe_image = _load_recipe_image(
+                name, entry.display_name, target_px=RECIPE_IMAGE_TARGET_PX
+            )
+            if recipe_image is not None:
+                self._image_refs.append(recipe_image)
+                image_label = ttk.Label(
+                    wrapper,
+                    image=recipe_image,
+                    style="CardBody.TLabel",
+                    anchor="center",
+                    justify="center",
+                )
+                image_label.grid(row=0, column=1, rowspan=3, sticky="ne", padx=(12, 0))
 
         self.canvas.yview_moveto(0)
 
@@ -3015,9 +3098,10 @@ class FoodGameApp:
         else:
             notes.append(f"dish {format_multiplier(outcome.dish_multiplier)}")
 
+        recipe_display = outcome.recipe_display_name or outcome.recipe_name
         if outcome.recipe_name:
             parts = [
-                f"recipe {outcome.recipe_name} x{outcome.recipe_multiplier:.2f}"
+                f"recipe {recipe_display} x{outcome.recipe_multiplier:.2f}"
             ]
             if outcome.discovered_recipe:
                 if outcome.personal_discovery:
@@ -3044,10 +3128,14 @@ class FoodGameApp:
         if not entries:
             return "Cookbook:\n  (No recipes discovered yet.)"
         lines = []
-        for name, entry in sorted(entries.items()):
+        sorted_entries = sorted(
+            entries.values(), key=lambda entry: entry.display_name.lower()
+        )
+        for entry in sorted_entries:
             times = "time" if entry.count == 1 else "times"
             lines.append(
-                f"  {name} — {format_multiplier(entry.multiplier)}; cooked {entry.count} {times}: {', '.join(entry.ingredients)}"
+                f"  {entry.display_name} — {format_multiplier(entry.multiplier)}; "
+                f"cooked {entry.count} {times}: {', '.join(entry.ingredients)}"
             )
         return "Cookbook:\n" + "\n".join(lines)
 
@@ -3296,13 +3384,14 @@ class FoodGameApp:
                 ).pack(anchor="w", pady=(2, 0))
 
         if outcome.recipe_name:
+            recipe_display = outcome.recipe_display_name or outcome.recipe_name
             if outcome.discovered_recipe and outcome.personal_discovery:
                 banner_text = (
-                    f"✨ Personal discovery: {outcome.recipe_name}! ✨"
+                    f"✨ Personal discovery: {recipe_display}! ✨"
                     " Added to your cookbook."
                 )
             else:
-                banner_text = f"✨ Recipe completed: {outcome.recipe_name}! ✨"
+                banner_text = f"✨ Recipe completed: {recipe_display}! ✨"
                 if outcome.discovered_recipe:
                     banner_text += " Added to your cookbook."
             recipe_banner = tk.Label(
@@ -3315,6 +3404,24 @@ class FoodGameApp:
                 justify="left",
             )
             recipe_banner.pack(anchor="w", pady=(0, 8))
+
+            if outcome.discovered_recipe:
+                recipe_image = _load_recipe_image(
+                    outcome.recipe_name,
+                    recipe_display,
+                    target_px=RECIPE_IMAGE_TARGET_PX,
+                )
+                if recipe_image is not None:
+                    image_container = tk.Frame(content, bg=base_bg)
+                    image_container.pack(anchor="center", pady=(0, 12))
+                    image_label = tk.Label(
+                        image_container,
+                        image=recipe_image,
+                        bg=base_bg,
+                        bd=0,
+                    )
+                    image_label.image = recipe_image
+                    image_label.pack(anchor="center")
 
         tk.Label(
             content,
@@ -3444,7 +3551,7 @@ class FoodGameApp:
                     else "times"
                 )
                 points_lines.append(
-                    f"Cooked {outcome.recipe_name} "
+                    f"Cooked {outcome.recipe_display_name or outcome.recipe_name} "
                     f"{outcome.times_cooked_total} {times} total."
                 )
         else:
@@ -3813,8 +3920,9 @@ class FoodGameApp:
             for alert in outcome.alerts:
                 parts.append(f"⚠️  {alert}")
         if outcome.recipe_name:
+            recipe_display = outcome.recipe_display_name or outcome.recipe_name
             parts.append(
-                f"Recipe completed: {outcome.recipe_name} (x{outcome.recipe_multiplier:.2f})"
+                f"Recipe completed: {recipe_display} (x{outcome.recipe_multiplier:.2f})"
             )
             if outcome.discovered_recipe:
                 if outcome.personal_discovery:

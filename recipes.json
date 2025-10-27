@@ -1,6 +1,7 @@
 [
   {
     "name": "MarketPastaTrio",
+    "display_name": "Market Pasta Trio",
     "trio": [
       "Pasta",
       "Tomato",
@@ -11,6 +12,7 @@
   },
   {
     "name": "FarmersFrittata",
+    "display_name": "Farmers Frittata",
     "trio": [
       "Tomato",
       "Egg",
@@ -21,6 +23,7 @@
   },
   {
     "name": "CheesyTomatoStack",
+    "display_name": "Cheesy Tomato Stack",
     "trio": [
       "Tomato",
       "Parmesan",
@@ -31,6 +34,7 @@
   },
   {
     "name": "HeartyToast",
+    "display_name": "Hearty Toast",
     "trio": [
       "Tomato",
       "Bacon",
@@ -41,6 +45,7 @@
   },
   {
     "name": "UmamiMedley",
+    "display_name": "Umami Medley",
     "trio": [
       "Pasta",
       "Mushroom",
@@ -51,6 +56,7 @@
   },
   {
     "name": "RiceMarketBowl",
+    "display_name": "Rice Market Bowl",
     "trio": [
       "Rice",
       "Tomato",
@@ -61,6 +67,7 @@
   },
   {
     "name": "CoastalCatch",
+    "display_name": "Coastal Catch",
     "trio": [
       "Fish",
       "Lemon",
@@ -71,6 +78,7 @@
   },
   {
     "name": "DairySampler",
+    "display_name": "Dairy Sampler",
     "trio": [
       "Cream",
       "Yogurt",
@@ -81,6 +89,7 @@
   },
   {
     "name": "PantrySkillet",
+    "display_name": "Pantry Skillet",
     "trio": [
       "Pasta",
       "Tomato",
@@ -92,6 +101,7 @@
   },
   {
     "name": "GardenRiceBake",
+    "display_name": "Garden Rice Bake",
     "trio": [
       "Rice",
       "Tomato",
@@ -103,6 +113,7 @@
   },
   {
     "name": "HarvestFestival",
+    "display_name": "Harvest Festival",
     "trio": [
       "Pasta",
       "Tomato",
@@ -115,6 +126,7 @@
   },
   {
     "name": "CurdledForest",
+    "display_name": "Curdled Forest",
     "trio": [
       "Yogurt",
       "Mushroom",
@@ -125,6 +137,7 @@
   },
   {
     "name": "SharpEggDrop",
+    "display_name": "Sharp Egg Drop",
     "trio": [
       "Egg",
       "Lemon",
@@ -135,6 +148,7 @@
   },
   {
     "name": "MuddyMeltdown",
+    "display_name": "Muddy Meltdown",
     "trio": [
       "Chocolate",
       "Fish",

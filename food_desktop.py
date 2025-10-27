@@ -48,6 +48,28 @@ ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 
+# Some historical bundles of the simulator stored recipe artwork in a directory
+# spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
+# folder, but we still want to support the existing assets without requiring
+# players to rename files manually.  We therefore search both locations,
+# preferring the modern directory but falling back to the legacy one whenever a
+# specific asset is missing.
+_LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
+
+_RECIPE_ASSET_DIRS = []
+if RECIPE_ASSET_DIR.exists():
+    _RECIPE_ASSET_DIRS.append(RECIPE_ASSET_DIR)
+if _LEGACY_RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR not in _RECIPE_ASSET_DIRS:
+    _RECIPE_ASSET_DIRS.append(_LEGACY_RECIPE_ASSET_DIR)
+
+if _RECIPE_ASSET_DIRS:
+    # Keep ``RECIPE_ASSET_DIR`` pointing at the preferred directory so existing
+    # call sites that display relative paths retain the modern spelling.
+    RECIPE_ASSET_DIR = _RECIPE_ASSET_DIRS[0]
+else:
+    # Ensure the search loop still runs even when neither directory exists.
+    _RECIPE_ASSET_DIRS = [RECIPE_ASSET_DIR]
+
 
 TASTE_ICON_FILES: Mapping[str, str] = {
     "Sweet": "Sweet.png",
@@ -188,16 +210,14 @@ def _load_ingredient_image(
 def _find_recipe_image_path(
     recipe_name: str, display_name: Optional[str] = None
 ) -> Optional[Path]:
-    if not RECIPE_ASSET_DIR.exists():
-        return None
-
     candidates = _candidate_image_basenames((recipe_name, display_name))
     extensions = (".png", ".jpg", ".jpeg", ".gif")
     for base in candidates:
         for ext in extensions:
-            path = RECIPE_ASSET_DIR / f"{base}{ext}"
-            if path.exists():
-                return path
+            for directory in _RECIPE_ASSET_DIRS:
+                path = directory / f"{base}{ext}"
+                if path.exists():
+                    return path
     return None
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -64,6 +65,7 @@ class Recipe:
     trio: Tuple[str, str, str]
     base_multiplier: float = 1.0
     delta_multiplier: float = 0.0
+    display_name: str = ""
 
 
 @dataclass
@@ -232,6 +234,14 @@ class GameData:
 
     def recipes_using_ingredient(self, ingredient_name: str) -> Sequence[str]:
         return self.ingredient_recipes.get(ingredient_name, [])
+
+    def recipe_display_name(self, recipe_name: Optional[str]) -> str:
+        if not recipe_name:
+            return ""
+        recipe = self.recipe_by_name.get(recipe_name)
+        if recipe and recipe.display_name:
+            return recipe.display_name
+        return recipe_name
 
     def recipe_multiplier(
         self,
@@ -545,15 +555,33 @@ def _load_recipes(path: str) -> List[Recipe]:
             delta_val = float(delta)
         except (TypeError, ValueError):
             delta_val = 0.0
+        display_name = _coerce_recipe_display_name(
+            entry.get("display_name"), entry["name"]
+        )
         recipes.append(
             Recipe(
                 entry["name"],
                 tuple(entry["trio"]),
                 base_multiplier=base_val,
                 delta_multiplier=delta_val,
+                display_name=display_name,
             )
         )
     return recipes
+
+
+def _coerce_recipe_display_name(value: Optional[str], fallback: str) -> str:
+    text = (value or "").strip()
+    if text:
+        return text
+
+    base = fallback.replace("_", " ").strip()
+    if not base:
+        return ""
+    spaced = re.sub(r"(?<=.)(?=[A-Z][a-z])", " ", base)
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", spaced)
+    spaced = re.sub(r"\s+", " ", spaced)
+    return spaced.strip()
 
 
 def _load_chefs(path: str) -> List[Chef]:

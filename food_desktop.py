@@ -2364,6 +2364,7 @@ class FoodGameApp:
 
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
+        self._seasoning_hand_icons: List[tk.PhotoImage] = []
         self.log_collapsed = False
 
         self._init_styles()
@@ -3347,6 +3348,7 @@ class FoodGameApp:
             return
         for child in self.seasoning_hand_frame.winfo_children():
             child.destroy()
+        self._seasoning_hand_icons = []
 
         if not self.session:
             ttk.Label(
@@ -3373,19 +3375,31 @@ class FoodGameApp:
             active,
             key=lambda pair: (pair[0].display_name or pair[0].name).lower(),
         )
-        for row, (seasoning, charges) in enumerate(sorted_active):
+        for column, (seasoning, charges) in enumerate(sorted_active):
             display_name = seasoning.display_name or seasoning.name
             uses_text = "Uses ∞" if charges is None else f"Uses {charges}"
             stack_text = f"Stack {max(1, seasoning.stack_limit)}"
             info = self._seasoning_boost_summary(seasoning)
             lines = [f"{display_name}", info, f"{uses_text} · {stack_text}"]
+            icon = _load_seasoning_icon(seasoning, target_px=72)
+            if icon is not None:
+                self._seasoning_hand_icons.append(icon)
             button = ttk.Button(
                 self.seasoning_hand_frame,
                 text="\n".join(lines),
+                image=icon,
+                compound="top",
                 command=lambda s=seasoning: self.apply_seasoning_to_dish(s),
                 style="TileAction.TButton",
             )
-            button.grid(row=row, column=0, sticky="ew", pady=(0, 6))
+            button.grid(
+                row=0,
+                column=column,
+                sticky="n",
+                padx=(0 if column == 0 else 8, 0),
+                pady=(0, 6),
+            )
+            self.seasoning_hand_frame.grid_columnconfigure(column, weight=1)
             if not self._can_apply_seasoning(seasoning):
                 button.state(["disabled"])
 

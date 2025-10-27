@@ -1,0 +1,58 @@
+[
+  {
+    "id": "tomato",
+    "name": "Tomato",
+    "families": ["fruit"],
+    "tastes": ["umami", "sour"],
+    "rarity": "common"
+  },
+  {
+    "id": "bacon",
+    "name": "Bacon",
+    "families": ["meat"],
+    "tastes": ["umami", "salty"],
+    "rarity": "common"
+  },
+  {
+    "id": "shiitake",
+    "name": "Shiitake Mushroom",
+    "families": ["mushroom"],
+    "tastes": ["umami"],
+    "rarity": "uncommon"
+  },
+  {
+    "id": "lemon",
+    "name": "Lemon",
+    "families": ["fruit"],
+    "tastes": ["sour"],
+    "rarity": "common"
+  },
+  {
+    "id": "chili",
+    "name": "Chili Pepper",
+    "families": ["vegetable"],
+    "tastes": ["spicy"],
+    "rarity": "uncommon"
+  },
+  {
+    "id": "basil",
+    "name": "Basil",
+    "families": ["herb"],
+    "tastes": ["herbal", "fresh"],
+    "rarity": "common"
+  },
+  {
+    "id": "honey",
+    "name": "Honey",
+    "families": ["sweetener"],
+    "tastes": ["sweet"],
+    "rarity": "uncommon"
+  },
+  {
+    "id": "dark_chocolate",
+    "name": "Dark Chocolate",
+    "families": ["dessert"],
+    "tastes": ["bitter", "sweet"],
+    "rarity": "rare"
+  }
+]

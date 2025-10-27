@@ -1805,7 +1805,7 @@ class CardView(ttk.Frame):
         self.ingredient_image_label = ttk.Label(
             self,
             image=self.ingredient_image,
-            anchor="center",
+            style="CardImage.TLabel",
         )
         self.ingredient_image_label.grid(
             row=row_index, column=0, columnspan=2, sticky="n", pady=(0, 6)
@@ -1886,8 +1886,10 @@ class CardView(ttk.Frame):
         )
         hint_style = "CardHintSelected.TLabel" if selected else "CardHint.TLabel"
         value_style = "CardValueSelected.TLabel" if selected else "CardValue.TLabel"
+        image_style = "CardImageSelected.TLabel" if selected else "CardImage.TLabel"
         self.name_label.configure(style=title_style)
         self.value_label.configure(style=value_style)
+        self.ingredient_image_label.configure(style=image_style)
         self.taste_label.configure(style=body_style)
         self.family_label.configure(style=body_style)
         if self.chef_label:
@@ -2380,6 +2382,7 @@ class FoodGameApp:
 
         base_bg = "#f5f5f5"
         selected_bg = "#e6edf7"
+        ingredient_image_bg = "#f4ebd0"
         title_font = ("Helvetica", 12, "bold")
         body_font = ("Helvetica", 10)
         marker_font = ("Helvetica", 9, "italic")
@@ -2391,6 +2394,16 @@ class FoodGameApp:
             background=selected_bg,
             borderwidth=2,
             relief="solid",
+        )
+        style.configure(
+            "CardImage.TLabel",
+            background=ingredient_image_bg,
+            anchor="center",
+        )
+        style.configure(
+            "CardImageSelected.TLabel",
+            background=ingredient_image_bg,
+            anchor="center",
         )
         style.configure(
             "CardTitle.TLabel",

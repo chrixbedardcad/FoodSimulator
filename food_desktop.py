@@ -213,12 +213,30 @@ def _find_recipe_image_path(
 ) -> Optional[Path]:
     candidates = _candidate_image_basenames((recipe_name, display_name))
     extensions = (".png", ".jpg", ".jpeg", ".gif")
+    directories: List[Tuple[Path, Dict[str, Path]]] = []
+    for directory in _recipe_asset_directories():
+        if not directory.exists():
+            continue
+        try:
+            stem_map = {
+                path.stem.lower(): path
+                for path in directory.iterdir()
+                if path.is_file()
+            }
+        except OSError:
+            continue
+        directories.append((directory, stem_map))
+
     for base in candidates:
-        for ext in extensions:
-            for directory in _RECIPE_ASSET_DIRS:
+        base_lower = base.lower()
+        for directory, stem_map in directories:
+            for ext in extensions:
                 path = directory / f"{base}{ext}"
                 if path.exists():
                     return path
+            match = stem_map.get(base_lower)
+            if match:
+                return match
     return None
 
 

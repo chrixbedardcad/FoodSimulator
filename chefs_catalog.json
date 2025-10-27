@@ -1,0 +1,39 @@
+[
+  {
+    "id": "chef_pepper",
+    "name": "Chef Pepper",
+    "rarity": "common",
+    "tags": ["spicy"],
+    "perks": [
+      {"type": "taste_mult", "taste": "spicy", "mult": 1.15}
+    ]
+  },
+  {
+    "id": "chef_umami",
+    "name": "Chef Umami",
+    "rarity": "rare",
+    "tags": ["umami"],
+    "perks": [
+      {"type": "family_mult", "family": "mushroom", "mult": 1.25}
+    ]
+  },
+  {
+    "id": "chef_herb",
+    "name": "Chef Herb",
+    "rarity": "uncommon",
+    "tags": ["fresh"],
+    "perks": [
+      {"type": "taste_mult", "taste": "herbal", "mult": 1.10},
+      {"type": "taste_add", "taste": "fresh", "value": 1}
+    ]
+  },
+  {
+    "id": "chef_sweets",
+    "name": "Chef Sweets",
+    "rarity": "rare",
+    "tags": ["dessert"],
+    "perks": [
+      {"type": "taste_mult", "taste": "sweet", "mult": 1.20}
+    ]
+  }
+]

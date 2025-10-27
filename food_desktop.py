@@ -1529,6 +1529,7 @@ class CardView(ttk.Frame):
         self.quantity = quantity
 
         self.columnconfigure(0, weight=1)
+        self.columnconfigure(1, weight=0)
 
         display_name = getattr(ingredient, "display_name", None) or ingredient.name
         name_text = display_name
@@ -1541,13 +1542,24 @@ class CardView(ttk.Frame):
             self,
             text=name_text,
             style="CardTitle.TLabel",
-            anchor="center",
-            justify="center",
+            anchor="w",
+            justify="left",
         )
-        self.name_label.grid(row=0, column=0, sticky="ew")
+        self.name_label.grid(row=0, column=0, sticky="w")
+
+        value_prefix = "+" if ingredient.Value >= 0 else ""
+        value_text = f"{value_prefix}{ingredient.Value}"
+        self.value_label = ttk.Label(
+            self,
+            text=value_text,
+            style="CardValue.TLabel",
+            anchor="e",
+            justify="right",
+        )
+        self.value_label.grid(row=0, column=1, sticky="ne")
 
         separator = ttk.Separator(self, orient="horizontal")
-        separator.grid(row=1, column=0, sticky="ew", pady=(6, 8))
+        separator.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 8))
 
         row_index = 2
 
@@ -1557,7 +1569,9 @@ class CardView(ttk.Frame):
             image=self.ingredient_image,
             anchor="center",
         )
-        self.ingredient_image_label.grid(row=row_index, column=0, sticky="n", pady=(0, 6))
+        self.ingredient_image_label.grid(
+            row=row_index, column=0, columnspan=2, sticky="n", pady=(0, 6)
+        )
         row_index += 1
 
         self.taste_image = _load_icon("taste", ingredient.taste)
@@ -1569,7 +1583,7 @@ class CardView(ttk.Frame):
             image=self.taste_image,
             compound="left",
         )
-        self.taste_label.grid(row=row_index, column=0, sticky="w")
+        self.taste_label.grid(row=row_index, column=0, columnspan=2, sticky="w")
         row_index += 1
 
         self.family_image = _load_icon("family", ingredient.family)
@@ -1581,13 +1595,9 @@ class CardView(ttk.Frame):
             image=self.family_image,
             compound="left",
         )
-        self.family_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
-        row_index += 1
-
-        self.Value_label = ttk.Label(
-            self, text=f"Value: {ingredient.Value}", style="CardBody.TLabel"
+        self.family_label.grid(
+            row=row_index, column=0, columnspan=2, sticky="w", pady=(2, 0)
         )
-        self.Value_label.grid(row=row_index, column=0, sticky="w", pady=(2, 0))
         row_index += 1
 
         self.chef_label: Optional[ttk.Label] = None
@@ -1601,7 +1611,9 @@ class CardView(ttk.Frame):
                 style="CardMarker.TLabel",
                 justify="left",
             )
-            self.chef_label.grid(row=row_index, column=0, sticky="w", pady=(4, 0))
+            self.chef_label.grid(
+                row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            )
             row_index += 1
 
         hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
@@ -1612,7 +1624,9 @@ class CardView(ttk.Frame):
             wraplength=220,
             justify="left",
         )
-        self.recipe_label.grid(row=row_index, column=0, sticky="w", pady=(4, 0))
+        self.recipe_label.grid(
+            row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
+        )
 
         if self.on_click:
             self.bind("<Button-1>", self._handle_click)
@@ -1633,10 +1647,11 @@ class CardView(ttk.Frame):
             "CardMarkerSelected.TLabel" if selected else "CardMarker.TLabel"
         )
         hint_style = "CardHintSelected.TLabel" if selected else "CardHint.TLabel"
+        value_style = "CardValueSelected.TLabel" if selected else "CardValue.TLabel"
         self.name_label.configure(style=title_style)
+        self.value_label.configure(style=value_style)
         self.taste_label.configure(style=body_style)
         self.family_label.configure(style=body_style)
-        self.Value_label.configure(style=body_style)
         if self.chef_label:
             self.chef_label.configure(style=marker_style)
         if self.recipe_label:
@@ -2161,6 +2176,12 @@ class FoodGameApp:
             background=base_bg,
         )
         style.configure(
+            "CardValue.TLabel",
+            font=("Helvetica", 11, "bold"),
+            foreground="#1f1f1f",
+            background=base_bg,
+        )
+        style.configure(
             "CardTitleSelected.TLabel",
             font=title_font,
             foreground="#1f1f1f",
@@ -2182,6 +2203,12 @@ class FoodGameApp:
             "CardHintSelected.TLabel",
             font=("Helvetica", 9),
             foreground="#383838",
+            background=selected_bg,
+        )
+        style.configure(
+            "CardValueSelected.TLabel",
+            font=("Helvetica", 11, "bold"),
+            foreground="#1f1f1f",
             background=selected_bg,
         )
 
@@ -3505,11 +3532,9 @@ class FoodGameApp:
             ).pack(anchor="w")
 
         family_desc = outcome.family_pattern.replace("_", " ")
-        flavor_desc = outcome.flavor_pattern.replace("_", " ")
         points_lines = [
             f"Ingredient Value: {outcome.Value}",
             f"Family profile: {outcome.family_label} ({family_desc})",
-            f"Taste profile: {outcome.flavor_label} ({flavor_desc})",
         ]
         if outcome.dish_name:
             tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""
@@ -3896,10 +3921,6 @@ class FoodGameApp:
         parts.append(
             f"Family profile: {outcome.family_label}"
             f" ({outcome.family_pattern.replace('_', ' ')})"
-        )
-        parts.append(
-            f"Taste profile: {outcome.flavor_label}"
-            f" ({outcome.flavor_pattern.replace('_', ' ')})"
         )
         if outcome.dish_name:
             tier_text = f" [{outcome.dish_tier}]" if outcome.dish_tier else ""

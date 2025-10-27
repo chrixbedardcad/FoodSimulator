@@ -79,6 +79,7 @@ FAMILY_ICON_FILES: Mapping[str, str] = {
 
 ICON_TARGET_PX = 64
 DIALOG_ICON_TARGET_PX = 40
+RESOURCE_BUTTON_ICON_PX = 72
 RUINED_SEASONING_MESSAGES = [
     "You seasoned with your heart… and your heart was too salty.",
     "The dish called— it wants a lifeguard. It’s drowning in mustard.",
@@ -2362,6 +2363,7 @@ class FoodGameApp:
 
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
+        self.log_collapsed = False
 
         self._init_styles()
         self._build_layout()
@@ -2781,9 +2783,13 @@ class FoodGameApp:
             resource_frame.columnconfigure(column, weight=1)
 
         self.cookbook_count_var = tk.StringVar(value="Cookbook\n0 recipes")
-        cookbook_icon = _load_button_image("cookbook.png")
+        cookbook_icon = _load_button_image(
+            "cookbook.png", target_px=RESOURCE_BUTTON_ICON_PX
+        )
         if cookbook_icon is None:
-            cookbook_icon = _generate_button_icon("cookbook", "CB")
+            cookbook_icon = _generate_button_icon(
+                "cookbook", "CB", size=RESOURCE_BUTTON_ICON_PX
+            )
         self._resource_button_images["cookbook"] = cookbook_icon
         self.cookbook_button = ttk.Button(
             resource_frame,
@@ -2796,9 +2802,13 @@ class FoodGameApp:
         self.cookbook_button.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self._update_cookbook_button()
 
-        dish_icon = _load_button_image("dishmatrix.png")
+        dish_icon = _load_button_image(
+            "dishmatrix.png", target_px=RESOURCE_BUTTON_ICON_PX
+        )
         if dish_icon is None:
-            dish_icon = _generate_button_icon("dish", "DM")
+            dish_icon = _generate_button_icon(
+                "dish", "DM", size=RESOURCE_BUTTON_ICON_PX
+            )
         self._resource_button_images["dish"] = dish_icon
         self.dish_matrix_button = ttk.Button(
             resource_frame,
@@ -2810,9 +2820,13 @@ class FoodGameApp:
         )
         self.dish_matrix_button.grid(row=0, column=1, sticky="ew", padx=(0, 6))
 
-        seasoning_icon = _load_button_image("seasoning.png")
+        seasoning_icon = _load_button_image(
+            "seasoning.png", target_px=RESOURCE_BUTTON_ICON_PX
+        )
         if seasoning_icon is None:
-            seasoning_icon = _generate_button_icon("seasoning", "SN")
+            seasoning_icon = _generate_button_icon(
+                "seasoning", "SN", size=RESOURCE_BUTTON_ICON_PX
+            )
         self._resource_button_images["seasoning"] = seasoning_icon
         self.seasoning_button = ttk.Button(
             resource_frame,
@@ -2825,9 +2839,13 @@ class FoodGameApp:
         )
         self.seasoning_button.grid(row=0, column=2, sticky="ew", padx=(0, 6))
 
-        basket_icon = _load_button_image("basket.png")
+        basket_icon = _load_button_image(
+            "basket.png", target_px=RESOURCE_BUTTON_ICON_PX
+        )
         if basket_icon is None:
-            basket_icon = _generate_button_icon("basket", "BK")
+            basket_icon = _generate_button_icon(
+                "basket", "BK", size=RESOURCE_BUTTON_ICON_PX
+            )
         self._resource_button_images["basket"] = basket_icon
         self.basket_count_var = tk.StringVar(value="Basket\n0/0")
         self.basket_button = ttk.Button(
@@ -2841,9 +2859,13 @@ class FoodGameApp:
         )
         self.basket_button.grid(row=0, column=3, sticky="ew", padx=(0, 6))
 
-        chef_icon = _load_button_image("chefs.png")
+        chef_icon = _load_button_image(
+            "chefs.png", target_px=RESOURCE_BUTTON_ICON_PX
+        )
         if chef_icon is None:
-            chef_icon = _generate_button_icon("chef", "CF")
+            chef_icon = _generate_button_icon(
+                "chef", "CF", size=RESOURCE_BUTTON_ICON_PX
+            )
         self._resource_button_images["chef"] = chef_icon
         self.chef_button = ttk.Button(
             resource_frame,
@@ -2858,8 +2880,26 @@ class FoodGameApp:
         self._update_seasoning_button(None)
         self._update_chef_button()
 
+        self.log_panel = ttk.Frame(self.game_frame)
+        self.log_panel.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        self.log_panel.columnconfigure(0, weight=1)
+
+        log_header = ttk.Frame(self.log_panel)
+        log_header.grid(row=0, column=0, sticky="ew")
+        log_header.columnconfigure(0, weight=1)
+
+        ttk.Label(log_header, text="Event Log", style="Header.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        self.log_toggle_button = ttk.Button(
+            log_header,
+            text="Hide Log ▲",
+            command=self.toggle_log_panel,
+        )
+        self.log_toggle_button.grid(row=0, column=1, sticky="e")
+
         self.log_text = tk.Text(
-            self.game_frame,
+            self.log_panel,
             height=17,
             wrap="word",
             background="#ffffff",
@@ -2870,7 +2910,7 @@ class FoodGameApp:
             pady=10,
             font=("Helvetica", 10),
         )
-        self.log_text.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        self.log_text.grid(row=1, column=0, sticky="ew", pady=(8, 0))
         self.log_text.configure(state="disabled")
 
     # ----------------- Session management -----------------
@@ -3231,7 +3271,9 @@ class FoodGameApp:
 
         icon = self._resource_button_images.get("cookbook")
         if icon is None:
-            icon = _generate_button_icon("cookbook", "CB")
+            icon = _generate_button_icon(
+                "cookbook", "CB", size=RESOURCE_BUTTON_ICON_PX
+            )
             self._resource_button_images["cookbook"] = icon
 
         self.cookbook_button.configure(image=icon)
@@ -3270,7 +3312,9 @@ class FoodGameApp:
 
         icon = self._resource_button_images.get("seasoning")
         if icon is None:
-            icon = _generate_button_icon("seasoning", "SN")
+            icon = _generate_button_icon(
+                "seasoning", "SN", size=RESOURCE_BUTTON_ICON_PX
+            )
             self._resource_button_images["seasoning"] = icon
 
         self.seasoning_button.configure(image=icon, text=text)
@@ -3477,10 +3521,21 @@ class FoodGameApp:
 
         icon = self._resource_button_images.get("chef")
         if icon is None:
-            icon = _generate_button_icon("chef", "CF")
+            icon = _generate_button_icon(
+                "chef", "CF", size=RESOURCE_BUTTON_ICON_PX
+            )
             self._resource_button_images["chef"] = icon
 
         self.chef_button.configure(image=icon, text=text)
+
+    def toggle_log_panel(self) -> None:
+        self.log_collapsed = not self.log_collapsed
+        if self.log_collapsed:
+            self.log_text.grid_remove()
+            self.log_toggle_button.configure(text="Show Log ▼")
+        else:
+            self.log_text.grid()
+            self.log_toggle_button.configure(text="Hide Log ▲")
 
     def toggle_card(self, index: int) -> None:
         if not self.session:

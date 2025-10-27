@@ -197,16 +197,14 @@ def _load_ingredient_image(
 def _find_recipe_image_path(
     recipe_name: str, display_name: Optional[str] = None
 ) -> Optional[Path]:
-    if not RECIPE_ASSET_DIR.exists():
-        return None
-
     candidates = _candidate_image_basenames((recipe_name, display_name))
     extensions = (".png", ".jpg", ".jpeg", ".gif")
     for base in candidates:
         for ext in extensions:
-            path = RECIPE_ASSET_DIR / f"{base}{ext}"
-            if path.exists():
-                return path
+            for directory in _RECIPE_ASSET_DIRS:
+                path = directory / f"{base}{ext}"
+                if path.exists():
+                    return path
     return None
 
 

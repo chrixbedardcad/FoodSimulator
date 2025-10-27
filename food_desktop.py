@@ -51,24 +51,11 @@ RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 # Some historical bundles of the simulator stored recipe artwork in a directory
 # spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
 # folder, but we still want to support the existing assets without requiring
-# players to rename files manually.  We therefore search both locations,
-# preferring the modern directory but falling back to the legacy one whenever a
-# specific asset is missing.
+# players to rename files manually.  If the preferred directory is missing we
+# fall back to the legacy location.
 _LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
-
-_RECIPE_ASSET_DIRS = []
-if RECIPE_ASSET_DIR.exists():
-    _RECIPE_ASSET_DIRS.append(RECIPE_ASSET_DIR)
-if _LEGACY_RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR not in _RECIPE_ASSET_DIRS:
-    _RECIPE_ASSET_DIRS.append(_LEGACY_RECIPE_ASSET_DIR)
-
-if _RECIPE_ASSET_DIRS:
-    # Keep ``RECIPE_ASSET_DIR`` pointing at the preferred directory so existing
-    # call sites that display relative paths retain the modern spelling.
-    RECIPE_ASSET_DIR = _RECIPE_ASSET_DIRS[0]
-else:
-    # Ensure the search loop still runs even when neither directory exists.
-    _RECIPE_ASSET_DIRS = [RECIPE_ASSET_DIR]
+if not RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR.exists():
+    RECIPE_ASSET_DIR = _LEGACY_RECIPE_ASSET_DIR
 
 
 TASTE_ICON_FILES: Mapping[str, str] = {

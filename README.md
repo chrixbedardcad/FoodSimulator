@@ -8,6 +8,7 @@ A toolkit for experimenting with the Food Card Deck video game concept. The repo
 * `food_simulator.py` — a Monte Carlo batch simulator that stress tests balance across hundreds of automated runs and exports CSV/TXT reports.
 * `food_game.py` — an interactive terminal mini-game that lets designers play short sessions using the exact same rules, decks, and scoring logic.
 * `food_desktop.py` — a Tkinter-powered desktop client with clickable ingredient cards, live score tracking, and instant trio breakdowns.
+* `Food_Stat.py` — a focused odds calculator that estimates the chance of producing every dish under configurable basket and chef scenarios.
 
 Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and baskets) so that data tweaks are immediately reflected everywhere.
 
@@ -109,6 +110,28 @@ After each batch completes the script prints a console summary including:
 - Ingredient Herfindahl–Hirschman Index (HHI) to gauge draw diversity.
 
 Report files land in the requested output directory using the pattern `report_<basket>_plays<nbplay>_runs<runs>_seed<seed>_<timestamp>.*`.
+
+---
+
+## 📊 Exporting Dish Probabilities with `Food_Stat.py`
+
+Need quick odds for every entry in `dish_matrix.json`? `Food_Stat.py` samples ingredient draws and writes a CSV summarising how often each dish appears given your constraints.
+
+```bash
+python Food_Stat.py --iterations 20000 --basket Mediterranean --chefs "Remy" "Colette" \
+  --hand-size 8 --pick-size 5 --output reports/mediterranean_food_stats.csv
+```
+
+Key options mirror the shared data loader so you can point to bespoke JSON files, change the simulated hand/pick sizes, bias basket decks toward chef key cards, or even force key ingredients with `--guarantee-prob`. When a basket is provided the command respects market biases; omit `--basket` to sample from the full ingredient pool instead. The script also accepts `--seed` for repeatable runs.
+
+The generated CSV (default `reports/food_stats.csv`) includes:
+
+- `chance` — empirical probability of completing the dish across the sampled draws.
+- `occurrences` — number of successful matches observed in the simulation.
+- `hand_size`, `pick_size`, `basket`, `chefs` — configuration echoes so you can track what produced the data.
+- `min_ingredients`, `max_ingredients`, `family_pattern`, `flavor_pattern`, `tier`, and `multiplier` — metadata pulled directly from `dish_matrix.json` for rapid filtering.
+
+Because the script writes to the `reports/` directory by default, you can commit the CSV alongside other simulator exports or feed it into downstream tooling for deeper probability analysis.
 
 ---
 

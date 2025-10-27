@@ -1,0 +1,14 @@
+id,name,min_ingredients,max_ingredients,family_pattern,flavor_pattern,multiplier,tier,chance,hand_size,pick_size,basket,chefs,description,occurrences,original_chance
+1,Tasting Flight,3,3,all_different,all_different,1.5,Common,0.2025,6,3,,,A simple but well-balanced tasting flight of different families and flavors.,4050,0.63679
+2,Signature Trio,3,3,all_same,all_different,5.0,Rare,0.023,6,3,,,A unique dish expressing one family in multiple taste variations.,460,0.11566
+12,Harmony Roll,3,3,all_different,all_same,4.0,Uncommon,0.01395,6,3,,,Three distinct families wrapped in one taste — perfect for sushi-style spreads.,279,0.15044
+10,Plain Trio,3,3,all_same,all_same,6.0,Rare,0.00845,6,3,,,"Three ingredients from the same family and taste, yielding a flat but serviceable plate.",169,0.06855
+3,Chef's Plate,4,4,all_same,mixed,7.0,Rare,0.0,6,3,,,A crafted composition from a single family with subtle flavor diversity.,0,0.055235
+4,Family Quartet,4,4,all_different,mixed,2.5,Uncommon,0.0,6,3,,,Four distinct families coming together with varied tastes for a rich special.,0,0.358135
+5,Fusion Quartet,4,4,mixed,all_different,3.0,Uncommon,0.0,6,3,,,A fusion of two core families and distinct flavors blending cultures and ideas.,0,0.25441
+6,Symphony,4,4,all_same,all_different,8.5,Legendary,0.0,6,3,,,"A perfect flavor ensemble from one family, balanced across all taste tones.",0,0.007745
+11,Plain Quartet,4,4,all_same,all_same,10.0,Legendary,0.0,6,3,,,"Four matching ingredients that play it safe, resulting in a muted experience.",0,0.003635
+13,Mosaic Feast,5,5,mixed,all_different,7.5,Legendary,0.0,6,3,,,Five distinct tastes woven through a patchwork of culinary families.,0,0.017695
+7,Grand Feast,5,5,all_different,all_different,11.0,Legendary,0.0,6,3,,,A grand abundance of diverse ingredients and flavors from all families.,0,0.000985
+8,Grand Course,5,5,all_same,mixed,9.5,Legendary,0.0,6,3,,,"A refined centerpiece dish, unified in family but layered in taste.",0,0.004985
+9,Masterpiece,5,5,all_same,all_different,12.0,Legendary,0.0,6,3,,,"The ultimate creation — one family, every flavor, pure culinary art.",0,9.5e-05

@@ -51,6 +51,7 @@ class RottingRound:
                 # Preserve the card's decay history so returning ingredients
                 # continue rotting instead of resetting when redrawn.
                 self.hand[index] = drawn
+        self._update_loss_state()
 
     def cards_in_hand(self) -> List[IngredientCard]:
         return [card for card in self.hand if card is not None]
@@ -118,15 +119,7 @@ class RottingRound:
                 card.is_rotten = True
                 card.turns_in_hand = limit
 
-        active_cards = [card for card in self.hand if card is not None]
-        if not active_cards:
-            return
-
-        non_rotten_count = sum(not card.is_rotten for card in active_cards)
-        rotten_count = len(active_cards) - non_rotten_count
-
-        if non_rotten_count == 0 or (non_rotten_count == 1 and rotten_count > 0):
-            self.lost = True
+        self._update_loss_state()
 
     # ------------------------------- Internal helpers ------------------------------
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
@@ -141,6 +134,18 @@ class RottingRound:
                 card.is_rotten = True
             self.hand[index] = None
             self.basket.append(card)
+
+    def _update_loss_state(self) -> None:
+        if self.lost:
+            return
+
+        active_cards = [card for card in self.hand if card is not None]
+        if not active_cards:
+            return
+
+        non_rotten_count = sum(not card.is_rotten for card in active_cards)
+        if non_rotten_count == 0 or (non_rotten_count == 1 and len(active_cards) > 1):
+            self.lost = True
 
 
 def rot_circles(card: IngredientCard) -> dict[str, int | bool | list[str]]:

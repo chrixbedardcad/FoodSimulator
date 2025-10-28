@@ -41,9 +41,16 @@ def test_leaving_hand_preserves_turns_in_hand(game_data: GameData) -> None:
     assert not round_state.play_attempt([0, 1])
 
     turns = {card.ingredient.name: card.turns_in_hand for card in round_state.cards_in_hand()}
+    assert turns["Tomato"] == 1
+    assert turns["Egg"] == 1
+    assert turns["Mushroom"] == 1
+
+    round_state.end_turn_decay()
+
+    turns = {card.ingredient.name: card.turns_in_hand for card in round_state.cards_in_hand()}
     assert turns["Tomato"] == 2
     assert turns["Egg"] == 2
-    assert turns["Mushroom"] == 1
+    assert turns["Mushroom"] == 2
 
 
 def test_card_rots_when_turn_limit_reached(game_data: GameData) -> None:
@@ -71,6 +78,10 @@ def test_invalid_cook_returns_cards_and_preserves_decay(game_data: GameData) -> 
         assert not round_state.play_attempt([0, 1, 2])
     finally:
         game_data.is_valid_dish = original_validator
+
+    assert all(card.turns_in_hand == 1 for card in round_state.cards_in_hand())
+
+    round_state.end_turn_decay()
 
     assert all(card.turns_in_hand == 2 for card in round_state.cards_in_hand())
 

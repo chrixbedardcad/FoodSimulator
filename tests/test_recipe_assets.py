@@ -1,6 +1,7 @@
 import importlib
 import sys
 import types
+from pathlib import Path
 
 
 def _install_pil_stub() -> None:
@@ -36,19 +37,19 @@ def _install_pil_stub() -> None:
 def _load_food_desktop(monkeypatch, tmp_path):
     sys.modules.pop("food_desktop", None)
     _install_pil_stub()
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent))
     module = importlib.import_module("food_desktop")
     monkeypatch.setattr(module, "ASSET_DIR", tmp_path)
     monkeypatch.setattr(module, "RECIPE_ASSET_DIR", tmp_path / "recipes")
-    monkeypatch.setattr(module, "_LEGACY_RECIPE_ASSET_DIR", tmp_path / "recipies")
     module._recipe_image_cache.clear()
     return module
 
 
-def test_finds_legacy_recipe_art(tmp_path, monkeypatch):
+def test_finds_recipe_art_in_primary_directory(tmp_path, monkeypatch):
     module = _load_food_desktop(monkeypatch, tmp_path)
-    legacy_dir = tmp_path / "recipies"
-    legacy_dir.mkdir()
-    image_path = legacy_dir / "CheesyTomatoStack.png"
+    recipes_dir = tmp_path / "recipes"
+    recipes_dir.mkdir()
+    image_path = recipes_dir / "CheesyTomatoStack.png"
     image_path.write_bytes(b"fake")
 
     found = module._find_recipe_image_path("CheesyTomatoStack")
@@ -58,9 +59,9 @@ def test_finds_legacy_recipe_art(tmp_path, monkeypatch):
 
 def test_case_insensitive_recipe_art_lookup(tmp_path, monkeypatch):
     module = _load_food_desktop(monkeypatch, tmp_path)
-    legacy_dir = tmp_path / "recipies"
-    legacy_dir.mkdir()
-    image_path = legacy_dir / "cheesytomatostack.PNG"
+    recipes_dir = tmp_path / "recipes"
+    recipes_dir.mkdir()
+    image_path = recipes_dir / "cheesytomatostack.PNG"
     image_path.write_bytes(b"fake")
 
     found = module._find_recipe_image_path("CheesyTomatoStack")

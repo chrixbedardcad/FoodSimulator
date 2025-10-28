@@ -50,15 +50,6 @@ ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
 
-# Some historical bundles of the simulator stored recipe artwork in a directory
-# spelled ``recipies``.  Newer builds use the correctly spelled ``recipes``
-# folder, but we still want to support the existing assets without requiring
-# players to rename files manually.  If the preferred directory is missing we
-# fall back to the legacy location.
-_LEGACY_RECIPE_ASSET_DIR = ASSET_DIR / "recipies"
-if not RECIPE_ASSET_DIR.exists() and _LEGACY_RECIPE_ASSET_DIR.exists():
-    RECIPE_ASSET_DIR = _LEGACY_RECIPE_ASSET_DIR
-
 
 TASTE_ICON_FILES: Mapping[str, str] = {
     "Sweet": "Sweet.png",
@@ -108,15 +99,7 @@ _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 def _recipe_asset_directories() -> List[Path]:
     """Return available recipe artwork directories in preferred order."""
 
-    directories: List[Path] = []
-    for candidate in (RECIPE_ASSET_DIR, _LEGACY_RECIPE_ASSET_DIR):
-        if candidate.exists() and candidate not in directories:
-            directories.append(candidate)
-    if not directories:
-        # Preserve the original path so relative references remain stable even
-        # when the directory has not been created yet.
-        directories.append(RECIPE_ASSET_DIR)
-    return directories
+    return [RECIPE_ASSET_DIR]
 
 
 def _load_icon(

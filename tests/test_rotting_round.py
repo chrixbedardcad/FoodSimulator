@@ -90,6 +90,16 @@ def test_loss_when_all_hand_slots_rotten(game_data: GameData) -> None:
     assert round_state.lost
 
 
+def test_loss_when_only_one_fresh_card_remains(game_data: GameData) -> None:
+    round_state = make_round(game_data, ["Basil", "Honey"], hand_size=2)
+
+    round_state.end_turn_decay()
+    assert not round_state.lost
+
+    round_state.end_turn_decay()
+    assert round_state.lost
+
+
 def test_rot_circles_reflects_state(game_data: GameData) -> None:
     round_state = make_round(game_data, ["Basil"], hand_size=1)
     card = round_state.hand[0]

@@ -118,7 +118,14 @@ class RottingRound:
                 card.is_rotten = True
                 card.turns_in_hand = limit
 
-        if self.hand and all(card is not None and card.is_rotten for card in self.hand):
+        active_cards = [card for card in self.hand if card is not None]
+        if not active_cards:
+            return
+
+        non_rotten_count = sum(not card.is_rotten for card in active_cards)
+        rotten_count = len(active_cards) - non_rotten_count
+
+        if non_rotten_count == 0 or (non_rotten_count == 1 and rotten_count > 0):
             self.lost = True
 
     # ------------------------------- Internal helpers ------------------------------

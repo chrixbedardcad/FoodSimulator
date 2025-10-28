@@ -1695,9 +1695,10 @@ class GameSession:
             self._start_next_round()
             deck_refreshed = not was_finished and not self.finished
         else:
-            deck_refreshed = self._refill_hand() or deck_refreshed
             if not self.finished:
                 self._apply_end_turn_decay()
+            if not self.finished:
+                deck_refreshed = self._refill_hand() or deck_refreshed
 
         return TurnOutcome(
             selected=selected,

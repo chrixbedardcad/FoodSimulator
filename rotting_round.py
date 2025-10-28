@@ -161,11 +161,6 @@ class RottingRound:
             # Keep the decay progress when shuffling the card back into the
             # basket so the ingredient resumes rotting from the same state when
             # drawn again.
-            card.turns_in_hand += 1
-            limit = max(card.ingredient.rotten_turns, 0)
-            if limit and card.turns_in_hand >= limit:
-                card.turns_in_hand = limit
-                card.is_rotten = True
             self.hand[index] = None
             self.basket.append(card)
 

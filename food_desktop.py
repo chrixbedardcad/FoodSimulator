@@ -1278,12 +1278,17 @@ class GameSession:
         selected = [card.ingredient for card in selected_cards]
 
         dish = self.data.evaluate_dish(selected)
+        recipe_name = self.data.which_recipe(selected)
+        if recipe_name is None and dish.entry is None:
+            raise ValueError(
+                "Those ingredients don't form a valid dish. Try a different combination."
+            )
+
         alerts = list(dish.alerts)
         if alerts:
             for alert in alerts:
                 self._push_event(alert)
         Value = dish.base_value
-        recipe_name = self.data.which_recipe(selected)
         recipe_display_name = (
             self.data.recipe_display_name(recipe_name) if recipe_name else None
         )

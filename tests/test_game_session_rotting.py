@@ -67,3 +67,18 @@ def test_discarding_rotten_card_not_allowed(game_data: GameData) -> None:
 
     with pytest.raises(ValueError):
         session.discard_indices([0])
+
+
+def test_invalid_cook_rejected_and_hand_preserved(game_data: GameData) -> None:
+    """Selections that produce no recipe or dish should fail without discarding cards."""
+
+    session = make_session(game_data, ["Truffle", "Egg", "Basil"])
+
+    with pytest.raises(ValueError):
+        session.play_turn([0, 1, 2])
+
+    assert [card.ingredient.name for card in session.hand] == [
+        "Truffle",
+        "Egg",
+        "Basil",
+    ]

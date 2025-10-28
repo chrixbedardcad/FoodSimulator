@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("PIL")
 
 from food_api import GameData
-from food_desktop import GameSession
+from food_desktop import GameSession, InvalidDishSelection
 from rotting_round import IngredientCard
 
 
@@ -69,16 +69,25 @@ def test_discarding_rotten_card_not_allowed(game_data: GameData) -> None:
         session.discard_indices([0])
 
 
-def test_invalid_cook_rejected_and_hand_preserved(game_data: GameData) -> None:
-    """Selections that produce no recipe or dish should fail without discarding cards."""
+def test_invalid_cook_returns_cards_and_increments_decay(game_data: GameData) -> None:
+    """Invalid dishes send the ingredients back to the basket and advance rot."""
 
     session = make_session(game_data, ["Truffle", "Egg", "Basil"])
+    original_cards = list(session.hand)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(InvalidDishSelection) as exc_info:
         session.play_turn([0, 1, 2])
 
-    assert [card.ingredient.name for card in session.hand] == [
-        "Truffle",
-        "Egg",
-        "Basil",
-    ]
+    assert "do not form a dish" in str(exc_info.value)
+    assert session.turn_number == 0
+    assert len(session.hand) == len(original_cards)
+
+    for card in original_cards:
+        assert card.turns_in_hand == 1
+
+    locations = session.hand + list(session.deck)
+    for card in original_cards:
+        assert card in locations
+
+    events = session.consume_events()
+    assert any("returned to the basket" in message for message in events)

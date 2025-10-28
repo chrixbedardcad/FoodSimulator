@@ -149,15 +149,12 @@ class RottingRound:
 
         fresh_count = sum(not card.is_rotten for card in active_cards)
         rotten_count = len(active_cards) - fresh_count
-        empty_slots = len(self.hand) - len(active_cards)
 
         if fresh_count == 0:
             self.lost = True
             return
 
-        if fresh_count < 3 and (
-            rotten_count > 0 or (empty_slots > 0 and not self.basket)
-        ):
+        if fresh_count < 3 and rotten_count > 0:
             self.lost = True
 
 

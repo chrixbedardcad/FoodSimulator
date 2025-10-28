@@ -114,12 +114,6 @@ def test_loss_when_not_enough_fresh_cards_to_cook(game_data: GameData) -> None:
     assert round_state.lost
 
 
-def test_loss_when_hand_cannot_be_filled(game_data: GameData) -> None:
-    round_state = make_round(game_data, ["Basil", "Honey"], hand_size=3)
-
-    assert round_state.lost
-
-
 def test_loss_checked_after_play_attempt(game_data: GameData) -> None:
     round_state = make_round(
         game_data,

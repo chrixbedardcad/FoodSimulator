@@ -131,3 +131,17 @@ def test_invalid_selection_ages_remaining_cards(game_data: GameData) -> None:
 
     assert lingering_card in session.hand
     assert lingering_card.turns_in_hand == 1
+
+
+def test_basket_cards_preserve_decay_state(game_data: GameData) -> None:
+    session = make_session(game_data, ["Honey", "Honey", "Honey"])
+
+    basil_card = IngredientCard(ingredient=game_data.ingredients["Basil"])
+    basil_card.turns_in_hand = 1
+    session.deck.append(basil_card)
+
+    for _ in range(3):
+        session._apply_end_turn_decay()
+
+    assert basil_card.turns_in_hand == 1
+    assert not basil_card.is_rotten

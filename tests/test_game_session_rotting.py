@@ -5,7 +5,7 @@ import pytest
 pytest.importorskip("PIL")
 
 from food_api import GameData
-from food_desktop import GameSession, InvalidDishSelection
+from food_desktop import GameSession
 from rotting_round import IngredientCard
 
 
@@ -79,66 +79,43 @@ def test_returning_rotten_card_not_allowed(game_data: GameData) -> None:
         session.return_indices([0])
 
 
-def test_invalid_cook_returns_cards_and_increments_decay(game_data: GameData) -> None:
-    """Invalid dishes send the ingredients back to the basket and advance rot."""
-
+def test_cook_without_recipe_scores_total_value(game_data: GameData) -> None:
     session = make_session(game_data, ["Truffle", "Egg", "Basil"])
     original_cards = list(session.hand)
+    total_value = sum(card.ingredient.Value for card in original_cards)
 
-    with pytest.raises(InvalidDishSelection) as exc_info:
-        session.play_turn([0, 1, 2])
+    outcome = session.play_turn([0, 1, 2])
 
-    assert "do not form a dish" in str(exc_info.value)
-    assert session.turn_number == 0
-    assert len(session.hand) == len(original_cards)
-
-    for card in original_cards:
-        assert card.turns_in_hand == 1
-
-    locations = session.hand + list(session.deck)
-    for card in original_cards:
-        assert card in locations
+    assert outcome.recipe_name is None
+    assert outcome.dish_name is None
+    assert outcome.final_score == total_value
+    assert session.turn_number == 1
+    assert len(session.hand) == session.hand_size
 
     events = session.consume_events()
-    assert any("returned to the basket" in message for message in events)
-
-    ingredients = getattr(exc_info.value, "ingredients", ())
-    assert ingredients
-    assert len(ingredients) == len(original_cards)
-    assert all(card.ingredient == ingredient for card, ingredient in zip(original_cards, ingredients))
+    assert all("returned to the basket" not in message for message in events)
 
 
-def test_all_same_ingredient_selection_rejected(game_data: GameData) -> None:
+def test_all_same_ingredient_selection_scores_value(game_data: GameData) -> None:
     session = make_session(game_data, ["Basil", "Basil", "Basil"])
-    original_cards = list(session.hand)
+    cards = list(session.hand)
+    total_value = sum(card.ingredient.Value for card in cards)
 
-    with pytest.raises(InvalidDishSelection) as exc_info:
-        session.play_turn([0, 1, 2])
+    outcome = session.play_turn([0, 1, 2])
 
-    exception = exc_info.value
-    assert exception.primary_ingredient is not None
-    assert exception.primary_ingredient.name == "Basil"
-    assert "do not form a dish" in str(exception)
-
-    # Cards should be returned to the basket and gain a rot turn.
-    assert session.turn_number == 0
-    locations = session.hand + list(session.deck)
-    for card in original_cards:
-        assert card.turns_in_hand == 1
-        assert card in locations
-
-    assert exception.ingredients
-    assert len(exception.ingredients) == len(original_cards)
-    assert all(ingredient.name == "Basil" for ingredient in exception.ingredients)
+    assert outcome.recipe_name is None
+    assert outcome.dish_name is None
+    assert outcome.final_score == total_value
+    assert session.turn_number == 1
 
 
 def test_invalid_selection_ages_remaining_cards(game_data: GameData) -> None:
     session = make_session(game_data, ["Truffle", "Egg", "Basil", "Tomato"])
     lingering_card = session.hand[-1]
 
-    with pytest.raises(InvalidDishSelection):
-        session.play_turn([0, 1, 2])
+    outcome = session.play_turn([0, 1, 2])
 
+    assert outcome.final_score > 0
     assert lingering_card in session.hand
     assert lingering_card.turns_in_hand == 1
 

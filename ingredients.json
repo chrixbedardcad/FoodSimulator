@@ -5,7 +5,10 @@
     "ingredient_id": "ing.truffle",
     "taste": "Umami",
     "Value": 30,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 5,
+    "rotten_image": "img/ingredients/truffle_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Egg",
@@ -13,7 +16,10 @@
     "ingredient_id": "ing.egg",
     "taste": "Salty",
     "Value": 12,
-    "family": "Protein"
+    "family": "Protein",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/egg_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Tomato",
@@ -21,7 +27,10 @@
     "ingredient_id": "ing.tomato",
     "taste": "Sour",
     "Value": 22,
-    "family": "Fruit"
+    "family": "Fruit",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/tomato_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Basil",
@@ -29,7 +38,10 @@
     "ingredient_id": "ing.basil",
     "taste": "Bitter",
     "Value": 6,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 2,
+    "rotten_image": "img/ingredients/basil_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Mushroom",
@@ -37,7 +49,10 @@
     "ingredient_id": "ing.mushroom",
     "taste": "Umami",
     "Value": 10,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/mushroom_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Garlic",
@@ -45,7 +60,10 @@
     "ingredient_id": "ing.garlic",
     "taste": "Bitter",
     "Value": 6,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 4,
+    "rotten_image": "img/ingredients/garlic_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Lemon",
@@ -53,7 +71,10 @@
     "ingredient_id": "ing.lemon",
     "taste": "Sour",
     "Value": 8,
-    "family": "Fruit"
+    "family": "Fruit",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/lemon_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Honey",
@@ -61,7 +82,10 @@
     "ingredient_id": "ing.honey",
     "taste": "Sweet",
     "Value": 12,
-    "family": "Fruit"
+    "family": "Fruit",
+    "rotten_turns": 999,
+    "rotten_image": "img/ingredients/honey_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Chocolate",
@@ -69,7 +93,10 @@
     "ingredient_id": "ing.chocolate",
     "taste": "Sweet",
     "Value": 12,
-    "family": "Fruit"
+    "family": "Fruit",
+    "rotten_turns": 999,
+    "rotten_image": "img/ingredients/chocolate_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Beef",
@@ -77,7 +104,10 @@
     "ingredient_id": "ing.beef",
     "taste": "Umami",
     "Value": 18,
-    "family": "Protein"
+    "family": "Protein",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/beef_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Bacon",
@@ -85,7 +115,10 @@
     "ingredient_id": "ing.bacon",
     "taste": "Salty",
     "Value": 14,
-    "family": "Protein"
+    "family": "Protein",
+    "rotten_turns": 2,
+    "rotten_image": "img/ingredients/bacon_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Pasta",
@@ -93,7 +126,10 @@
     "ingredient_id": "ing.pasta",
     "taste": "Umami",
     "Value": 12,
-    "family": "Grain"
+    "family": "Grain",
+    "rotten_turns": 6,
+    "rotten_image": "img/ingredients/pasta_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Rice",
@@ -101,7 +137,10 @@
     "ingredient_id": "ing.rice",
     "taste": "Umami",
     "Value": 10,
-    "family": "Grain"
+    "family": "Grain",
+    "rotten_turns": 6,
+    "rotten_image": "img/ingredients/rice_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Fish",
@@ -109,7 +148,10 @@
     "ingredient_id": "ing.fish",
     "taste": "Umami",
     "Value": 14,
-    "family": "Protein"
+    "family": "Protein",
+    "rotten_turns": 2,
+    "rotten_image": "img/ingredients/fish_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Seaweed",
@@ -117,7 +159,10 @@
     "ingredient_id": "ing.seaweed",
     "taste": "Umami",
     "Value": 8,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 4,
+    "rotten_image": "img/ingredients/seaweed_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Cream",
@@ -125,7 +170,10 @@
     "ingredient_id": "ing.cream",
     "taste": "Sweet",
     "Value": 10,
-    "family": "Dairy"
+    "family": "Dairy",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/cream_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Parmesan",
@@ -133,7 +181,10 @@
     "ingredient_id": "ing.parmesan",
     "taste": "Umami",
     "Value": 14,
-    "family": "Dairy"
+    "family": "Dairy",
+    "rotten_turns": 6,
+    "rotten_image": "img/ingredients/parmesan_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Onion",
@@ -141,7 +192,10 @@
     "ingredient_id": "ing.onion",
     "taste": "Sweet",
     "Value": 8,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/onion_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Bread",
@@ -149,7 +203,10 @@
     "ingredient_id": "ing.bread",
     "taste": "Umami",
     "Value": 10,
-    "family": "Grain"
+    "family": "Grain",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/bread_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Yogurt",
@@ -157,7 +214,10 @@
     "ingredient_id": "ing.yogurt",
     "taste": "Sour",
     "Value": 10,
-    "family": "Dairy"
+    "family": "Dairy",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/yogurt_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "Capers",
@@ -165,7 +225,10 @@
     "ingredient_id": "ing.capers",
     "taste": "Salty",
     "Value": 6,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 5,
+    "rotten_image": "img/ingredients/capers_rotten.png",
+    "ui_circles": true
   },
   {
     "name": "PickledCucumber",
@@ -173,6 +236,9 @@
     "ingredient_id": "ing.pickledcucumber",
     "taste": "Sour",
     "Value": 6,
-    "family": "Vegetable"
+    "family": "Vegetable",
+    "rotten_turns": 8,
+    "rotten_image": "img/ingredients/pickledcucumber_rotten.png",
+    "ui_circles": true
   }
 ]

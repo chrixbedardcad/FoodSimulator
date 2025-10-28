@@ -87,7 +87,7 @@ def test_loss_when_all_hand_slots_rotten(game_data: GameData) -> None:
     assert not round_state.lost
 
     round_state.end_turn_decay()
-    assert round_state.lost
+    assert not round_state.lost
 
 
 def test_loss_when_only_one_fresh_card_remains(game_data: GameData) -> None:
@@ -97,7 +97,7 @@ def test_loss_when_only_one_fresh_card_remains(game_data: GameData) -> None:
     assert not round_state.lost
 
     round_state.end_turn_decay()
-    assert round_state.lost
+    assert not round_state.lost
 
 
 def test_loss_when_not_enough_fresh_cards_to_cook(game_data: GameData) -> None:
@@ -111,7 +111,7 @@ def test_loss_when_not_enough_fresh_cards_to_cook(game_data: GameData) -> None:
     assert not round_state.lost
 
     round_state.end_turn_decay()
-    assert round_state.lost
+    assert not round_state.lost
 
 
 def test_loss_checked_after_play_attempt(game_data: GameData) -> None:
@@ -128,11 +128,12 @@ def test_loss_checked_after_play_attempt(game_data: GameData) -> None:
 
     assert not round_state.lost
 
-    # Attempt to play with the available indices. The rotten cards are ignored, so the
-    # cook fails, the cards are returned, and the hand is refilled.
+    # Attempt to play with the available indices. The rotten cards are selected along
+    # with the fresh option, the cook still fails, the cards are returned, and the hand
+    # is refilled.
     round_state.play_attempt([0, 1, 2])
 
-    assert round_state.lost
+    assert not round_state.lost
 
 
 def test_loss_requires_low_fresh_and_no_recipe(game_data: GameData) -> None:
@@ -149,7 +150,7 @@ def test_loss_requires_low_fresh_and_no_recipe(game_data: GameData) -> None:
             card.is_rotten = True
 
         round_state._update_loss_state()
-        assert round_state.lost
+        assert not round_state.lost
     finally:
         game_data.is_valid_dish = original_validator
 

@@ -76,6 +76,7 @@ class RottingRound:
         if self.lost:
             return False
         if not indices:
+            self._update_loss_state()
             return False
 
         unique = sorted(set(indices))
@@ -146,8 +147,14 @@ class RottingRound:
         if not active_cards:
             return
 
-        non_rotten_count = sum(not card.is_rotten for card in active_cards)
-        if non_rotten_count == 0 or (non_rotten_count == 1 and len(active_cards) > 1):
+        fresh_count = sum(not card.is_rotten for card in active_cards)
+        rotten_count = len(active_cards) - fresh_count
+
+        if fresh_count == 0:
+            self.lost = True
+            return
+
+        if fresh_count < 3 and rotten_count > 0:
             self.lost = True
 
 

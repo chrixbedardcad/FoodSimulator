@@ -100,6 +100,27 @@ def test_loss_when_only_one_fresh_card_remains(game_data: GameData) -> None:
     assert round_state.lost
 
 
+def test_loss_checked_after_play_attempt(game_data: GameData) -> None:
+    round_state = make_round(
+        game_data,
+        ["Basil", "Basil", "Honey", "Honey"],
+        hand_size=3,
+    )
+
+    # Mark the first two cards as rotten so only one fresh card remains once drawn.
+    for card in round_state.hand[:2]:
+        assert card is not None
+        card.is_rotten = True
+
+    assert not round_state.lost
+
+    # Attempt to play with the available indices. The rotten cards are ignored, so the
+    # cook fails, the cards are returned, and the hand is refilled.
+    round_state.play_attempt([0, 1, 2])
+
+    assert round_state.lost
+
+
 def test_rot_circles_reflects_state(game_data: GameData) -> None:
     round_state = make_round(game_data, ["Basil"], hand_size=1)
     card = round_state.hand[0]

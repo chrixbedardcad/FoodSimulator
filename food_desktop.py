@@ -889,17 +889,16 @@ class GameSession:
         total = max(rot_limit, 0)
 
         if card.is_rotten:
+            if total > 0:
+                return f"rots {total}/{total} (rotten)"
             return "rotten (ruins dishes)"
         if total <= 0:
             return "rots immediately"
         if total >= 12 or rot_limit >= 900:
             return "shelf life stable"
 
-        remaining = max(total - card.turns_in_hand, 0)
-        if remaining <= 0:
-            return "rots next turn"
-        plural = "turn" if remaining == 1 else "turns"
-        return f"rots in {remaining} {plural}"
+        progress = min(max(card.turns_in_hand, 0), total)
+        return f"rots {progress}/{total}"
 
     def _announce_card_added(
         self, card: IngredientCard, *, message_prefix: Optional[str] = None
@@ -907,19 +906,27 @@ class GameSession:
         name = self._card_display_name(card)
         status = self._card_rot_status(card)
         if message_prefix:
-            message = f"{message_prefix} — {status}."
+            message = f"{message_prefix} - {status}."
         else:
-            message = f"{name} joins your hand — {status}."
+            message = f"{name} joins your hand - {status}."
         self._push_event(message)
 
-    def _log_hand_snapshot(self, title: str) -> None:
+    def _log_hand_snapshot(
+        self, title: str, *, new_cards: Optional[Sequence[IngredientCard]] = None
+    ) -> None:
         if not self.hand:
             return
-        descriptions = "; ".join(
-            f"{self._card_display_name(card)} — {self._card_rot_status(card)}"
-            for card in self.hand
-        )
-        self._push_event(f"{title}: {descriptions}")
+        new_ids: set[int] = set()
+        if new_cards:
+            new_ids = {id(card) for card in new_cards}
+        descriptions = []
+        for card in self.hand:
+            name = self._card_display_name(card)
+            if id(card) in new_ids:
+                name = f"(new) {name}"
+            descriptions.append(f"{name} - {self._card_rot_status(card)}")
+        description_text = "; ".join(descriptions)
+        self._push_event(f"{title}: {description_text}")
 
     # ----------------- Round & hand management -----------------
     def _start_next_round(self, initial: bool = False) -> None:
@@ -989,6 +996,7 @@ class GameSession:
     def _refill_hand(self, *, log_new_cards: bool = True) -> bool:
         needed = self.hand_size - len(self.hand)
         deck_refreshed = False
+        new_cards: List[IngredientCard] = []
         while needed > 0 and not self.finished:
             if not self.deck:
                 if not self.hand and not self._awaiting_basket_reset:
@@ -1019,11 +1027,13 @@ class GameSession:
             drawn = self.deck.pop()
             self.hand.append(drawn)
             if log_new_cards:
-                self._announce_card_added(drawn)
+                new_cards.append(drawn)
             needed -= 1
         if len(self.hand) == 0 and not self._awaiting_basket_reset:
             self.finished = True
             self._push_event("Not enough cards to continue this run.")
+        if log_new_cards and new_cards:
+            self._log_hand_snapshot("Update Hand", new_cards=new_cards)
         return deck_refreshed
 
     def _rebuild_deck_for_new_chef(self) -> None:
@@ -1685,9 +1695,10 @@ class GameSession:
             self._start_next_round()
             deck_refreshed = not was_finished and not self.finished
         else:
-            deck_refreshed = self._refill_hand() or deck_refreshed
             if not self.finished:
                 self._apply_end_turn_decay()
+            if not self.finished:
+                deck_refreshed = self._refill_hand() or deck_refreshed
 
         return TurnOutcome(
             selected=selected,

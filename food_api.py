@@ -48,6 +48,9 @@ class Ingredient:
     Value: int
     family: str
     display_name: str = ""
+    rotten_turns: int = 999
+    rotten_image: Optional[str] = None
+    ui_circles: bool = True
 
 
 ALLOWED_TASTES = {"Sweet", "Salty", "Sour", "Umami", "Bitter"}
@@ -166,6 +169,7 @@ class GameData:
     recipe_multipliers: Dict[str, float] = field(init=False)
     ingredient_recipes: Dict[str, List[str]] = field(init=False)
     seasoning_by_id: Dict[str, Seasoning] = field(init=False)
+    ingredient_by_id: Dict[str, Ingredient] = field(init=False)
 
     def __post_init__(self) -> None:
         self.recipe_by_name = {recipe.name: recipe for recipe in self.recipes}
@@ -176,6 +180,9 @@ class GameData:
         self.ingredient_recipes = self._build_ingredient_recipes()
         self.seasoning_by_id = {
             seasoning.seasoning_id: seasoning for seasoning in self.seasonings
+        }
+        self.ingredient_by_id = {
+            ingredient.ingredient_id: ingredient for ingredient in self.ingredients.values()
         }
 
     def _build_recipe_multipliers(self) -> Dict[str, float]:
@@ -243,6 +250,17 @@ class GameData:
     def which_recipe(self, ingredients: Sequence[Ingredient]) -> Optional[str]:
         key = tuple(sorted(ingredient.name for ingredient in ingredients))
         return self.recipe_trio_lookup.get(key)
+
+    def ingredient_for_id(self, identifier: str) -> Optional[Ingredient]:
+        return self.ingredient_by_id.get(identifier)
+
+    def is_valid_dish(self, ingredients: Sequence[Ingredient]) -> bool:
+        if len(ingredients) < 3:
+            return False
+        if self.which_recipe(ingredients):
+            return True
+        outcome = self.evaluate_dish(ingredients)
+        return outcome.entry is not None
 
     def recipes_using_ingredient(self, ingredient_name: str) -> Sequence[str]:
         return self.ingredient_recipes.get(ingredient_name, [])
@@ -517,6 +535,21 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
         name = entry["name"]
         identifier = entry.get("ingredient_id") or f"ing.{name.lower()}"
         display_name = entry.get("display_name") or name
+        rotten_turns_raw = entry.get("rotten_turns", 999)
+        try:
+            rotten_turns = int(rotten_turns_raw)
+        except (TypeError, ValueError):
+            rotten_turns = 999
+        if rotten_turns <= 0:
+            rotten_turns = 999
+        rotten_image = entry.get("rotten_image")
+        if rotten_image is not None:
+            rotten_image = str(rotten_image)
+        ui_circles_value = entry.get("ui_circles", True)
+        if isinstance(ui_circles_value, bool):
+            ui_circles = ui_circles_value
+        else:
+            ui_circles = str(ui_circles_value).lower() not in {"false", "0", "none", ""}
         ingredient = Ingredient(
             name=name,
             ingredient_id=str(identifier),
@@ -524,6 +557,9 @@ def _load_ingredients(path: str) -> Dict[str, Ingredient]:
             Value=int(entry["Value"]),
             family=entry.get("family", "Unknown"),
             display_name=str(display_name),
+            rotten_turns=rotten_turns,
+            rotten_image=rotten_image,
+            ui_circles=ui_circles,
         )
         ingredients[name] = ingredient
     return ingredients

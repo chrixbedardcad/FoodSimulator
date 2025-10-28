@@ -89,6 +89,9 @@ class RottingRound:
             chosen.append((index, card))
 
         if not chosen:
+            # If every selected slot is empty or rotten, re-evaluate the loss
+            # condition so the round correctly ends when the hand has spoiled.
+            self._update_loss_state()
             return False
 
         cards = [card for _, card in chosen]

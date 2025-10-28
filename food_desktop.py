@@ -1040,6 +1040,8 @@ class GameSession:
 
         newly_rotten = self._advance_decay(self.hand, record_events=False)
 
+        for card in selected_cards:
+            card.freshen()
         self.deck.extend(selected_cards)
         if self.deck:
             self.rng.shuffle(self.deck)
@@ -1067,7 +1069,7 @@ class GameSession:
         return_verb = "return" if plural else "returns"
         message = (
             f"{combo_text} {verb} not form a dish. {pronoun} {return_verb} to the basket to be "
-            "reshuffled and continue to rot."
+            "reshuffled and will only rot while in your hand."
         )
         if reason == "all_same_ingredient" and primary_ingredient is not None:
             ingredient_name = (
@@ -1133,6 +1135,7 @@ class GameSession:
         if self.hand:
             replacement = self.hand[0]
             self.hand[0] = bonus_card
+            replacement.freshen()
             self.deck.append(replacement)
             if self.deck:
                 self.rng.shuffle(self.deck)
@@ -1394,6 +1397,8 @@ class GameSession:
 
         newly_rotten = self._advance_decay(self.hand, record_events=False)
 
+        for card in returned_cards:
+            card.freshen()
         self.deck.extend(returned_cards)
         if self.deck:
             self.rng.shuffle(self.deck)

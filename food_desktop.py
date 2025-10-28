@@ -2756,6 +2756,8 @@ class FoodGameApp:
         self._seasoning_hand_icons: List[tk.PhotoImage] = []
         self.log_collapsed = False
         self._run_completion_notified = False
+        self._app_launch_time = datetime.now()
+        self._log_start_time: Optional[datetime] = None
 
         self._init_styles()
         self._build_layout()
@@ -3441,6 +3443,7 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.clear_events()
+        self._log_start_time = datetime.now()
         self._log_run_settings()
         self._log_action("Start Run button pressed. Run initialized.")
         self.append_events(self.session.consume_events())
@@ -4087,11 +4090,9 @@ class FoodGameApp:
         if self.log_collapsed:
             self.log_text.grid_remove()
             self.log_toggle_button.configure(text="Show Log ▼")
-            self._log_action("Log panel hidden via toggle button.")
         else:
             self.log_text.grid()
             self.log_toggle_button.configure(text="Hide Log ▲")
-            self._log_action("Log panel shown via toggle button.")
 
     def toggle_card(self, index: int) -> None:
         if not self.session:
@@ -4274,7 +4275,12 @@ class FoodGameApp:
     def _format_log_line(self, line: str) -> str:
         if not line.strip():
             return ""
-        timestamp = datetime.now().strftime("[%H:%M:%S]")
+        origin = self._log_start_time or self._app_launch_time
+        elapsed = datetime.now() - origin
+        total_seconds = int(elapsed.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        timestamp = f"[{hours:02d}:{minutes:02d}:{seconds:02d}]"
         return f"{timestamp}: {line}"
 
     def _append_log_lines(self, lines: Iterable[str]) -> None:

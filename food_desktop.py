@@ -4061,6 +4061,8 @@ class FoodGameApp:
 
     def append_events(self, messages: Iterable[str]) -> None:
         self._append_log_lines(f"• {message}" for message in messages)
+        if self.session and self.session.is_finished():
+            self._handle_run_finished()
 
     def clear_events(self) -> None:
         self.log_text.configure(state="normal")

@@ -33,20 +33,30 @@ def make_session(data: GameData, names: list[str]) -> GameSession:
     return session
 
 
-def test_decay_marks_cards_rotten_and_finishes_run(game_data: GameData) -> None:
-    session = make_session(game_data, ["Basil", "Basil", "Basil"])
-
-    session._apply_end_turn_decay()
-    assert [card.turns_in_hand for card in session.hand] == [1, 1, 1]
+def test_rotten_cards_ruin_dish_and_finish_run_when_empty(game_data: GameData) -> None:
+    recipe = game_data.recipes[0]
+    names = list(recipe.trio)
+    session = make_session(game_data, names)
+    session.deck.clear()
     session.consume_events()
 
-    session._apply_end_turn_decay()
-    assert all(card.is_rotten for card in session.hand)
+    for card in session.hand:
+        card.is_rotten = True
+
+    assert not session.finished
+
+    outcome = session.play_turn([0, 1, 2])
+
+    total_value = sum(game_data.ingredients[name].Value for name in names)
+    expected_penalty = -(total_value * len(names))
+
+    assert outcome.final_score == expected_penalty
+    assert outcome.recipe_name is None
+    assert outcome.ruined
     assert session.finished
 
     events = session.consume_events()
-    assert any("has gone rotten" in message for message in events)
-    assert any("run is over" in message for message in events)
+    assert any("Rotten ingredients spoiled the dish" in message for message in events)
 
 
 def test_nonperishable_cards_never_rot(game_data: GameData) -> None:

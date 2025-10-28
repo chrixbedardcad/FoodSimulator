@@ -81,7 +81,7 @@ def test_round_ends_when_basket_empty(game_data: GameData) -> None:
 
 
 def test_loss_when_all_hand_slots_rotten(game_data: GameData) -> None:
-    round_state = make_round(game_data, ["Basil", "Basil"], hand_size=2)
+    round_state = make_round(game_data, ["Basil", "Basil", "Basil"], hand_size=3)
 
     round_state.end_turn_decay()
     assert not round_state.lost
@@ -91,7 +91,7 @@ def test_loss_when_all_hand_slots_rotten(game_data: GameData) -> None:
 
 
 def test_loss_when_only_one_fresh_card_remains(game_data: GameData) -> None:
-    round_state = make_round(game_data, ["Basil", "Honey"], hand_size=2)
+    round_state = make_round(game_data, ["Basil", "Basil", "Honey"], hand_size=3)
 
     round_state.end_turn_decay()
     assert not round_state.lost
@@ -133,6 +133,86 @@ def test_loss_checked_after_play_attempt(game_data: GameData) -> None:
     round_state.play_attempt([0, 1, 2])
 
     assert round_state.lost
+
+
+def test_loss_requires_low_fresh_and_no_recipe(game_data: GameData) -> None:
+    round_state = make_round(game_data, ["Tomato", "Egg", "Mushroom"], hand_size=3)
+
+    original_validator = game_data.is_valid_dish
+    game_data.is_valid_dish = lambda _ingredients: False  # type: ignore[assignment]
+    try:
+        round_state._update_loss_state()
+        assert not round_state.lost
+
+        for card in round_state.hand[:2]:
+            assert card is not None
+            card.is_rotten = True
+
+        round_state._update_loss_state()
+        assert round_state.lost
+    finally:
+        game_data.is_valid_dish = original_validator
+
+
+def test_prep_one_once_per_turn(game_data: GameData) -> None:
+    round_state = make_round(
+        game_data,
+        ["Tomato", "Egg", "Mushroom", "Basil", "Rice"],
+        hand_size=3,
+    )
+
+    first_card = round_state.hand[0]
+    assert first_card is not None
+    original_turns = first_card.turns_in_hand
+
+    assert round_state.prep_one(0)
+    assert round_state.prep_used_this_turn
+
+    drawn_card = round_state.hand[0]
+    assert drawn_card is not None
+    assert drawn_card.ingredient.name != first_card.ingredient.name
+
+    moved_card = round_state.basket[-1]
+    assert moved_card.ingredient.name == first_card.ingredient.name
+    assert moved_card.turns_in_hand == original_turns
+
+    assert not round_state.prep_one(1)
+
+    round_state.end_turn_decay()
+    assert not round_state.prep_used_this_turn
+    assert round_state.prep_one(0)
+
+
+def test_compost_removes_rotten_and_respects_cooldown(game_data: GameData) -> None:
+    round_state = make_round(
+        game_data,
+        ["Basil", "Basil", "Honey", "Pasta", "Rice", "Tomato"],
+        hand_size=5,
+    )
+
+    round_state.end_turn_decay()
+    round_state.end_turn_decay()
+
+    rotten_card = round_state.hand[0]
+    assert rotten_card is not None and rotten_card.is_rotten
+    assert not round_state.lost
+
+    assert round_state.compost(0)
+    assert round_state.compost_cd == 3
+    assert round_state.hand[0] is not None
+
+    assert not round_state.compost(0)
+
+    for _ in range(3):
+        round_state.end_turn_decay()
+    assert round_state.compost_cd == 0
+
+    # Manually rot a card to ensure compost can trigger again once cooldown ends.
+    next_card = round_state.hand[0]
+    assert next_card is not None
+    next_card.is_rotten = True
+
+    assert round_state.compost(0)
 
 
 def test_rot_circles_reflects_state(game_data: GameData) -> None:

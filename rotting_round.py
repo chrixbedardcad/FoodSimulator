@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from itertools import combinations
 from typing import Deque, Iterable, List, MutableSequence, Optional, Sequence
 
 from food_api import GameData, Ingredient
@@ -41,6 +42,9 @@ class RottingRound:
         )
         self.hand: List[Optional[IngredientCard]] = [None] * hand_size
         self.lost = False
+        self.prep_used_this_turn = False
+        self.compost_cd = 0
+        self._events: list[tuple[str, dict[str, object]]] = []
         self.draw_to_full()
 
     # -------------------------- Drawing & hand helpers --------------------------
@@ -68,6 +72,8 @@ class RottingRound:
         for card in self.basket:
             card.freshen()
         self.lost = False
+        self.prep_used_this_turn = False
+        self.compost_cd = 0
 
     # ------------------------------ Turn resolution -----------------------------
     def play_attempt(self, indices: Sequence[int]) -> bool:
@@ -123,9 +129,31 @@ class RottingRound:
                 card.is_rotten = True
                 card.turns_in_hand = limit
 
+        if self.compost_cd > 0:
+            self.compost_cd -= 1
+        self.prep_used_this_turn = False
         self._update_loss_state()
 
     # ------------------------------- Internal helpers ------------------------------
+    def _log(self, event: str, payload: dict[str, object]) -> None:
+        self._events.append((event, payload))
+
+    def _fresh_count(self) -> int:
+        return sum(1 for card in self.hand if card is not None and not card.is_rotten)
+
+    def _has_valid_recipe_in_hand(self) -> bool:
+        available = [card for card in self.hand if card is not None and not card.is_rotten]
+        if len(available) < 3:
+            return False
+
+        max_size = min(5, len(available))
+        for size in range(3, max_size + 1):
+            for combo in combinations(available, size):
+                ingredients = [card.ingredient for card in combo]
+                if self._data.is_valid_dish(ingredients):
+                    return True
+        return False
+
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
         for index, card in sorted(chosen, key=lambda pair: pair[0], reverse=True):
             # Keep the decay progress when shuffling the card back into the
@@ -140,22 +168,43 @@ class RottingRound:
             self.basket.append(card)
 
     def _update_loss_state(self) -> None:
-        if self.lost:
-            return
+        fresh = self._fresh_count()
+        playable = self._has_valid_recipe_in_hand()
+        self.lost = (not playable) and (fresh < 3)
 
-        active_cards = [card for card in self.hand if card is not None]
-        if not active_cards:
-            return
+    # ------------------------------- Player actions ------------------------------
+    def prep_one(self, hand_index: int) -> bool:
+        if self.lost or self.prep_used_this_turn:
+            return False
+        if hand_index < 0 or hand_index >= len(self.hand):
+            return False
 
-        fresh_count = sum(not card.is_rotten for card in active_cards)
-        rotten_count = len(active_cards) - fresh_count
+        card = self.hand[hand_index]
+        if card is None:
+            return False
 
-        if fresh_count == 0:
-            self.lost = True
-            return
+        self.hand[hand_index] = None
+        self.basket.append(card)
+        self.prep_used_this_turn = True
+        self._log("prep", {"card": card.ingredient.name})
+        self.draw_to_full()
+        return True
 
-        if fresh_count < 3 and rotten_count > 0:
-            self.lost = True
+    def compost(self, hand_index: int) -> bool:
+        if self.lost or self.compost_cd > 0:
+            return False
+        if hand_index < 0 or hand_index >= len(self.hand):
+            return False
+
+        card = self.hand[hand_index]
+        if card is None or not card.is_rotten:
+            return False
+
+        self.hand[hand_index] = None
+        self.compost_cd = 3
+        self._log("compost", {"card": card.ingredient.name})
+        self.draw_to_full()
+        return True
 
 
 def rot_circles(card: IngredientCard) -> dict[str, int | bool | list[str]]:

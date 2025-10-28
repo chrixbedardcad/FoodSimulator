@@ -782,6 +782,14 @@ class DishMatrixTile(ttk.Frame):
             self.dialog = None
 
 
+class InvalidDishSelection(Exception):
+    """Raised when a chosen ingredient combination fails to produce any dish."""
+
+    def __init__(self, message: str, ingredient_names: Sequence[str]) -> None:
+        super().__init__(message)
+        self.ingredient_names = tuple(ingredient_names)
+
+
 class GameSession:
     """Manage deck, hand, and scoring for a single run."""
 
@@ -835,7 +843,7 @@ class GameSession:
         self.pending_new_chef_offer = False
 
         self.hand: List[IngredientCard] = []
-        self.deck: List[Ingredient] = []
+        self.deck: List[IngredientCard] = []
         self.seasonings: List[Seasoning] = []
         self._seasoning_charges: Dict[str, Optional[int]] = {}
         self._events: List[str] = []
@@ -884,15 +892,7 @@ class GameSession:
                 return
 
         self.cooks_completed_in_round = 0
-        self.deck = build_market_deck(
-            self.data,
-            self.basket_name,
-            self.chefs,
-            deck_size=self.deck_size,
-            bias=self.bias,
-            rng=self.rng,
-        )
-        self.rng.shuffle(self.deck)
+        self.deck = self._build_market_deck()
         self._current_deck_total = len(self.deck)
         self.hand.clear()
         self.pending_new_chef_offer = False
@@ -906,20 +906,25 @@ class GameSession:
             )
         self._refill_hand()
 
+    def _build_market_deck(self) -> List[IngredientCard]:
+        deck = build_market_deck(
+            self.data,
+            self.basket_name,
+            self.chefs,
+            deck_size=self.deck_size,
+            bias=self.bias,
+            rng=self.rng,
+        )
+        cards = [IngredientCard(ingredient=item) for item in deck]
+        self.rng.shuffle(cards)
+        return cards
+
     def _refill_hand(self) -> bool:
         needed = self.hand_size - len(self.hand)
         deck_refreshed = False
         while needed > 0 and not self.finished:
             if not self.deck:
-                self.deck = build_market_deck(
-                    self.data,
-                    self.basket_name,
-                    self.chefs,
-                    deck_size=self.deck_size,
-                    bias=self.bias,
-                    rng=self.rng,
-                )
-                self.rng.shuffle(self.deck)
+                self.deck = self._build_market_deck()
                 self._current_deck_total = len(self.deck)
                 self._push_event("Market deck refreshed with new draws.")
                 deck_refreshed = True
@@ -928,7 +933,7 @@ class GameSession:
                 self._push_event("Deck exhausted; ending the run early.")
                 return deck_refreshed
             drawn = self.deck.pop()
-            self.hand.append(IngredientCard(ingredient=drawn))
+            self.hand.append(drawn)
             needed -= 1
         if len(self.hand) == 0:
             self.finished = True
@@ -938,15 +943,7 @@ class GameSession:
     def _rebuild_deck_for_new_chef(self) -> None:
         if self.finished:
             return
-        self.deck = build_market_deck(
-            self.data,
-            self.basket_name,
-            self.chefs,
-            deck_size=self.deck_size,
-            bias=self.bias,
-            rng=self.rng,
-        )
-        self.rng.shuffle(self.deck)
+        self.deck = self._build_market_deck()
         self._current_deck_total = len(self.deck)
         self.hand.clear()
         self._push_event("Deck refreshed to reflect your expanded chef lineup.")
@@ -976,6 +973,67 @@ class GameSession:
                     "All of your hand ingredients have rotted. The run is over."
                 )
 
+    def _handle_invalid_selection(
+        self,
+        indices: Sequence[int],
+        selected_cards: Sequence[IngredientCard],
+    ) -> InvalidDishSelection:
+        display_names = [
+            getattr(card.ingredient, "display_name", None) or card.ingredient.name
+            for card in selected_cards
+        ]
+        combo_text = " + ".join(display_names) if display_names else "The selected cards"
+
+        # Remove the cards from the hand before shuffling them back into the deck.
+        for offset, index in enumerate(indices):
+            self.hand.pop(index - offset)
+
+        newly_rotten: List[IngredientCard] = []
+        for card in selected_cards:
+            card.turns_in_hand += 1
+            limit = max(card.ingredient.rotten_turns, 0)
+            if limit and card.turns_in_hand >= limit:
+                card.turns_in_hand = limit
+                if not card.is_rotten:
+                    card.is_rotten = True
+                    newly_rotten.append(card)
+
+        self.deck.extend(selected_cards)
+        if self.deck:
+            self.rng.shuffle(self.deck)
+
+        self._push_event(
+            f"{combo_text} didn't form a dish and returned to the basket to be reshuffled."
+        )
+
+        if newly_rotten:
+            rotten_names = ", ".join(
+                getattr(card.ingredient, "display_name", None) or card.ingredient.name
+                for card in newly_rotten
+            )
+            plural_word = "have" if len(newly_rotten) > 1 else "has"
+            self._push_event(
+                f"{rotten_names} {plural_word} now gone rotten and will block a hand slot when drawn."
+            )
+
+        self._refill_hand()
+
+        plural = len(display_names) != 1
+        verb = "do" if plural else "does"
+        pronoun = "They" if plural else "It"
+        return_verb = "return" if plural else "returns"
+        message = (
+            f"{combo_text} {verb} not form a dish. {pronoun} {return_verb} to the basket to be "
+            "reshuffled and continue to rot."
+        )
+        if newly_rotten:
+            rotten_pronoun = "They have" if len(newly_rotten) > 1 else "It has"
+            message += (
+                f" {rotten_pronoun} now gone rotten and will lock a hand slot when drawn."
+            )
+
+        return InvalidDishSelection(message, display_names)
+
     def _times_cooked(self, recipe_name: Optional[str]) -> int:
         if not recipe_name:
             return 0
@@ -987,7 +1045,7 @@ class GameSession:
         return list(self.hand)
 
     def get_remaining_deck(self) -> Sequence[Ingredient]:
-        return list(self.deck)
+        return [card.ingredient for card in self.deck]
 
     def get_basket_counts(self) -> Tuple[int, int]:
         return len(self.deck), self._current_deck_total
@@ -1280,9 +1338,7 @@ class GameSession:
         dish = self.data.evaluate_dish(selected)
         recipe_name = self.data.which_recipe(selected)
         if recipe_name is None and dish.entry is None:
-            raise ValueError(
-                "Those ingredients don't form a valid dish. Try a different combination."
-            )
+            raise self._handle_invalid_selection(unique, selected_cards)
 
         alerts = list(dish.alerts)
         if alerts:
@@ -4075,6 +4131,16 @@ class FoodGameApp:
         try:
             indices = sorted(self.selected_indices)
             outcome = self.session.play_turn(indices, self.applied_seasonings)
+        except InvalidDishSelection as exc:
+            self.selected_indices.clear()
+            self.update_selection_label()
+            self.estimated_score_var.set("Estimated Score: —")
+            self.render_hand()
+            self.update_status()
+            self.append_events(self.session.consume_events())
+            self.write_result(str(exc))
+            messagebox.showinfo("No Dish Formed", str(exc))
+            return
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Unable to cook selection", str(exc))
             return

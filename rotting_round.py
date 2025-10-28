@@ -170,10 +170,10 @@ class RottingRound:
 
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
         for index, card in sorted(chosen, key=lambda pair: pair[0], reverse=True):
-            # Keep the decay progress when shuffling the card back into the
-            # basket so the ingredient resumes rotting from the same state when
-            # drawn again.
+            # Freshen ingredients when they return to the basket so rot only
+            # progresses while cards are held in hand.
             self.hand[index] = None
+            card.freshen()
             self.basket.append(card)
 
     def _update_loss_state(self) -> None:
@@ -193,6 +193,7 @@ class RottingRound:
             return False
 
         self.hand[hand_index] = None
+        card.freshen()
         self.basket.append(card)
         self.prep_used_this_turn = True
         self._log("prep", {"card": card.ingredient.name})

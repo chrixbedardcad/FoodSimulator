@@ -134,21 +134,22 @@ def test_return_action_counts_as_turn(game_data: GameData) -> None:
     removed, _ = session.return_indices([0])
 
     assert removed[0].name == returned_card.ingredient.name
-    assert returned_card.turns_in_hand == 2
+    assert returned_card.turns_in_hand == 0
+    assert not returned_card.is_rotten
     assert lingering_card.turns_in_hand == 2
     assert lingering_card.is_rotten
     assert extra_card.turns_in_hand == 1
 
 
-def test_basket_cards_preserve_decay_state(game_data: GameData) -> None:
+def test_basket_cards_reset_decay_state(game_data: GameData) -> None:
     session = make_session(game_data, ["Honey", "Honey", "Honey"])
 
     basil_card = IngredientCard(ingredient=game_data.ingredients["Basil"])
-    basil_card.turns_in_hand = 1
-    session.deck.append(basil_card)
+    basil_card.turns_in_hand = 2
+    session.hand[0] = basil_card
 
-    for _ in range(3):
-        session._apply_end_turn_decay()
+    removed, _ = session.return_indices([0])
 
-    assert basil_card.turns_in_hand == 1
+    assert removed[0].name == "Basil"
+    assert basil_card.turns_in_hand == 0
     assert not basil_card.is_rotten

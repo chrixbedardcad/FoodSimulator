@@ -785,9 +785,16 @@ class DishMatrixTile(ttk.Frame):
 class InvalidDishSelection(Exception):
     """Raised when a chosen ingredient combination fails to produce any dish."""
 
-    def __init__(self, message: str, ingredient_names: Sequence[str]) -> None:
+    def __init__(
+        self,
+        message: str,
+        ingredient_names: Sequence[str],
+        *,
+        primary_ingredient: Optional[Ingredient] = None,
+    ) -> None:
         super().__init__(message)
         self.ingredient_names = tuple(ingredient_names)
+        self.primary_ingredient = primary_ingredient
 
 
 class GameSession:
@@ -977,12 +984,18 @@ class GameSession:
         self,
         indices: Sequence[int],
         selected_cards: Sequence[IngredientCard],
+        *,
+        reason: Optional[str] = None,
+        primary_ingredient: Optional[Ingredient] = None,
     ) -> InvalidDishSelection:
         display_names = [
             getattr(card.ingredient, "display_name", None) or card.ingredient.name
             for card in selected_cards
         ]
         combo_text = " + ".join(display_names) if display_names else "The selected cards"
+
+        if primary_ingredient is None and selected_cards:
+            primary_ingredient = selected_cards[0].ingredient
 
         # Remove the cards from the hand before shuffling them back into the deck.
         for offset, index in enumerate(indices):
@@ -1026,13 +1039,25 @@ class GameSession:
             f"{combo_text} {verb} not form a dish. {pronoun} {return_verb} to the basket to be "
             "reshuffled and continue to rot."
         )
+        if reason == "all_same_ingredient" and primary_ingredient is not None:
+            ingredient_name = (
+                getattr(primary_ingredient, "display_name", None)
+                or primary_ingredient.name
+            )
+            message += (
+                f" All selected cards were {ingredient_name}, so there was nothing new to cook."
+            )
         if newly_rotten:
             rotten_pronoun = "They have" if len(newly_rotten) > 1 else "It has"
             message += (
                 f" {rotten_pronoun} now gone rotten and will lock a hand slot when drawn."
             )
 
-        return InvalidDishSelection(message, display_names)
+        return InvalidDishSelection(
+            message,
+            display_names,
+            primary_ingredient=primary_ingredient,
+        )
 
     def _times_cooked(self, recipe_name: Optional[str]) -> int:
         if not recipe_name:
@@ -1333,12 +1358,29 @@ class GameSession:
         if any(card.is_rotten for card in selected_cards):
             raise ValueError("You cannot cook with rotten ingredients.")
 
+        if len(selected_cards) > 1:
+            identifiers = [
+                getattr(card.ingredient, "ingredient_id", None) or card.ingredient.name
+                for card in selected_cards
+            ]
+            if len(set(identifiers)) == 1:
+                raise self._handle_invalid_selection(
+                    unique,
+                    selected_cards,
+                    reason="all_same_ingredient",
+                    primary_ingredient=selected_cards[0].ingredient,
+                )
+
         selected = [card.ingredient for card in selected_cards]
 
         dish = self.data.evaluate_dish(selected)
         recipe_name = self.data.which_recipe(selected)
         if recipe_name is None and dish.entry is None:
-            raise self._handle_invalid_selection(unique, selected_cards)
+            raise self._handle_invalid_selection(
+                unique,
+                selected_cards,
+                primary_ingredient=selected_cards[0].ingredient if selected_cards else None,
+            )
 
         alerts = list(dish.alerts)
         if alerts:
@@ -4139,7 +4181,7 @@ class FoodGameApp:
             self.update_status()
             self.append_events(self.session.consume_events())
             self.write_result(str(exc))
-            messagebox.showinfo("No Dish Formed", str(exc))
+            self._show_invalid_dish_popup(exc)
             return
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Unable to cook selection", str(exc))
@@ -4184,6 +4226,57 @@ class FoodGameApp:
             summary_text = self._final_summary_text()
             if summary_text:
                 self.write_result(summary_text)
+
+    def _show_invalid_dish_popup(self, exc: InvalidDishSelection) -> None:
+        popup = tk.Toplevel(self.root)
+        popup.title("No Dish Formed")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+
+        popup.columnconfigure(0, weight=1)
+        popup.rowconfigure(0, weight=1)
+
+        content = ttk.Frame(popup, padding=16)
+        content.grid(row=0, column=0, sticky="nsew")
+        content.columnconfigure(1, weight=1)
+
+        ingredient = getattr(exc, "primary_ingredient", None)
+        if ingredient is not None:
+            image = _load_ingredient_image(ingredient, target_px=112)
+            image_label = tk.Label(
+                content,
+                image=image,
+                background="#f4ebd0",
+                borderwidth=1,
+                relief="solid",
+            )
+            image_label.image = image  # type: ignore[attr-defined]
+            image_label.grid(row=0, column=0, rowspan=3, sticky="nsw", padx=(0, 12))
+
+            name_text = getattr(ingredient, "display_name", None) or ingredient.name
+            name_label = ttk.Label(content, text=name_text, style="Header.TLabel", anchor="w")
+            name_label.grid(row=0, column=1, sticky="w")
+
+        message_label = ttk.Label(
+            content,
+            text=str(exc),
+            style="Info.TLabel",
+            wraplength=360,
+            justify="left",
+        )
+        message_label.grid(row=1, column=1, sticky="w")
+
+        button = ttk.Button(content, text="OK", command=popup.destroy)
+        button.grid(row=2, column=1, sticky="e", pady=(12, 0))
+
+        popup.bind("<Return>", lambda _e: popup.destroy())
+        popup.bind("<Escape>", lambda _e: popup.destroy())
+
+        popup.update_idletasks()
+        self._center_popup(popup)
+        popup.grab_set()
+        popup.focus_force()
+        button.focus_set()
 
     def discard_selected(self) -> None:
         if not self.session:

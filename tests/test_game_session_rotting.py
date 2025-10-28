@@ -91,3 +91,23 @@ def test_invalid_cook_returns_cards_and_increments_decay(game_data: GameData) ->
 
     events = session.consume_events()
     assert any("returned to the basket" in message for message in events)
+
+
+def test_all_same_ingredient_selection_rejected(game_data: GameData) -> None:
+    session = make_session(game_data, ["Basil", "Basil", "Basil"])
+    original_cards = list(session.hand)
+
+    with pytest.raises(InvalidDishSelection) as exc_info:
+        session.play_turn([0, 1, 2])
+
+    exception = exc_info.value
+    assert exception.primary_ingredient is not None
+    assert exception.primary_ingredient.name == "Basil"
+    assert "do not form a dish" in str(exception)
+
+    # Cards should be returned to the basket and gain a rot turn.
+    assert session.turn_number == 0
+    locations = session.hand + list(session.deck)
+    for card in original_cards:
+        assert card.turns_in_hand == 1
+        assert card in locations

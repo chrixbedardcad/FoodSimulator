@@ -2616,6 +2616,7 @@ class FoodGameApp:
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
         self._seasoning_hand_icons: List[tk.PhotoImage] = []
         self.log_collapsed = False
+        self._run_completion_notified = False
 
         self._init_styles()
         self._build_layout()
@@ -3266,6 +3267,7 @@ class FoodGameApp:
                 pick_size=pick_size,
                 max_chefs=max_chefs,
             )
+            self._run_completion_notified = False
         except Exception as exc:  # pragma: no cover - user feedback path
             messagebox.showerror("Cannot start run", str(exc))
             return
@@ -3310,6 +3312,8 @@ class FoodGameApp:
             self.append_events(["Choose a chef or seasoning to begin your run."])
             self.show_recruit_dialog()
         self.write_result("Run started. Select ingredients and press COOK!")
+        if self.session.is_finished():
+            self._handle_run_finished()
 
     def reset_session(self) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
@@ -3324,6 +3328,7 @@ class FoodGameApp:
         if self.seasoning_popup and self.seasoning_popup.winfo_exists():
             self.seasoning_popup.destroy()
         self.seasoning_popup = None
+        self._run_completion_notified = False
         self._close_recruit_dialog()
         self.session = None
         self._update_basket_button()
@@ -4062,6 +4067,30 @@ class FoodGameApp:
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
 
+    def _handle_run_finished(self) -> None:
+        if not self.session:
+            return
+
+        self.cook_button.configure(state="disabled")
+        self.discard_button.configure(state="disabled")
+        self.basket_button.configure(state="disabled")
+        self.seasoning_button.configure(state="disabled")
+        self.chef_button.configure(state="disabled")
+        self._set_controls_active(True)
+        self._close_recruit_dialog()
+
+        if self._run_completion_notified:
+            return
+
+        self._run_completion_notified = True
+        messagebox.showinfo(
+            "Run complete",
+            f"Final score: {self.session.get_total_score()}",
+        )
+        summary_text = self._final_summary_text()
+        if summary_text:
+            self.write_result(summary_text)
+
     def _close_recruit_dialog(self) -> None:
         if self.recruit_dialog and self.recruit_dialog.winfo_exists():
             self.recruit_dialog.destroy()
@@ -4216,20 +4245,7 @@ class FoodGameApp:
         self.maybe_prompt_new_chef()
 
         if self.session.is_finished():
-            self.cook_button.configure(state="disabled")
-            self.discard_button.configure(state="disabled")
-            self.basket_button.configure(state="disabled")
-            self.seasoning_button.configure(state="disabled")
-            self.chef_button.configure(state="disabled")
-            self._set_controls_active(True)
-            self._close_recruit_dialog()
-            messagebox.showinfo(
-                "Run complete",
-                f"Final score: {self.session.get_total_score()}",
-            )
-            summary_text = self._final_summary_text()
-            if summary_text:
-                self.write_result(summary_text)
+            self._handle_run_finished()
 
     def _show_invalid_dish_popup(self, exc: InvalidDishSelection) -> None:
         popup = tk.Toplevel(self.root)
@@ -4366,13 +4382,7 @@ class FoodGameApp:
         self.write_result(message)
 
         if self.session.is_finished():
-            self.cook_button.configure(state="disabled")
-            self.discard_button.configure(state="disabled")
-            self.basket_button.configure(state="disabled")
-            self.seasoning_button.configure(state="disabled")
-            self.chef_button.configure(state="disabled")
-            self._set_controls_active(True)
-            self._close_recruit_dialog()
+            self._handle_run_finished()
 
     def show_turn_summary_popup(self, outcome: TurnOutcome) -> None:
         if self.active_popup and self.active_popup.winfo_exists():

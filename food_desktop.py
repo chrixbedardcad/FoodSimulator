@@ -18,7 +18,19 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    Literal,
+)
 
 from tkinter import ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -75,6 +87,7 @@ ICON_TARGET_PX = 64
 INGREDIENT_DIALOG_ICON_PX = 72
 DIALOG_ICON_TARGET_PX = 40
 RESOURCE_BUTTON_ICON_PX = 72
+COOKBOOK_ICON_TARGET_PX = 24
 RUINED_SEASONING_MESSAGES = [
     "You seasoned with your heart… and your heart was too salty.",
     "The dish called— it wants a lifeguard. It’s drowning in mustard.",
@@ -96,6 +109,10 @@ _ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
 _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
+_cookbook_indicator_cache: Dict[str, Optional[tk.PhotoImage]] = {}
+
+
+RecipeIconState = Literal["available", "blocked"]
 
 
 def _recipe_asset_directories() -> List[Path]:
@@ -361,6 +378,39 @@ def _generate_button_icon(
     working = base.resize((size, size), Image.NEAREST)
     image = ImageTk.PhotoImage(working)
     _button_icon_cache[cache_key] = image
+    return image
+
+
+def _load_cookbook_indicator(
+    state: RecipeIconState, *, target_px: int = COOKBOOK_ICON_TARGET_PX
+) -> Optional[tk.PhotoImage]:
+    cache_key = f"cookbook_indicator:{state}:{target_px}"
+    if cache_key in _cookbook_indicator_cache:
+        return _cookbook_indicator_cache[cache_key]
+
+    icon_path = ICON_ASSET_DIR / "cookbook.png"
+    if not icon_path.exists():
+        _cookbook_indicator_cache[cache_key] = None
+        return None
+
+    with Image.open(icon_path) as source_image:
+        working = source_image.convert("RGBA")
+        max_side = max(working.size)
+        if max_side > target_px:
+            scale = target_px / max_side
+            new_size = (
+                max(1, int(round(working.width * scale))),
+                max(1, int(round(working.height * scale))),
+            )
+            working = working.resize(new_size, RESAMPLE_LANCZOS)
+        else:
+            working = working.copy()
+
+        if state == "blocked":
+            working = working.convert("LA").convert("RGBA")
+
+    image = ImageTk.PhotoImage(working)
+    _cookbook_indicator_cache[cache_key] = image
     return image
 
 
@@ -1313,14 +1363,38 @@ class GameSession:
             times_cooked=self._times_cooked(recipe_name),
         )
 
-    def get_selection_markers(self, ingredient: Ingredient) -> Tuple[List[str], bool]:
+    def _recipe_availability_state(
+        self, ingredient: Ingredient
+    ) -> Optional[RecipeIconState]:
+        recipe_names = self._ingredient_recipe_map.get(ingredient.name, ())
+        if not recipe_names:
+            return None
+
+        available_counts: Counter[str] = Counter(
+            card.ingredient.name for card in self.hand
+        )
+        available_counts.update(card.ingredient.name for card in self.deck)
+
+        for recipe_name in recipe_names:
+            recipe = self.data.recipe_by_name.get(recipe_name)
+            if not recipe:
+                continue
+            required = Counter(recipe.trio)
+            if all(available_counts.get(name, 0) >= count for name, count in required.items()):
+                return "available"
+
+        return "blocked"
+
+    def get_selection_markers(
+        self, ingredient: Ingredient
+    ) -> Tuple[List[str], Optional[RecipeIconState]]:
         markers = [
             chef.name
             for chef in self.chefs
             if ingredient.name in self._chef_key_map.get(chef.name, set())
         ]
-        in_cookbook = ingredient.name in self._cookbook_ingredients
-        return markers, in_cookbook
+        cookbook_state = self._recipe_availability_state(ingredient)
+        return markers, cookbook_state
 
     def get_recipe_hints(self, ingredient: Ingredient) -> List[str]:
         hints: List[str] = []
@@ -2112,7 +2186,7 @@ class CardView(ttk.Frame):
         ingredient: Ingredient,
         chef_names: Sequence[str],
         recipe_hints: Sequence[str],
-        cookbook_hint: bool,
+        cookbook_state: Optional[RecipeIconState],
         on_click: Optional[Callable[[int], None]] = None,
         *,
         quantity: Optional[int] = None,
@@ -2125,12 +2199,13 @@ class CardView(ttk.Frame):
         self.index = index
         self.on_click = on_click
         self.selected = False
-        self.cookbook_hint = cookbook_hint
+        self.cookbook_state = cookbook_state
         self.quantity = quantity
         self.locked = locked
         self.is_rotten = is_rotten
         self.rot_label: Optional[ttk.Label] = None
         self._rot_color: Optional[str] = None
+        self.cookbook_icon: Optional[tk.PhotoImage] = None
 
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
@@ -2141,7 +2216,17 @@ class CardView(ttk.Frame):
             name_text += " (Rotten)"
         if quantity and quantity > 1 and not locked:
             name_text += f" ×{quantity}"
-        if cookbook_hint and not locked:
+
+        indicator_state: Optional[RecipeIconState] = None
+        if cookbook_state:
+            indicator_state = cookbook_state
+            if locked or is_rotten:
+                indicator_state = "blocked"
+        if indicator_state:
+            self.cookbook_icon = _load_cookbook_indicator(indicator_state)
+            if self.cookbook_icon is None and cookbook_state:
+                name_text += " 📖"
+        elif cookbook_state:
             name_text += " 📖"
 
         title_style = "CardTitleDisabled.TLabel" if locked else "CardTitle.TLabel"
@@ -2152,8 +2237,12 @@ class CardView(ttk.Frame):
             style=title_style,
             anchor="w",
             justify="left",
+            image=self.cookbook_icon,
+            compound="left" if self.cookbook_icon else "none",
         )
         self.name_label.grid(row=0, column=0, sticky="w")
+        if self.cookbook_icon:
+            self.name_label.image = self.cookbook_icon
 
         if locked:
             value_text = "—"
@@ -2452,7 +2541,7 @@ class DeckPopup(tk.Toplevel):
         for index, name in enumerate(sorted_names):
             ingredient = samples[name]
             count = counts[name]
-            chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
+            chef_names, cookbook_state = self.session.get_selection_markers(ingredient)
             recipe_hints = self.session.get_recipe_hints(ingredient)
             card = CardView(
                 self.cards_frame,
@@ -2460,7 +2549,7 @@ class DeckPopup(tk.Toplevel):
                 ingredient=ingredient,
                 chef_names=chef_names,
                 recipe_hints=recipe_hints,
-                cookbook_hint=cookbook_hint,
+                cookbook_state=cookbook_state,
                 on_click=None,
                 quantity=count,
             )
@@ -3624,7 +3713,7 @@ class FoodGameApp:
 
         for column, (index, card) in enumerate(sorted_hand):
             ingredient = card.ingredient
-            chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
+            chef_names, cookbook_state = self.session.get_selection_markers(ingredient)
             recipe_hints: Sequence[str]
             recipe_hints = self.session.get_recipe_hints(ingredient)
             rot_info = rot_circles(card)
@@ -3634,7 +3723,7 @@ class FoodGameApp:
                 ingredient=ingredient,
                 chef_names=chef_names,
                 recipe_hints=recipe_hints,
-                cookbook_hint=cookbook_hint,
+                cookbook_state=cookbook_state,
                 on_click=self.toggle_card,
                 rot_info=rot_info,
                 is_rotten=card.is_rotten,

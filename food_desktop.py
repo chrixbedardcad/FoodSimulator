@@ -850,6 +850,10 @@ class GameSession:
         self.total_score = 0
         self.finished = False
         self.pending_new_chef_offer = False
+        self._round_score = 0
+        self._awaiting_basket_reset = False
+        self._basket_bonus_choices: List[Ingredient] = []
+        self._basket_clear_summary: Optional[Dict[str, object]] = None
 
         self.hand: List[IngredientCard] = []
         self.deck: List[IngredientCard] = []
@@ -901,6 +905,10 @@ class GameSession:
                 return
 
         self.cooks_completed_in_round = 0
+        self._round_score = 0
+        self._awaiting_basket_reset = False
+        self._basket_bonus_choices = []
+        self._basket_clear_summary = None
         self.deck = self._build_market_deck()
         self._current_deck_total = len(self.deck)
         self.hand.clear()
@@ -928,23 +936,55 @@ class GameSession:
         self.rng.shuffle(cards)
         return cards
 
+    def _choose_bonus_ingredients(self, count: int = 3) -> List[Ingredient]:
+        pool: List[Ingredient] = []
+        seen: set[str] = set()
+        for ingredient_name, _copies in self.data.baskets.get(self.basket_name, []):
+            ingredient = self.data.ingredients.get(ingredient_name)
+            if not ingredient:
+                continue
+            if ingredient.name in seen:
+                continue
+            pool.append(ingredient)
+            seen.add(ingredient.name)
+        if len(pool) <= count:
+            return pool
+        return self.rng.sample(pool, count)
+
     def _refill_hand(self) -> bool:
         needed = self.hand_size - len(self.hand)
         deck_refreshed = False
         while needed > 0 and not self.finished:
             if not self.deck:
+                if not self.hand and not self._awaiting_basket_reset:
+                    self._awaiting_basket_reset = True
+                    self._basket_bonus_choices = self._choose_bonus_ingredients()
+                    self._basket_clear_summary = {
+                        "round_index": self.round_index,
+                        "total_rounds": self.rounds,
+                        "round_score": self._round_score,
+                        "total_score": self.total_score,
+                    }
+                    self._push_event(
+                        "Your basket is empty! Choose a bonus ingredient to begin the next round."
+                    )
+                    break
+                if self._awaiting_basket_reset:
+                    break
                 self.deck = self._build_market_deck()
                 self._current_deck_total = len(self.deck)
                 self._push_event("Market deck refreshed with new draws.")
                 deck_refreshed = True
             if not self.deck:
+                if self._awaiting_basket_reset:
+                    break
                 self.finished = True
                 self._push_event("Deck exhausted; ending the run early.")
                 return deck_refreshed
             drawn = self.deck.pop()
             self.hand.append(drawn)
             needed -= 1
-        if len(self.hand) == 0:
+        if len(self.hand) == 0 and not self._awaiting_basket_reset:
             self.finished = True
             self._push_event("Not enough cards to continue this run.")
         return deck_refreshed
@@ -1078,6 +1118,45 @@ class GameSession:
 
     def get_basket_counts(self) -> Tuple[int, int]:
         return len(self.deck), self._current_deck_total
+
+    def awaiting_new_round(self) -> bool:
+        return self._awaiting_basket_reset
+
+    def get_basket_bonus_choices(self) -> Sequence[Ingredient]:
+        return list(self._basket_bonus_choices)
+
+    def peek_basket_clear_summary(self) -> Optional[Dict[str, object]]:
+        if self._basket_clear_summary is None:
+            return None
+        return dict(self._basket_clear_summary)
+
+    def begin_next_round_from_empty_basket(self, ingredient: Ingredient) -> None:
+        if not self._awaiting_basket_reset:
+            raise RuntimeError("No empty-basket reset is pending.")
+
+        self._awaiting_basket_reset = False
+        self._basket_bonus_choices = []
+        self._basket_clear_summary = None
+
+        self._start_next_round()
+
+        bonus_card = IngredientCard(ingredient=ingredient)
+        bonus_card.freshen()
+        if self.hand:
+            replacement = self.hand[0]
+            self.hand[0] = bonus_card
+            self.deck.append(replacement)
+            if self.deck:
+                self.rng.shuffle(self.deck)
+        else:
+            self.hand.append(bonus_card)
+            self._refill_hand()
+        self._current_deck_total = len(self.deck)
+
+        display_name = getattr(ingredient, "display_name", None) or ingredient.name
+        self._push_event(
+            f"{display_name} joins your opening hand to celebrate the new round."
+        )
 
     def get_total_score(self) -> int:
         return self.total_score
@@ -1301,6 +1380,8 @@ class GameSession:
     def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
         if self.finished:
             raise RuntimeError("The session has already finished.")
+        if self._awaiting_basket_reset:
+            raise RuntimeError("Cannot discard while waiting to start the next round.")
         if not indices:
             raise ValueError("You must select at least one card to discard.")
         if len(indices) > self.pick_size:
@@ -1344,6 +1425,8 @@ class GameSession:
     ) -> TurnOutcome:
         if self.finished:
             raise RuntimeError("The session has already finished.")
+        if self._awaiting_basket_reset:
+            raise RuntimeError("Cannot cook until the next round begins.")
         if not indices:
             raise ValueError("You must select at least one card to cook.")
         if len(indices) > self.pick_size:
@@ -1461,6 +1544,7 @@ class GameSession:
         current_turn = self.turn_number + 1
 
         self.total_score += final_score
+        self._round_score += final_score
         self.turn_number += 1
         self.cooks_completed_in_round += 1
 
@@ -4061,8 +4145,131 @@ class FoodGameApp:
 
     def append_events(self, messages: Iterable[str]) -> None:
         self._append_log_lines(f"• {message}" for message in messages)
-        if self.session and self.session.is_finished():
+        if not self.session:
+            return
+        if self.session.awaiting_new_round():
+            self._show_basket_clear_popup()
+            return
+        if self.session.is_finished():
             self._handle_run_finished()
+
+    def _show_basket_clear_popup(self) -> None:
+        if not self.session or not self.session.awaiting_new_round():
+            return
+
+        summary = self.session.peek_basket_clear_summary() or {}
+        choices = list(self.session.get_basket_bonus_choices())
+        if not choices:
+            ingredients = list(self.session.data.ingredients.values())
+            if not ingredients:
+                return
+            sample_count = min(3, len(ingredients))
+            choices = random.sample(ingredients, sample_count)
+
+        if self.active_popup and self.active_popup.winfo_exists():
+            if getattr(self.active_popup, "_popup_kind", None) == "basket_clear":
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            self.active_popup.destroy()
+            self.active_popup = None
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Basket Cleared!")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+        popup._popup_kind = "basket_clear"  # type: ignore[attr-defined]
+
+        frame = ttk.Frame(popup, padding=18)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        round_index = int(summary.get("round_index", self.session.round_index))
+        total_rounds = int(summary.get("total_rounds", self.session.rounds))
+        round_score = int(summary.get("round_score", 0))
+        total_score = int(summary.get("total_score", self.session.get_total_score()))
+
+        ttk.Label(
+            frame,
+            text="Basket emptied! Enjoy a fresh start next round.",
+            style="Header.TLabel",
+            anchor="center",
+            justify="center",
+        ).grid(row=0, column=0, sticky="ew")
+
+        stats_text = (
+            f"Round {round_index}/{total_rounds} score: {round_score}\n"
+            f"Total score so far: {total_score}\n"
+            "Rotten ingredients have been cleared."
+        )
+        ttk.Label(
+            frame,
+            text=stats_text,
+            justify="center",
+            anchor="center",
+        ).grid(row=1, column=0, sticky="ew", pady=(8, 12))
+
+        ttk.Label(
+            frame,
+            text="Choose a celebratory ingredient to add before the new round:",
+            justify="center",
+            anchor="center",
+        ).grid(row=2, column=0, sticky="ew")
+
+        choices_frame = ttk.Frame(frame)
+        choices_frame.grid(row=3, column=0, pady=(12, 0))
+        for column in range(len(choices)):
+            choices_frame.columnconfigure(column, weight=1)
+
+        image_refs: List[tk.PhotoImage] = []
+
+        def handle_choice(ingredient: Ingredient) -> None:
+            if not self.session:
+                return
+            try:
+                self.session.begin_next_round_from_empty_basket(ingredient)
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Unable to start new round", str(exc))
+                return
+
+            self.selected_indices.clear()
+            self.update_selection_label()
+            if self.applied_seasonings:
+                self.applied_seasonings.clear()
+            self.estimated_score_var.set("Estimated Score: —")
+
+            if popup.winfo_exists():
+                popup.grab_release()
+                popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
+
+            self.render_hand()
+            self.update_status()
+            self._update_seasoning_panels()
+            self.append_events(self.session.consume_events())
+
+        for column, ingredient in enumerate(choices):
+            image = _load_ingredient_image(ingredient, target_px=96)
+            image_refs.append(image)
+            display_name = getattr(ingredient, "display_name", None) or ingredient.name
+            button = ttk.Button(
+                choices_frame,
+                text=display_name,
+                image=image,
+                compound="top",
+                command=lambda ing=ingredient: handle_choice(ing),
+                width=20,
+            )
+            button.image = image  # type: ignore[attr-defined]
+            button.grid(row=0, column=column, padx=6)
+
+        popup.protocol("WM_DELETE_WINDOW", lambda: None)
+        popup.bind("<Escape>", lambda _e: None)
+        popup.grab_set()
+        popup._image_refs = image_refs  # type: ignore[attr-defined]
+        self.active_popup = popup
+        self._center_popup(popup)
 
     def clear_events(self) -> None:
         self.log_text.configure(state="normal")

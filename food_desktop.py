@@ -14,7 +14,7 @@ import random
 import re
 import tkinter as tk
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from tkinter import messagebox
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
@@ -1531,11 +1531,14 @@ class GameSession:
             recipe_multiplier = 1.0
             active_recipe_name = None
             recipe_display_name = None
-            seasoning_calc.base_score = base_value
-            seasoning_calc.seasoned_score = base_value
-            seasoning_calc.total_boost_pct = 0.0
-            seasoning_calc.total_penalty = 0.0
-            seasoning_calc.ruined = True
+            seasoning_calc = replace(
+                seasoning_calc,
+                base_score=base_value,
+                seasoned_score=base_value,
+                total_boost_pct=0.0,
+                total_penalty=0.0,
+                ruined=True,
+            )
             penalty_message = (
                 "Rotten ingredients spoiled the dish! Penalty "
                 f"{final_score} points ({ingredient_value_total} total value x{rotten_count})."

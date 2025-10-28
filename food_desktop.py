@@ -880,6 +880,47 @@ class GameSession:
         self._events.clear()
         return events
 
+    def _card_display_name(self, card: IngredientCard) -> str:
+        display_name = getattr(card.ingredient, "display_name", None) or ""
+        return display_name or card.ingredient.name
+
+    def _card_rot_status(self, card: IngredientCard) -> str:
+        rot_limit = getattr(card.ingredient, "rotten_turns", 0) or 0
+        total = max(rot_limit, 0)
+
+        if card.is_rotten:
+            return "rotten (ruins dishes)"
+        if total <= 0:
+            return "rots immediately"
+        if total >= 12 or rot_limit >= 900:
+            return "shelf life stable"
+
+        remaining = max(total - card.turns_in_hand, 0)
+        if remaining <= 0:
+            return "rots next turn"
+        plural = "turn" if remaining == 1 else "turns"
+        return f"rots in {remaining} {plural}"
+
+    def _announce_card_added(
+        self, card: IngredientCard, *, message_prefix: Optional[str] = None
+    ) -> None:
+        name = self._card_display_name(card)
+        status = self._card_rot_status(card)
+        if message_prefix:
+            message = f"{message_prefix} — {status}."
+        else:
+            message = f"{name} joins your hand — {status}."
+        self._push_event(message)
+
+    def _log_hand_snapshot(self, title: str) -> None:
+        if not self.hand:
+            return
+        descriptions = "; ".join(
+            f"{self._card_display_name(card)} — {self._card_rot_status(card)}"
+            for card in self.hand
+        )
+        self._push_event(f"{title}: {descriptions}")
+
     # ----------------- Round & hand management -----------------
     def _start_next_round(self, initial: bool = False) -> None:
         if self.round_index >= self.rounds and not initial:
@@ -913,7 +954,9 @@ class GameSession:
             self._push_event(
                 "You may recruit an additional chef or claim a seasoning wildcard before drawing the next hand."
             )
-        self._refill_hand()
+        self._refill_hand(log_new_cards=not initial)
+        if initial:
+            self._log_hand_snapshot("Opening hand")
 
     def _build_market_deck(self) -> List[IngredientCard]:
         deck = build_market_deck(
@@ -943,7 +986,7 @@ class GameSession:
             return pool
         return self.rng.sample(pool, count)
 
-    def _refill_hand(self) -> bool:
+    def _refill_hand(self, *, log_new_cards: bool = True) -> bool:
         needed = self.hand_size - len(self.hand)
         deck_refreshed = False
         while needed > 0 and not self.finished:
@@ -975,6 +1018,8 @@ class GameSession:
                 return deck_refreshed
             drawn = self.deck.pop()
             self.hand.append(drawn)
+            if log_new_cards:
+                self._announce_card_added(drawn)
             needed -= 1
         if len(self.hand) == 0 and not self._awaiting_basket_reset:
             self.finished = True
@@ -1132,6 +1177,7 @@ class GameSession:
 
         bonus_card = IngredientCard(ingredient=ingredient)
         bonus_card.freshen()
+        inserted_into_empty_hand = False
         if self.hand:
             replacement = self.hand[0]
             self.hand[0] = bonus_card
@@ -1141,13 +1187,16 @@ class GameSession:
                 self.rng.shuffle(self.deck)
         else:
             self.hand.append(bonus_card)
-            self._refill_hand()
+            inserted_into_empty_hand = True
         self._current_deck_total = len(self.deck)
 
-        display_name = getattr(ingredient, "display_name", None) or ingredient.name
-        self._push_event(
-            f"{display_name} joins your opening hand to celebrate the new round."
+        message_prefix = (
+            f"{self._card_display_name(bonus_card)} joins your opening hand to celebrate the new round"
         )
+        self._announce_card_added(bonus_card, message_prefix=message_prefix)
+        if inserted_into_empty_hand:
+            self._refill_hand()
+            self._current_deck_total = len(self.deck)
 
     def get_total_score(self) -> int:
         return self.total_score
@@ -4299,10 +4348,9 @@ class FoodGameApp:
         self.log_text.configure(state="normal")
         for line in collected:
             formatted = self._format_log_line(line)
-            if formatted:
-                self.log_text.insert("end", f"{formatted}\n")
-            else:
-                self.log_text.insert("end", "\n")
+            if not formatted:
+                continue
+            self.log_text.insert("end", f"{formatted}\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 

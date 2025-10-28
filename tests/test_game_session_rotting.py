@@ -120,6 +120,26 @@ def test_invalid_selection_ages_remaining_cards(game_data: GameData) -> None:
     assert lingering_card.turns_in_hand == 1
 
 
+
+def test_return_action_counts_as_turn(game_data: GameData) -> None:
+    session = make_session(game_data, ["Tomato", "Basil", "Basil", "Mushroom"])
+    returned_card = session.hand[0]
+    lingering_card = session.hand[1]
+    extra_card = session.hand[2]
+
+    returned_card.turns_in_hand = 2
+    lingering_card.turns_in_hand = 1
+    extra_card.turns_in_hand = 0
+
+    removed, _ = session.return_indices([0])
+
+    assert removed[0].name == returned_card.ingredient.name
+    assert returned_card.turns_in_hand == 2
+    assert lingering_card.turns_in_hand == 2
+    assert lingering_card.is_rotten
+    assert extra_card.turns_in_hand == 1
+
+
 def test_basket_cards_preserve_decay_state(game_data: GameData) -> None:
     session = make_session(game_data, ["Honey", "Honey", "Honey"])
 

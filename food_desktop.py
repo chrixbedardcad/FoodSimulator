@@ -17,7 +17,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox
-from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 from tkinter import ttk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -44,6 +44,7 @@ from food_api import (
     quantize_multiplier,
     build_market_deck,
 )
+from rotting_round import IngredientCard, rot_circles
 ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
@@ -212,6 +213,26 @@ def _load_ingredient_image(
             working = working.copy()
     else:
         working = Image.new("RGBA", (target_px, target_px), (255, 255, 255, 255))
+
+    image = ImageTk.PhotoImage(working)
+    _ingredient_image_cache[cache_key] = image
+    return image
+
+
+def _load_rotten_image(target_px: int = INGREDIENT_IMAGE_TARGET_PX) -> tk.PhotoImage:
+    cache_key = f"rotten:{target_px}"
+    cached = _ingredient_image_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    rotten_path = INGREDIENT_ASSET_DIR / "rotten.png"
+    if rotten_path.exists():
+        with Image.open(rotten_path) as source_image:
+            working = source_image.convert("RGBA")
+            working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+            working = working.copy()
+    else:
+        working = Image.new("RGBA", (target_px, target_px), (96, 64, 64, 255))
 
     image = ImageTk.PhotoImage(working)
     _ingredient_image_cache[cache_key] = image
@@ -813,7 +834,7 @@ class GameSession:
         self.finished = False
         self.pending_new_chef_offer = False
 
-        self.hand: List[Ingredient] = []
+        self.hand: List[IngredientCard] = []
         self.deck: List[Ingredient] = []
         self.seasonings: List[Seasoning] = []
         self._seasoning_charges: Dict[str, Optional[int]] = {}
@@ -906,7 +927,8 @@ class GameSession:
                 self.finished = True
                 self._push_event("Deck exhausted; ending the run early.")
                 return deck_refreshed
-            self.hand.append(self.deck.pop())
+            drawn = self.deck.pop()
+            self.hand.append(IngredientCard(ingredient=drawn))
             needed -= 1
         if len(self.hand) == 0:
             self.finished = True
@@ -930,6 +952,30 @@ class GameSession:
         self._push_event("Deck refreshed to reflect your expanded chef lineup.")
         self._refill_hand()
 
+    def _apply_end_turn_decay(self) -> None:
+        if not self.hand:
+            return
+
+        for card in self.hand:
+            if card.is_rotten:
+                continue
+            limit = max(card.ingredient.rotten_turns, 0)
+            card.turns_in_hand += 1
+            if limit and card.turns_in_hand >= limit:
+                card.turns_in_hand = limit
+                card.is_rotten = True
+                name = getattr(card.ingredient, "display_name", None) or card.ingredient.name
+                self._push_event(
+                    f"{name} has gone rotten and locks its slot until the round ends."
+                )
+
+        if self.hand and all(card.is_rotten for card in self.hand):
+            if not self.finished:
+                self.finished = True
+                self._push_event(
+                    "All of your hand ingredients have rotted. The run is over."
+                )
+
     def _times_cooked(self, recipe_name: Optional[str]) -> int:
         if not recipe_name:
             return 0
@@ -937,7 +983,7 @@ class GameSession:
         return entry.count if entry else 0
 
     # ----------------- Public API -----------------
-    def get_hand(self) -> Sequence[Ingredient]:
+    def get_hand(self) -> Sequence[IngredientCard]:
         return list(self.hand)
 
     def get_remaining_deck(self) -> Sequence[Ingredient]:
@@ -1182,20 +1228,24 @@ class GameSession:
         if any(index < 0 or index >= len(self.hand) for index in unique):
             raise IndexError("Selection index out of range for the current hand.")
 
-        removed = [self.hand[index] for index in unique]
+        removed_cards = [self.hand[index] for index in unique]
+        if any(card.is_rotten for card in removed_cards):
+            raise ValueError("Rotten ingredients cannot be discarded.")
+
         for offset, index in enumerate(unique):
             self.hand.pop(index - offset)
 
         deck_refreshed = self._refill_hand()
 
-        if removed:
-            if len(removed) == 1:
-                name = removed[0].name
+        if removed_cards:
+            if len(removed_cards) == 1:
+                name = removed_cards[0].ingredient.name
                 self._push_event(f"Discarded {name} to draw a new ingredient.")
             else:
-                names = ", ".join(ingredient.name for ingredient in removed)
+                names = ", ".join(card.ingredient.name for card in removed_cards)
                 self._push_event(f"Discarded {names} and drew replacements.")
 
+        removed = [card.ingredient for card in removed_cards]
         return removed, deck_refreshed
 
     def play_turn(
@@ -1221,7 +1271,12 @@ class GameSession:
         if any(index < 0 or index >= len(self.hand) for index in unique):
             raise IndexError("Selection index out of range for the current hand.")
 
-        selected = [self.hand[index] for index in unique]
+        selected_cards = [self.hand[index] for index in unique]
+        if any(card.is_rotten for card in selected_cards):
+            raise ValueError("You cannot cook with rotten ingredients.")
+
+        selected = [card.ingredient for card in selected_cards]
+
         dish = self.data.evaluate_dish(selected)
         alerts = list(dish.alerts)
         if alerts:
@@ -1302,8 +1357,8 @@ class GameSession:
         self.turn_number += 1
         self.cooks_completed_in_round += 1
 
-        for ingredient in selected:
-            self.hand.remove(ingredient)
+        for offset, index in enumerate(unique):
+            self.hand.pop(index - offset)
 
         if seasoning_calc.usage:
             boost_pct = seasoning_calc.total_boost_pct
@@ -1337,6 +1392,8 @@ class GameSession:
             deck_refreshed = not was_finished and not self.finished
         else:
             deck_refreshed = self._refill_hand() or deck_refreshed
+            if not self.finished:
+                self._apply_end_turn_decay()
 
         return TurnOutcome(
             selected=selected,
@@ -1758,39 +1815,50 @@ class CardView(ttk.Frame):
         on_click: Optional[Callable[[int], None]] = None,
         *,
         quantity: Optional[int] = None,
+        rot_info: Optional[Mapping[str, Any]] = None,
+        locked: bool = False,
     ) -> None:
-        super().__init__(master, style="Card.TFrame", padding=(10, 8))
+        base_style = "CardDisabled.TFrame" if locked else "Card.TFrame"
+        super().__init__(master, style=base_style, padding=(10, 8))
         self.index = index
         self.on_click = on_click
         self.selected = False
         self.cookbook_hint = cookbook_hint
         self.quantity = quantity
+        self.locked = locked
+        self.rot_label: Optional[ttk.Label] = None
+        self._rot_color: Optional[str] = None
 
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
 
         display_name = getattr(ingredient, "display_name", None) or ingredient.name
-        name_text = display_name
-        if quantity and quantity > 1:
+        name_text = "Rotten" if locked else display_name
+        if quantity and quantity > 1 and not locked:
             name_text += f" ×{quantity}"
-        if cookbook_hint:
+        if cookbook_hint and not locked:
             name_text += " 📖"
 
+        title_style = "CardTitleDisabled.TLabel" if locked else "CardTitle.TLabel"
+        value_style = "CardValueDisabled.TLabel" if locked else "CardValue.TLabel"
         self.name_label = ttk.Label(
             self,
             text=name_text,
-            style="CardTitle.TLabel",
+            style=title_style,
             anchor="w",
             justify="left",
         )
         self.name_label.grid(row=0, column=0, sticky="w")
 
-        value_prefix = "+" if ingredient.Value >= 0 else ""
-        value_text = f"{value_prefix}{ingredient.Value}"
+        if locked:
+            value_text = "—"
+        else:
+            value_prefix = "+" if ingredient.Value >= 0 else ""
+            value_text = f"{value_prefix}{ingredient.Value}"
         self.value_label = ttk.Label(
             self,
             text=value_text,
-            style="CardValue.TLabel",
+            style=value_style,
             anchor="e",
             justify="right",
         )
@@ -1801,7 +1869,10 @@ class CardView(ttk.Frame):
 
         row_index = 2
 
-        self.ingredient_image = _load_ingredient_image(ingredient)
+        if locked:
+            self.ingredient_image = _load_rotten_image()
+        else:
+            self.ingredient_image = _load_ingredient_image(ingredient)
         self.ingredient_image_label = ttk.Label(
             self,
             image=self.ingredient_image,
@@ -1812,41 +1883,70 @@ class CardView(ttk.Frame):
         )
         row_index += 1
 
-        self.taste_image = _load_icon("taste", ingredient.taste)
-        taste_text = f"Taste: {ingredient.taste}"
+        if rot_info is not None:
+            rot_text, rot_color = self._format_rot_text(rot_info, ingredient)
+            rot_style = "RotIndicatorDisabled.TLabel" if locked else "RotIndicator.TLabel"
+            self.rot_label = ttk.Label(
+                self,
+                text=rot_text,
+                style=rot_style,
+                anchor="w",
+                justify="left",
+                wraplength=220,
+            )
+            if rot_color:
+                self.rot_label.configure(foreground=rot_color)
+            self._rot_color = rot_color
+            self.rot_label.grid(row=row_index, column=0, columnspan=2, sticky="w", pady=(0, 6))
+            row_index += 1
+
+        body_style = "CardBodyDisabled.TLabel" if locked else "CardBody.TLabel"
+        if locked:
+            self.taste_image = None
+            taste_text = f"Original: {display_name}"
+        else:
+            self.taste_image = _load_icon("taste", ingredient.taste)
+            taste_text = f"Taste: {ingredient.taste}"
+        taste_compound = "left" if self.taste_image else "none"
         self.taste_label = ttk.Label(
             self,
             text=taste_text,
-            style="CardBody.TLabel",
+            style=body_style,
             image=self.taste_image,
-            compound="left",
+            compound=taste_compound,
         )
         self.taste_label.grid(row=row_index, column=0, columnspan=2, sticky="w")
         row_index += 1
 
-        self.family_image = _load_icon("family", ingredient.family)
-        family_text = f"Family: {ingredient.family}"
+        if locked:
+            self.family_image = None
+            family_text = "Slot locked until next round."
+        else:
+            self.family_image = _load_icon("family", ingredient.family)
+            family_text = f"Family: {ingredient.family}"
+        family_compound = "left" if self.family_image else "none"
         self.family_label = ttk.Label(
             self,
             text=family_text,
-            style="CardBody.TLabel",
+            style=body_style,
             image=self.family_image,
-            compound="left",
+            compound=family_compound,
         )
         self.family_label.grid(
             row=row_index, column=0, columnspan=2, sticky="w", pady=(2, 0)
         )
         row_index += 1
 
+        marker_style = "CardMarkerDisabled.TLabel" if locked else "CardMarker.TLabel"
         self.chef_label: Optional[ttk.Label] = None
-        if chef_names:
+        if chef_names and not locked:
             first, *rest = chef_names
             lines = [f"Chef Key: {first}"]
             lines.extend(f"           {name}" for name in rest)
             self.chef_label = ttk.Label(
                 self,
                 text="\n".join(lines),
-                style="CardMarker.TLabel",
+                style=marker_style,
                 justify="left",
             )
             self.chef_label.grid(
@@ -1854,11 +1954,16 @@ class CardView(ttk.Frame):
             )
             row_index += 1
 
-        hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
+        hint_style = "CardHintDisabled.TLabel" if locked else "CardHint.TLabel"
+        if locked:
+            hint_text = "Recipes: Unavailable while rotten."
+        else:
+            hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
+            hint_text = f"Recipes: {hint_text}"
         self.recipe_label = ttk.Label(
             self,
-            text=f"Recipes: {hint_text}",
-            style="CardHint.TLabel",
+            text=hint_text,
+            style=hint_style,
             wraplength=220,
             justify="left",
         )
@@ -1866,16 +1971,45 @@ class CardView(ttk.Frame):
             row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
-        if self.on_click:
+        if self.on_click and not self.locked:
             self.bind("<Button-1>", self._handle_click)
             for child in self.winfo_children():
                 child.bind("<Button-1>", self._handle_click)
 
+    @staticmethod
+    def _format_rot_text(
+        rot_info: Mapping[str, Any], ingredient: Ingredient
+    ) -> tuple[str, Optional[str]]:
+        total = int(rot_info.get("total", 0) or 0)
+        filled = int(rot_info.get("filled", 0) or 0)
+        is_rotten = bool(rot_info.get("is_rotten"))
+
+        # Treat extremely long decay tracks as effectively stable for display purposes.
+        if total <= 0 or total >= 12 or ingredient.rotten_turns >= 900:
+            return ("Shelf life: Stable", "#245c2f")
+
+        cells = rot_info.get("cells") or []
+        bar = "".join("■" if cell == "filled" else "□" for cell in cells[:12])
+        progress = f" ({bar})" if bar else ""
+
+        if is_rotten:
+            return (f"Rotten — slot locked{progress}", "#8b1a1a")
+
+        remaining = max(total - filled, 0)
+        plural = "turn" if remaining == 1 else "turns"
+        color = "#b45309" if remaining <= 1 else "#245c2f"
+        return (f"Rot in {remaining} {plural}{progress}", color)
+
     def _handle_click(self, _event) -> None:
-        if self.on_click:
+        if self.on_click and not self.locked:
             self.on_click(self.index)
 
     def set_selected(self, selected: bool) -> None:
+        if self.locked:
+            self.selected = False
+            self.configure(style="CardDisabled.TFrame")
+            return
+
         self.selected = selected
         style = "CardSelected.TFrame" if selected else "Card.TFrame"
         self.configure(style=style)
@@ -1887,6 +2021,9 @@ class CardView(ttk.Frame):
         hint_style = "CardHintSelected.TLabel" if selected else "CardHint.TLabel"
         value_style = "CardValueSelected.TLabel" if selected else "CardValue.TLabel"
         image_style = "CardImageSelected.TLabel" if selected else "CardImage.TLabel"
+        rot_style = (
+            "RotIndicatorSelected.TLabel" if selected else "RotIndicator.TLabel"
+        )
         self.name_label.configure(style=title_style)
         self.value_label.configure(style=value_style)
         self.ingredient_image_label.configure(style=image_style)
@@ -1896,6 +2033,10 @@ class CardView(ttk.Frame):
             self.chef_label.configure(style=marker_style)
         if self.recipe_label:
             self.recipe_label.configure(style=hint_style)
+        if self.rot_label:
+            self.rot_label.configure(style=rot_style)
+            if self._rot_color:
+                self.rot_label.configure(foreground=self._rot_color)
 
 
 class DeckPopup(tk.Toplevel):
@@ -2382,6 +2523,7 @@ class FoodGameApp:
 
         base_bg = "#f5f5f5"
         selected_bg = "#e6edf7"
+        disabled_bg = "#f0e7e1"
         ingredient_image_bg = "#f4ebd0"
         title_font = ("Helvetica", 12, "bold")
         body_font = ("Helvetica", 10)
@@ -2393,6 +2535,12 @@ class FoodGameApp:
             "CardSelected.TFrame",
             background=selected_bg,
             borderwidth=2,
+            relief="solid",
+        )
+        style.configure(
+            "CardDisabled.TFrame",
+            background=disabled_bg,
+            borderwidth=1,
             relief="solid",
         )
         style.configure(
@@ -2412,10 +2560,22 @@ class FoodGameApp:
             background=base_bg,
         )
         style.configure(
+            "CardTitleDisabled.TLabel",
+            font=title_font,
+            foreground="#7a1d1d",
+            background=disabled_bg,
+        )
+        style.configure(
             "CardBody.TLabel",
             font=body_font,
             foreground="#3a3a3a",
             background=base_bg,
+        )
+        style.configure(
+            "CardBodyDisabled.TLabel",
+            font=body_font,
+            foreground="#6a5f5f",
+            background=disabled_bg,
         )
         style.configure(
             "CardMarker.TLabel",
@@ -2424,16 +2584,52 @@ class FoodGameApp:
             background=base_bg,
         )
         style.configure(
+            "CardMarkerDisabled.TLabel",
+            font=marker_font,
+            foreground="#6a5f5f",
+            background=disabled_bg,
+        )
+        style.configure(
             "CardHint.TLabel",
             font=("Helvetica", 9),
             foreground="#4a4a4a",
             background=base_bg,
         )
         style.configure(
+            "CardHintDisabled.TLabel",
+            font=("Helvetica", 9),
+            foreground="#6a5f5f",
+            background=disabled_bg,
+        )
+        style.configure(
+            "RotIndicator.TLabel",
+            font=("Helvetica", 9, "bold"),
+            foreground="#245c2f",
+            background=base_bg,
+        )
+        style.configure(
+            "RotIndicatorDisabled.TLabel",
+            font=("Helvetica", 9, "bold"),
+            foreground="#7a1d1d",
+            background=disabled_bg,
+        )
+        style.configure(
+            "RotIndicatorSelected.TLabel",
+            font=("Helvetica", 9, "bold"),
+            foreground="#245c2f",
+            background=selected_bg,
+        )
+        style.configure(
             "CardValue.TLabel",
             font=("Helvetica", 11, "bold"),
             foreground="#1f1f1f",
             background=base_bg,
+        )
+        style.configure(
+            "CardValueDisabled.TLabel",
+            font=("Helvetica", 11, "bold"),
+            foreground="#6a5f5f",
+            background=disabled_bg,
         )
         style.configure(
             "CardTitleSelected.TLabel",
@@ -3096,12 +3292,26 @@ class FoodGameApp:
             return
 
         self._refresh_seasoning_popup()
-        hand_with_indices = list(enumerate(self.session.get_hand()))
+        hand_cards = list(self.session.get_hand())
+        self.selected_indices = {
+            index
+            for index in self.selected_indices
+            if index < len(hand_cards) and not hand_cards[index].is_rotten
+        }
+
+        hand_with_indices = list(enumerate(hand_cards))
         sorted_hand = self._sorted_hand(hand_with_indices)
 
-        for column, (index, ingredient) in enumerate(sorted_hand):
+        for column, (index, card) in enumerate(sorted_hand):
+            ingredient = card.ingredient
             chef_names, cookbook_hint = self.session.get_selection_markers(ingredient)
-            recipe_hints = self.session.get_recipe_hints(ingredient)
+            recipe_hints: Sequence[str]
+            if card.is_rotten:
+                chef_names = []
+                recipe_hints = ("Unavailable while rotten.",)
+            else:
+                recipe_hints = self.session.get_recipe_hints(ingredient)
+            rot_info = rot_circles(card)
             view = CardView(
                 self.hand_frame,
                 index=index,
@@ -3110,6 +3320,8 @@ class FoodGameApp:
                 recipe_hints=recipe_hints,
                 cookbook_hint=cookbook_hint,
                 on_click=self.toggle_card,
+                rot_info=rot_info,
+                locked=card.is_rotten,
             )
             view.grid(row=0, column=column, sticky="nw", padx=8, pady=8)
             if index in self.selected_indices:
@@ -3123,21 +3335,21 @@ class FoodGameApp:
         self._update_seasoning_panels()
 
     def _sorted_hand(
-        self, hand_with_indices: Sequence[Tuple[int, Ingredient]]
-    ) -> List[Tuple[int, Ingredient]]:
+        self, hand_with_indices: Sequence[Tuple[int, IngredientCard]]
+    ) -> List[Tuple[int, IngredientCard]]:
         mode = self._current_sort_mode()
         if mode == "name":
-            key_func = lambda pair: (pair[1].name.lower(), pair[0])
+            key_func = lambda pair: (pair[1].ingredient.name.lower(), pair[0])
         elif mode == "family":
             key_func = lambda pair: (
-                pair[1].family.lower(),
-                pair[1].name.lower(),
+                pair[1].ingredient.family.lower(),
+                pair[1].ingredient.name.lower(),
                 pair[0],
             )
         else:
             key_func = lambda pair: (
-                pair[1].taste.lower(),
-                pair[1].name.lower(),
+                pair[1].ingredient.taste.lower(),
+                pair[1].ingredient.name.lower(),
                 pair[0],
             )
         return sorted(hand_with_indices, key=key_func)
@@ -3568,6 +3780,11 @@ class FoodGameApp:
     def toggle_card(self, index: int) -> None:
         if not self.session:
             return
+        hand = self.session.get_hand()
+        if index < 0 or index >= len(hand):
+            return
+        if hand[index].is_rotten:
+            return
         view = self.card_views.get(index)
         if not view:
             return
@@ -3623,16 +3840,24 @@ class FoodGameApp:
             self._update_seasoning_panels()
             return
 
-        hand = self.session.get_hand()
+        hand_cards = self.session.get_hand()
         try:
-            selected = [hand[index] for index in sorted(self.selected_indices)]
+            selected_cards = [hand_cards[index] for index in sorted(self.selected_indices)]
         except IndexError:
             self.selection_summary_var.set(default_text)
             self.estimated_score_var.set(default_estimate)
             self._update_seasoning_panels()
             return
 
-        Value = sum(card.Value for card in selected)
+        if any(card.is_rotten for card in selected_cards):
+            self.selection_summary_var.set(default_text)
+            self.estimated_score_var.set(default_estimate)
+            self._update_seasoning_panels()
+            return
+
+        selected = [card.ingredient for card in selected_cards]
+
+        Value = sum(ingredient.Value for ingredient in selected)
         dish_outcome = self.session.data.evaluate_dish(selected)
         multiplier = dish_outcome.dish_multiplier
         total = int(round(dish_outcome.dish_value))

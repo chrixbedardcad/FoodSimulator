@@ -48,7 +48,8 @@ class RottingRound:
         for index in range(len(self.hand)):
             if self.hand[index] is None and self.basket:
                 drawn = self.basket.popleft()
-                drawn.freshen()
+                # Preserve the card's decay history so returning ingredients
+                # continue rotting instead of resetting when redrawn.
                 self.hand[index] = drawn
 
     def cards_in_hand(self) -> List[IngredientCard]:
@@ -123,16 +124,30 @@ class RottingRound:
     # ------------------------------- Internal helpers ------------------------------
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
         for index, card in sorted(chosen, key=lambda pair: pair[0], reverse=True):
-            card.freshen()
+            # Keep the decay progress when shuffling the card back into the
+            # basket so the ingredient resumes rotting from the same state when
+            # drawn again.
             self.hand[index] = None
             self.basket.append(card)
 
 
-def rot_circles(card: IngredientCard) -> dict[str, int | bool]:
-    """Return UI metadata describing the rot indicator for a card."""
+def rot_circles(card: IngredientCard) -> dict[str, int | bool | list[str]]:
+    """Return UI metadata describing the rot indicator for a card.
+
+    The ``cells`` entry represents square markers that should be shown under the
+    ingredient art.  Each position corresponds to one safe turn before the
+    ingredient rots.  Cells with the value ``"filled"`` should be rendered as
+    green squares while ``"empty"`` cells remain unfilled.
+    """
 
     total = max(card.ingredient.rotten_turns, 0)
     filled = 0 if total == 0 else min(card.turns_in_hand, total)
     if card.is_rotten:
         filled = total
-    return {"total": total, "filled": filled, "is_rotten": card.is_rotten}
+    cells = ["filled" if index < filled else "empty" for index in range(total)]
+    return {
+        "total": total,
+        "filled": filled,
+        "cells": cells,
+        "is_rotten": card.is_rotten,
+    }

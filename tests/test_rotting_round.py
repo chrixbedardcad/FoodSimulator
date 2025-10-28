@@ -28,7 +28,7 @@ def test_turns_increment_only_in_hand(game_data: GameData) -> None:
     assert [card.turns_in_hand for card in round_state.cards_in_hand()] == [2, 2, 2]
 
 
-def test_leaving_hand_resets_turns_in_hand(game_data: GameData) -> None:
+def test_leaving_hand_preserves_turns_in_hand(game_data: GameData) -> None:
     round_state = make_round(game_data, ["Tomato", "Egg", "Mushroom"], hand_size=3)
 
     round_state.end_turn_decay()
@@ -41,8 +41,8 @@ def test_leaving_hand_resets_turns_in_hand(game_data: GameData) -> None:
     assert not round_state.play_attempt([0, 1])
 
     turns = {card.ingredient.name: card.turns_in_hand for card in round_state.cards_in_hand()}
-    assert turns["Tomato"] == 0
-    assert turns["Egg"] == 0
+    assert turns["Tomato"] == 1
+    assert turns["Egg"] == 1
     assert turns["Mushroom"] == 1
 
 
@@ -59,7 +59,7 @@ def test_card_rots_when_turn_limit_reached(game_data: GameData) -> None:
     assert round_state.lost
 
 
-def test_invalid_cook_returns_cards_and_resets_decay(game_data: GameData) -> None:
+def test_invalid_cook_returns_cards_and_preserves_decay(game_data: GameData) -> None:
     round_state = make_round(game_data, ["Tomato", "Egg", "Mushroom"], hand_size=3)
 
     round_state.end_turn_decay()
@@ -72,7 +72,7 @@ def test_invalid_cook_returns_cards_and_resets_decay(game_data: GameData) -> Non
     finally:
         game_data.is_valid_dish = original_validator
 
-    assert all(card.turns_in_hand == 0 for card in round_state.cards_in_hand())
+    assert all(card.turns_in_hand == 1 for card in round_state.cards_in_hand())
 
 
 def test_round_ends_when_basket_empty(game_data: GameData) -> None:
@@ -99,17 +99,20 @@ def test_rot_circles_reflects_state(game_data: GameData) -> None:
     assert info == {
         "total": game_data.ingredients["Basil"].rotten_turns,
         "filled": 0,
+        "cells": ["empty"] * game_data.ingredients["Basil"].rotten_turns,
         "is_rotten": False,
     }
 
     round_state.end_turn_decay()
     info = rot_circles(card)
     assert info["filled"] == 1
+    assert info["cells"][0] == "filled"
     assert not info["is_rotten"]
 
     round_state.end_turn_decay()
     info = rot_circles(card)
     assert info["filled"] == info["total"]
+    assert all(cell == "filled" for cell in info["cells"])
     assert info["is_rotten"]
 
 

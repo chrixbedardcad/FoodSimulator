@@ -1372,16 +1372,16 @@ class GameSession:
             usage=tuple(usages),
         )
 
-    def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
+    def return_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
         if self.finished:
             raise RuntimeError("The session has already finished.")
         if self._awaiting_basket_reset:
-            raise RuntimeError("Cannot discard while waiting to start the next round.")
+            raise RuntimeError("Cannot return cards while waiting to start the next round.")
         if not indices:
-            raise ValueError("You must select at least one card to discard.")
+            raise ValueError("You must select at least one card to return.")
         if len(indices) > self.pick_size:
             raise ValueError(
-                f"You may discard up to {self.pick_size} cards at a time."
+                f"You may return up to {self.pick_size} cards at a time."
             )
 
         unique = sorted(set(indices))
@@ -1393,23 +1393,58 @@ class GameSession:
 
         removed_cards = [self.hand[index] for index in unique]
         if any(card.is_rotten for card in removed_cards):
-            raise ValueError("Rotten ingredients cannot be discarded.")
+            raise ValueError("Rotten ingredients cannot be returned to the basket.")
 
+        returned_cards: List[IngredientCard] = []
         for offset, index in enumerate(unique):
-            self.hand.pop(index - offset)
+            returned_cards.append(self.hand.pop(index - offset))
+
+        newly_rotten: List[IngredientCard] = []
+        for card in returned_cards:
+            card.turns_in_hand += 1
+            limit = max(card.ingredient.rotten_turns, 0)
+            if limit and card.turns_in_hand >= limit:
+                card.turns_in_hand = limit
+                if not card.is_rotten:
+                    card.is_rotten = True
+                    newly_rotten.append(card)
+
+        self.deck.extend(returned_cards)
+        if self.deck:
+            self.rng.shuffle(self.deck)
 
         deck_refreshed = self._refill_hand()
 
-        if removed_cards:
-            if len(removed_cards) == 1:
-                name = removed_cards[0].ingredient.name
-                self._push_event(f"Discarded {name} to draw a new ingredient.")
+        if returned_cards:
+            if len(returned_cards) == 1:
+                name = returned_cards[0].ingredient.name
+                self._push_event(
+                    f"Returned {name} to the basket and drew a replacement."
+                )
             else:
-                names = ", ".join(card.ingredient.name for card in removed_cards)
-                self._push_event(f"Discarded {names} and drew replacements.")
+                names = ", ".join(card.ingredient.name for card in returned_cards)
+                self._push_event(
+                    f"Returned {names} to the basket and drew replacements."
+                )
 
-        removed = [card.ingredient for card in removed_cards]
+        if newly_rotten:
+            rotten_names = ", ".join(
+                getattr(card.ingredient, "display_name", None) or card.ingredient.name
+                for card in newly_rotten
+            )
+            plural_word = "have" if len(newly_rotten) > 1 else "has"
+            ruin_pronoun = "they" if len(newly_rotten) > 1 else "it"
+            self._push_event(
+                f"{rotten_names} {plural_word} now gone rotten and will ruin any dish {ruin_pronoun} joins."
+            )
+
+        removed = [card.ingredient for card in returned_cards]
         return removed, deck_refreshed
+
+    def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
+        """Backward-compatible alias for returning cards to the basket."""
+
+        return self.return_indices(indices)
 
     def play_turn(
         self,
@@ -3208,20 +3243,20 @@ class FoodGameApp:
         self._action_button_images["cook"] = cook_icon
         self.cook_button.configure(image=cook_icon)
 
-        self.discard_button = ttk.Button(
+        self.return_button = ttk.Button(
             action_frame,
-            text="Discard",
-            command=self.discard_selected,
+            text="Return",
+            command=self.return_selected,
             state="disabled",
             compound="left",
         )
-        self.discard_button.grid(row=0, column=1, sticky="ew")
+        self.return_button.grid(row=0, column=1, sticky="ew")
 
-        discard_icon = _load_button_image("discard.png", target_px=52)
-        if discard_icon is None:
-            discard_icon = _generate_button_icon("discard", "DC", size=64)
-        self._action_button_images["discard"] = discard_icon
-        self.discard_button.configure(image=discard_icon)
+        return_icon = _load_button_image("return.png", target_px=52)
+        if return_icon is None:
+            return_icon = _generate_button_icon("return", "RT", size=64)
+        self._action_button_images["return"] = return_icon
+        self.return_button.configure(image=return_icon)
 
         resource_frame = ttk.Frame(action_frame)
         resource_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
@@ -3415,7 +3450,7 @@ class FoodGameApp:
 
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
-        self.discard_button.configure(state="normal")
+        self.return_button.configure(state="normal")
         self.basket_button.configure(state="normal")
         self.seasoning_button.configure(state="normal")
         self.chef_button.configure(state="normal")
@@ -3469,7 +3504,7 @@ class FoodGameApp:
         self.applied_seasonings.clear()
         self.estimated_score_var.set("Estimated Score: —")
         self.cook_button.configure(state="disabled")
-        self.discard_button.configure(state="disabled")
+        self.return_button.configure(state="disabled")
         self.basket_button.configure(state="disabled")
         self.seasoning_button.configure(state="disabled")
         self.chef_button.configure(state="disabled")
@@ -4316,7 +4351,7 @@ class FoodGameApp:
             return
 
         self.cook_button.configure(state="disabled")
-        self.discard_button.configure(state="disabled")
+        self.return_button.configure(state="disabled")
         self.basket_button.configure(state="disabled")
         self.seasoning_button.configure(state="disabled")
         self.chef_button.configure(state="disabled")
@@ -4585,21 +4620,21 @@ class FoodGameApp:
         popup.focus_force()
         button.focus_set()
 
-    def discard_selected(self) -> None:
+    def return_selected(self) -> None:
         if not self.session:
             return
         if not self.selected_indices:
             messagebox.showwarning(
                 "No selection",
-                "Select at least one ingredient to discard.",
+                "Select at least one ingredient to return.",
             )
             return
 
         indices = sorted(self.selected_indices)
         try:
-            removed, deck_refreshed = self.session.discard_indices(indices)
+            removed, deck_refreshed = self.session.return_indices(indices)
         except Exception as exc:  # pragma: no cover - user feedback path
-            messagebox.showerror("Unable to discard ingredient", str(exc))
+            messagebox.showerror("Unable to return ingredient", str(exc))
             return
 
         self.selected_indices.clear()
@@ -4617,12 +4652,12 @@ class FoodGameApp:
         if removed:
             names = ", ".join(ingredient.name for ingredient in removed)
             if deck_refreshed:
-                message = f"Discarded {names}. Market deck refreshed."
+                message = f"Returned {names}. Market deck refreshed."
             else:
                 replacement_text = "replacements" if len(removed) > 1 else "a replacement"
-                message = f"Discarded {names} and drew {replacement_text}."
+                message = f"Returned {names} to the basket and drew {replacement_text}."
         else:
-            message = "No ingredient was discarded."
+            message = "No ingredient was returned."
         self.write_result(message)
 
         if self.session.is_finished():

@@ -92,6 +92,11 @@ def test_invalid_cook_returns_cards_and_increments_decay(game_data: GameData) ->
     events = session.consume_events()
     assert any("returned to the basket" in message for message in events)
 
+    ingredients = getattr(exc_info.value, "ingredients", ())
+    assert ingredients
+    assert len(ingredients) == len(original_cards)
+    assert all(card.ingredient == ingredient for card, ingredient in zip(original_cards, ingredients))
+
 
 def test_all_same_ingredient_selection_rejected(game_data: GameData) -> None:
     session = make_session(game_data, ["Basil", "Basil", "Basil"])
@@ -111,3 +116,18 @@ def test_all_same_ingredient_selection_rejected(game_data: GameData) -> None:
     for card in original_cards:
         assert card.turns_in_hand == 1
         assert card in locations
+
+    assert exception.ingredients
+    assert len(exception.ingredients) == len(original_cards)
+    assert all(ingredient.name == "Basil" for ingredient in exception.ingredients)
+
+
+def test_invalid_selection_ages_remaining_cards(game_data: GameData) -> None:
+    session = make_session(game_data, ["Truffle", "Egg", "Basil", "Tomato"])
+    lingering_card = session.hand[-1]
+
+    with pytest.raises(InvalidDishSelection):
+        session.play_turn([0, 1, 2])
+
+    assert lingering_card in session.hand
+    assert lingering_card.turns_in_hand == 1

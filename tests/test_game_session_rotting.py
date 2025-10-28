@@ -69,14 +69,14 @@ def test_nonperishable_cards_never_rot(game_data: GameData) -> None:
     assert not session.finished
 
 
-def test_discarding_rotten_card_not_allowed(game_data: GameData) -> None:
+def test_returning_rotten_card_not_allowed(game_data: GameData) -> None:
     session = make_session(game_data, ["Basil", "Tomato", "Egg"])
     rotten_card = session.hand[0]
     rotten_card.is_rotten = True
     rotten_card.turns_in_hand = max(rotten_card.ingredient.rotten_turns, 0)
 
     with pytest.raises(ValueError):
-        session.discard_indices([0])
+        session.return_indices([0])
 
 
 def test_invalid_cook_returns_cards_and_increments_decay(game_data: GameData) -> None:

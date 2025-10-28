@@ -1095,8 +1095,6 @@ class GameSession:
 
         newly_rotten = self._advance_decay(self.hand, record_events=False)
 
-        for card in selected_cards:
-            card.freshen()
         self.deck.extend(selected_cards)
         if self.deck:
             self.rng.shuffle(self.deck)
@@ -1456,8 +1454,6 @@ class GameSession:
 
         newly_rotten = self._advance_decay(self.hand, record_events=False)
 
-        for card in returned_cards:
-            card.freshen()
         self.deck.extend(returned_cards)
         if self.deck:
             self.rng.shuffle(self.deck)

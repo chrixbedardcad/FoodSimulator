@@ -2754,7 +2754,7 @@ class FoodGameApp:
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
         self._seasoning_hand_icons: List[tk.PhotoImage] = []
-        self.log_collapsed = False
+        self.log_collapsed = True
         self._run_completion_notified = False
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
@@ -3351,9 +3351,10 @@ class FoodGameApp:
         ttk.Label(log_header, text="Event Log", style="Header.TLabel").grid(
             row=0, column=0, sticky="w"
         )
+        toggle_text = "Show Log ▼" if self.log_collapsed else "Hide Log ▲"
         self.log_toggle_button = ttk.Button(
             log_header,
-            text="Hide Log ▲",
+            text=toggle_text,
             command=self.toggle_log_panel,
         )
         self.log_toggle_button.grid(row=0, column=1, sticky="e")
@@ -3371,6 +3372,8 @@ class FoodGameApp:
             font=("Helvetica", 10),
         )
         self.log_text.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        if self.log_collapsed:
+            self.log_text.grid_remove()
         self.log_text.configure(state="disabled")
 
     # ----------------- Session management -----------------
@@ -4277,11 +4280,12 @@ class FoodGameApp:
             return ""
         origin = self._log_start_time or self._app_launch_time
         elapsed = datetime.now() - origin
-        total_seconds = int(elapsed.total_seconds())
+        total_seconds = elapsed.seconds + elapsed.days * 24 * 3600
         hours, remainder = divmod(total_seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
-        timestamp = f"[{hours:02d}:{minutes:02d}:{seconds:02d}]"
-        return f"{timestamp}: {line}"
+        milliseconds = elapsed.microseconds // 1000
+        timestamp = f"[{hours:02d}:{minutes:02d}:{seconds:02d}:{milliseconds:03d}]"
+        return f"{timestamp} {line}"
 
     def _append_log_lines(self, lines: Iterable[str]) -> None:
         collected = list(lines)
@@ -4329,7 +4333,7 @@ class FoodGameApp:
         self._append_log_lines([summary, position])
 
     def append_events(self, messages: Iterable[str]) -> None:
-        self._append_log_lines(f"• {message}" for message in messages)
+        self._append_log_lines(messages)
         if not self.session:
             return
         if self.session.awaiting_new_round():

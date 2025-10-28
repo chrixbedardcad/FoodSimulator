@@ -791,10 +791,12 @@ class InvalidDishSelection(Exception):
         ingredient_names: Sequence[str],
         *,
         primary_ingredient: Optional[Ingredient] = None,
+        ingredients: Optional[Sequence[Ingredient]] = None,
     ) -> None:
         super().__init__(message)
         self.ingredient_names = tuple(ingredient_names)
         self.primary_ingredient = primary_ingredient
+        self.ingredients = tuple(ingredients) if ingredients is not None else ()
 
 
 class GameSession:
@@ -1029,6 +1031,7 @@ class GameSession:
                 f"{rotten_names} {plural_word} now gone rotten and will block a hand slot when drawn."
             )
 
+        self._apply_end_turn_decay()
         self._refill_hand()
 
         plural = len(display_names) != 1
@@ -1057,6 +1060,7 @@ class GameSession:
             message,
             display_names,
             primary_ingredient=primary_ingredient,
+            ingredients=[card.ingredient for card in selected_cards],
         )
 
     def _times_cooked(self, recipe_name: Optional[str]) -> int:
@@ -4238,24 +4242,67 @@ class FoodGameApp:
 
         content = ttk.Frame(popup, padding=16)
         content.grid(row=0, column=0, sticky="nsew")
-        content.columnconfigure(1, weight=1)
+        content.columnconfigure(0, weight=1)
 
-        ingredient = getattr(exc, "primary_ingredient", None)
-        if ingredient is not None:
-            image = _load_ingredient_image(ingredient, target_px=112)
-            image_label = tk.Label(
-                content,
-                image=image,
-                background="#f4ebd0",
-                borderwidth=1,
-                relief="solid",
-            )
-            image_label.image = image  # type: ignore[attr-defined]
-            image_label.grid(row=0, column=0, rowspan=3, sticky="nsw", padx=(0, 12))
+        displayed_ingredients = list(getattr(exc, "ingredients", ()))
+        message_row = 0
 
-            name_text = getattr(ingredient, "display_name", None) or ingredient.name
-            name_label = ttk.Label(content, text=name_text, style="Header.TLabel", anchor="w")
-            name_label.grid(row=0, column=1, sticky="w")
+        if displayed_ingredients:
+            cards_frame = ttk.Frame(content)
+            cards_frame.grid(row=0, column=0, sticky="w", pady=(0, 12))
+            for column, ingredient in enumerate(displayed_ingredients):
+                holder = ttk.Frame(cards_frame)
+                holder.grid(row=0, column=column, padx=(0 if column == 0 else 12, 0))
+
+                image = _load_ingredient_image(ingredient, target_px=96)
+                image_label = tk.Label(
+                    holder,
+                    image=image,
+                    background="#f4ebd0",
+                    borderwidth=1,
+                    relief="solid",
+                )
+                image_label.image = image  # type: ignore[attr-defined]
+                image_label.grid(row=0, column=0)
+
+                name_text = getattr(ingredient, "display_name", None) or ingredient.name
+                name_label = ttk.Label(
+                    holder,
+                    text=name_text,
+                    style="Header.TLabel",
+                    anchor="center",
+                    wraplength=120,
+                    justify="center",
+                )
+                name_label.grid(row=1, column=0, pady=(6, 0))
+
+            message_row = 1
+        else:
+            ingredient = getattr(exc, "primary_ingredient", None)
+            if ingredient is not None:
+                single_frame = ttk.Frame(content)
+                single_frame.grid(row=0, column=0, sticky="w", pady=(0, 12))
+                image = _load_ingredient_image(ingredient, target_px=112)
+                image_label = tk.Label(
+                    single_frame,
+                    image=image,
+                    background="#f4ebd0",
+                    borderwidth=1,
+                    relief="solid",
+                )
+                image_label.image = image  # type: ignore[attr-defined]
+                image_label.grid(row=0, column=0, rowspan=2, sticky="nsw", padx=(0, 12))
+
+                name_text = getattr(ingredient, "display_name", None) or ingredient.name
+                name_label = ttk.Label(
+                    single_frame,
+                    text=name_text,
+                    style="Header.TLabel",
+                    anchor="w",
+                )
+                name_label.grid(row=0, column=1, sticky="w")
+
+                message_row = 1
 
         message_label = ttk.Label(
             content,
@@ -4264,10 +4311,10 @@ class FoodGameApp:
             wraplength=360,
             justify="left",
         )
-        message_label.grid(row=1, column=1, sticky="w")
+        message_label.grid(row=message_row, column=0, sticky="w")
 
         button = ttk.Button(content, text="OK", command=popup.destroy)
-        button.grid(row=2, column=1, sticky="e", pady=(12, 0))
+        button.grid(row=message_row + 1, column=0, sticky="e", pady=(12, 0))
 
         popup.bind("<Return>", lambda _e: popup.destroy())
         popup.bind("<Escape>", lambda _e: popup.destroy())

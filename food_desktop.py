@@ -15,6 +15,7 @@ import re
 import tkinter as tk
 from collections import Counter
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
@@ -45,6 +46,7 @@ from food_api import (
     build_market_deck,
 )
 from rotting_round import IngredientCard, rot_circles
+from seed_utils import resolve_seed
 ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
@@ -798,6 +800,7 @@ class GameSession:
         bias: float = DEFAULT_BIAS,
         max_chefs: int = DEFAULT_MAX_CHEFS,
         rng: Optional[random.Random] = None,
+        seed: Optional[int] = None,
     ) -> None:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -824,7 +827,13 @@ class GameSession:
         self.deck_size = deck_size
         self.bias = bias
         self.max_chefs = max_chefs
-        self.rng = rng or random.Random()
+        if rng is not None:
+            self.rng = rng
+            self.seed = seed
+        else:
+            resolved_seed, resolved_rng = resolve_seed(seed)
+            self.rng = resolved_rng
+            self.seed = resolved_seed
 
         self.total_turns = rounds * cooks_per_round
         self.turn_number = 0
@@ -3399,6 +3408,7 @@ class FoodGameApp:
             )
             self._run_completion_notified = False
         except Exception as exc:  # pragma: no cover - user feedback path
+            self._log_action(f"Start Run failed: {exc}")
             messagebox.showerror("Cannot start run", str(exc))
             return
 
@@ -3431,6 +3441,8 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.clear_events()
+        self._log_run_settings()
+        self._log_action("Start Run button pressed. Run initialized.")
         self.append_events(self.session.consume_events())
         self._update_seasoning_button(None)
         self._update_chef_button()
@@ -3480,6 +3492,7 @@ class FoodGameApp:
         self._set_controls_active(True)
         self.clear_hand()
         self.clear_events()
+        self._log_action("Reset button pressed. Session cleared.")
         self.write_result("Session reset. Configure options and start a new run.")
         if self.cookbook_tile:
             self.cookbook_tile.clear()
@@ -3596,7 +3609,9 @@ class FoodGameApp:
         self.card_views = {}
 
     def show_deck_popup(self) -> None:
+        self._log_action("Basket button pressed.")
         if not self.session:
+            self._log_action("Basket button pressed without an active session.")
             messagebox.showinfo(
                 "No run in progress", "Start a run to view your ingredient basket."
             )
@@ -3606,6 +3621,7 @@ class FoodGameApp:
             self.deck_popup.set_session(self.session)
             self.deck_popup.lift()
             self.deck_popup.focus_force()
+            self._log_action("Deck popup focused.")
             return
 
         def handle_close() -> None:
@@ -3615,9 +3631,12 @@ class FoodGameApp:
         self.deck_popup.transient(self.root)
         self.deck_popup.focus_force()
         self._center_popup(self.deck_popup)
+        self._log_action("Deck popup opened for the current run.")
 
     def show_cookbook_panel(self) -> None:
+        self._log_action("Cookbook button pressed.")
         if not self.session:
+            self._log_action("Cookbook button pressed without an active session.")
             messagebox.showinfo(
                 "Cookbook", "Start a run to discover recipes and view your cookbook."
             )
@@ -3625,6 +3644,7 @@ class FoodGameApp:
         entries = self.session.get_cookbook()
         self._update_cookbook_button()
         if not entries:
+            self._log_action("Cookbook opened without any discovered recipes.")
             messagebox.showinfo(
                 "Cookbook", "No recipes unlocked yet. Cook dishes to discover more."
             )
@@ -3633,6 +3653,7 @@ class FoodGameApp:
             self.cookbook_popup.set_entries(entries)
             self.cookbook_popup.lift()
             self.cookbook_popup.focus_force()
+            self._log_action("Cookbook popup focused.")
             return
 
         def handle_close() -> None:
@@ -3644,11 +3665,16 @@ class FoodGameApp:
         self.cookbook_popup.transient(self.root)
         self._center_popup(self.cookbook_popup)
         self.cookbook_popup.focus_force()
+        self._log_action(
+            f"Cookbook popup opened with {len(entries)} discovered recipes."
+        )
 
     def show_dish_matrix(self) -> None:
+        self._log_action("Dish matrix button pressed.")
         if self.dish_dialog and self.dish_dialog.winfo_exists():
             self.dish_dialog.lift()
             self.dish_dialog.focus_force()
+            self._log_action("Dish matrix dialog focused.")
             return
 
         def handle_close() -> None:
@@ -3660,9 +3686,14 @@ class FoodGameApp:
         self.dish_dialog.transient(self.root)
         self._center_popup(self.dish_dialog)
         self.dish_dialog.focus_force()
+        self._log_action("Dish matrix dialog opened.")
 
     def show_selected_seasoning_info(self) -> None:
+        self._log_action("Seasoning collection button pressed.")
         if not self.session:
+            self._log_action(
+                "Seasoning collection button pressed without an active session."
+            )
             messagebox.showinfo(
                 "Seasonings", "Start a run to collect seasonings for your pantry."
             )
@@ -3670,6 +3701,7 @@ class FoodGameApp:
 
         seasonings = self.session.get_seasonings()
         if not seasonings:
+            self._log_action("Seasoning collection viewed with no seasonings available.")
             messagebox.showinfo(
                 "Seasonings", "No seasonings collected yet. Finish a round to claim one."
             )
@@ -3679,6 +3711,7 @@ class FoodGameApp:
             self.seasoning_popup.set_seasonings(seasonings)
             self.seasoning_popup.lift()
             self.seasoning_popup.focus_force()
+            self._log_action("Seasoning popup focused.")
             return
 
         def handle_close() -> None:
@@ -3690,20 +3723,27 @@ class FoodGameApp:
         self.seasoning_popup.transient(self.root)
         self._center_popup(self.seasoning_popup)
         self.seasoning_popup.focus_force()
+        self._log_action(
+            f"Seasoning popup opened with {len(seasonings)} collected items."
+        )
 
     def show_chef_team(self) -> None:
+        self._log_action("Chef team button pressed.")
         self._update_chef_button()
         if not self.session:
+            self._log_action("Chef team button pressed without an active session.")
             messagebox.showinfo(
                 "Chef Team", "Start a run to recruit chefs and view your roster."
             )
             return
         if self.session.can_recruit_chef():
+            self._log_action("Chef recruitment dialog opened from chef team button.")
             self.show_recruit_dialog()
             return
 
         if not self.session.chefs:
             message = "No chefs recruited yet. Complete a cook to earn a new offer."
+            self._log_action("Chef roster viewed with no active chefs.")
         else:
             lines = ["Active chefs:"]
             for chef in self.session.chefs:
@@ -3714,6 +3754,9 @@ class FoodGameApp:
                 )
                 lines.append(f"• {chef.name} — {recipes}")
             message = "\n".join(lines)
+            self._log_action(
+                f"Chef roster viewed with {len(self.session.chefs)} active chef(s)."
+            )
 
         messagebox.showinfo("Chef Team", message)
 
@@ -3930,13 +3973,23 @@ class FoodGameApp:
         self._render_applied_seasonings()
 
     def apply_seasoning_to_dish(self, seasoning: Seasoning) -> None:
+        display_name = seasoning.display_name or seasoning.name
         if not self.session:
+            self._log_action(
+                f"Attempted to apply seasoning {display_name} without an active session."
+            )
             messagebox.showinfo("No run in progress", "Start a run before seasoning a dish.")
             return
         if self.session.is_finished():
+            self._log_action(
+                f"Attempted to apply seasoning {display_name} after the run finished."
+            )
             messagebox.showinfo("Run complete", "The run has finished. Start a new run to keep seasoning dishes.")
             return
         if not self.selected_indices:
+            self._log_action(
+                f"Attempted to apply seasoning {display_name} without selecting ingredients."
+            )
             messagebox.showinfo(
                 "No ingredients selected",
                 "Select ingredients for the dish before adding seasonings.",
@@ -3946,6 +3999,9 @@ class FoodGameApp:
         current = self.applied_seasonings.get(seasoning.seasoning_id, 0)
         stack_limit = max(1, seasoning.stack_limit)
         if current >= stack_limit:
+            self._log_action(
+                f"Stack limit reached when applying seasoning {display_name}."
+            )
             messagebox.showinfo(
                 "Stack limit reached",
                 f"{seasoning.display_name or seasoning.name} can only be applied {stack_limit} time(s) per dish.",
@@ -3953,6 +4009,9 @@ class FoodGameApp:
             return
         charges = self.session.get_seasoning_charges(seasoning.seasoning_id)
         if charges is not None and current >= charges:
+            self._log_action(
+                f"No charges remaining when applying seasoning {display_name}."
+            )
             messagebox.showinfo(
                 "No charges remaining",
                 f"{seasoning.display_name or seasoning.name} has no charges left for this run.",
@@ -3962,9 +4021,17 @@ class FoodGameApp:
         self.applied_seasonings[seasoning.seasoning_id] = current + 1
         self._update_seasoning_panels()
         self.update_selection_summary()
+        new_total = self.applied_seasonings[seasoning.seasoning_id]
+        charge_text = "∞" if charges is None else str(max(charges - current - 1, 0))
+        self._log_action(
+            f"Applied seasoning {display_name}. Count this dish: {new_total}. Remaining charges: {charge_text}."
+        )
 
     def remove_applied_seasoning(self, seasoning_id: str) -> None:
         if seasoning_id not in self.applied_seasonings:
+            self._log_action(
+                f"Attempted to remove seasoning {seasoning_id} that was not applied."
+            )
             return
         remaining = self.applied_seasonings.get(seasoning_id, 0)
         if remaining <= 1:
@@ -3973,13 +4040,24 @@ class FoodGameApp:
             self.applied_seasonings[seasoning_id] = remaining - 1
         self._update_seasoning_panels()
         self.update_selection_summary()
+        seasoning_name = seasoning_id
+        if self.session:
+            seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+            if seasoning:
+                seasoning_name = seasoning.display_name or seasoning.name
+        new_remaining = self.applied_seasonings.get(seasoning_id, 0)
+        self._log_action(
+            f"Removed seasoning {seasoning_name}. Remaining on dish: {new_remaining}."
+        )
 
     def clear_applied_seasonings(self) -> None:
         if not self.applied_seasonings:
+            self._log_action("Clear seasonings button pressed with no seasonings applied.")
             return
         self.applied_seasonings.clear()
         self._update_seasoning_panels()
         self.update_selection_summary()
+        self._log_action("Cleared all applied seasonings from the dish preview.")
 
     def _update_chef_button(self) -> None:
         if not hasattr(self, "chef_button"):
@@ -4009,31 +4087,51 @@ class FoodGameApp:
         if self.log_collapsed:
             self.log_text.grid_remove()
             self.log_toggle_button.configure(text="Show Log ▼")
+            self._log_action("Log panel hidden via toggle button.")
         else:
             self.log_text.grid()
             self.log_toggle_button.configure(text="Hide Log ▲")
+            self._log_action("Log panel shown via toggle button.")
 
     def toggle_card(self, index: int) -> None:
         if not self.session:
+            self._log_action(
+                "Ingredient selection attempted without an active session."
+            )
             return
         hand = self.session.get_hand()
         if index < 0 or index >= len(hand):
+            self._log_action(
+                f"Ingredient selection index {index} out of range for current hand."
+            )
             return
         view = self.card_views.get(index)
         if not view:
+            self._log_action(
+                f"Ingredient view missing for index {index}; selection ignored."
+            )
             return
+        card = hand[index]
+        ingredient = card.ingredient
+        ingredient_name = getattr(ingredient, "display_name", None) or ingredient.name
         if index in self.selected_indices:
             self.selected_indices.remove(index)
             view.set_selected(False)
+            self._log_action(f"Deselected ingredient: {ingredient_name}")
         else:
             if len(self.selected_indices) >= self.session.pick_size:
                 messagebox.showinfo(
                     "Selection limit",
                     f"You may only pick {self.session.pick_size} cards per turn.",
                 )
+                self._log_action(
+                    "Selection limit reached while choosing "
+                    f"{ingredient_name}."
+                )
                 return
             self.selected_indices.add(index)
             view.set_selected(True)
+            self._log_action(f"Selected ingredient: {ingredient_name}")
         self.update_selection_label()
 
     def _current_sort_mode(self) -> str:
@@ -4045,7 +4143,9 @@ class FoodGameApp:
 
     def cycle_hand_sort_mode(self) -> None:
         self.hand_sort_index = (self.hand_sort_index + 1) % len(self.hand_sort_modes)
-        self.hand_sort_var.set(self._format_sort_label(self._current_sort_mode()))
+        mode = self._current_sort_mode()
+        self.hand_sort_var.set(self._format_sort_label(mode))
+        self._log_action(f"Hand sort mode changed to {mode}.")
         self.render_hand()
 
     def update_selection_label(self) -> None:
@@ -4171,15 +4271,56 @@ class FoodGameApp:
         self._update_chef_button()
         self._update_seasoning_button()
 
+    def _format_log_line(self, line: str) -> str:
+        if not line.strip():
+            return ""
+        timestamp = datetime.now().strftime("[%H:%M:%S]")
+        return f"{timestamp}: {line}"
+
     def _append_log_lines(self, lines: Iterable[str]) -> None:
         collected = list(lines)
         if not collected:
             return
         self.log_text.configure(state="normal")
         for line in collected:
-            self.log_text.insert("end", f"{line}\n")
+            formatted = self._format_log_line(line)
+            if formatted:
+                self.log_text.insert("end", f"{formatted}\n")
+            else:
+                self.log_text.insert("end", "\n")
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def _log_action(self, message: str) -> None:
+        self._append_log_lines([message])
+
+    def _log_run_settings(self) -> None:
+        if not self.session:
+            return
+        seed_text = (
+            str(self.session.seed)
+            if getattr(self.session, "seed", None) is not None
+            else "random"
+        )
+        chef_count = len(self.session.chefs)
+        summary = (
+            "Run settings — "
+            f"Basket: {self.session.basket_name}; "
+            f"Rounds: {self.session.rounds}; "
+            f"Cooks/round: {self.session.cooks_per_round}; "
+            f"Hand size: {self.session.hand_size}; "
+            f"Pick size: {self.session.pick_size}; "
+            f"Max chefs: {self.session.max_chefs}; "
+            f"Starting chefs: {chef_count}; "
+            f"Total turns: {self.session.total_turns}; "
+            f"RNG seed: {seed_text}"
+        )
+        position = (
+            "Starting position — "
+            f"Round {self.session.round_index}/{self.session.rounds}; "
+            f"Turn {self.session.turn_number + 1} of {self.session.total_turns}"
+        )
+        self._append_log_lines([summary, position])
 
     def append_events(self, messages: Iterable[str]) -> None:
         self._append_log_lines(f"• {message}" for message in messages)
@@ -4442,16 +4583,44 @@ class FoodGameApp:
     # ----------------- Gameplay actions -----------------
     def cook_selected(self) -> None:
         if not self.session:
+            self._log_action("Cook button pressed without an active session.")
             return
         if not self.selected_indices:
+            self._log_action("Cook button pressed with no ingredients selected.")
             messagebox.showwarning(
                 "Incomplete selection",
                 "Select at least one ingredient before cooking.",
             )
             return
 
+        hand_cards = list(self.session.get_hand())
+        indices = sorted(self.selected_indices)
+        selected_names: List[str] = []
+        for index in indices:
+            if 0 <= index < len(hand_cards):
+                ingredient = hand_cards[index].ingredient
+                selected_names.append(
+                    getattr(ingredient, "display_name", None) or ingredient.name
+                )
+        if self.applied_seasonings:
+            seasoning_descriptions: List[str] = []
+            for seasoning_id, count in sorted(self.applied_seasonings.items()):
+                seasoning_name = seasoning_id
+                if self.session:
+                    seasoning = self.session.data.seasoning_by_id.get(seasoning_id)
+                    if seasoning:
+                        seasoning_name = seasoning.display_name or seasoning.name
+                seasoning_descriptions.append(f"{seasoning_name}×{count}")
+            seasonings_text = ", ".join(seasoning_descriptions)
+        else:
+            seasonings_text = "none"
+        ingredients_text = ", ".join(selected_names) if selected_names else "none"
+        self._log_action(
+            "Cook button pressed with ingredients: "
+            f"{ingredients_text}; seasonings: {seasonings_text}."
+        )
+
         try:
-            indices = sorted(self.selected_indices)
             outcome = self.session.play_turn(indices, self.applied_seasonings)
         except InvalidDishSelection as exc:
             self.selected_indices.clear()
@@ -4462,8 +4631,10 @@ class FoodGameApp:
             self.append_events(self.session.consume_events())
             self.write_result(str(exc))
             self._show_invalid_dish_popup(exc)
+            self._log_action(f"Cook action failed: {exc}")
             return
         except Exception as exc:  # pragma: no cover - user feedback path
+            self._log_action(f"Cook action failed with error: {exc}")
             messagebox.showerror("Unable to cook selection", str(exc))
             return
 
@@ -4590,8 +4761,10 @@ class FoodGameApp:
 
     def return_selected(self) -> None:
         if not self.session:
+            self._log_action("Return button pressed without an active session.")
             return
         if not self.selected_indices:
+            self._log_action("Return button pressed with no ingredients selected.")
             messagebox.showwarning(
                 "No selection",
                 "Select at least one ingredient to return.",
@@ -4599,9 +4772,20 @@ class FoodGameApp:
             return
 
         indices = sorted(self.selected_indices)
+        hand_cards = list(self.session.get_hand()) if self.session else []
+        selected_names: List[str] = []
+        for index in indices:
+            if 0 <= index < len(hand_cards):
+                ingredient = hand_cards[index].ingredient
+                selected_names.append(
+                    getattr(ingredient, "display_name", None) or ingredient.name
+                )
+        ingredients_text = ", ".join(selected_names) if selected_names else "none"
+        self._log_action(f"Return button pressed with ingredients: {ingredients_text}.")
         try:
             removed, deck_refreshed = self.session.return_indices(indices)
         except Exception as exc:  # pragma: no cover - user feedback path
+            self._log_action(f"Return action failed with error: {exc}")
             messagebox.showerror("Unable to return ingredient", str(exc))
             return
 
@@ -4627,6 +4811,12 @@ class FoodGameApp:
         else:
             message = "No ingredient was returned."
         self.write_result(message)
+        if removed:
+            self._log_action(
+                f"Returned ingredients resolved: {', '.join(ingredient.name for ingredient in removed)}."
+            )
+        else:
+            self._log_action("Return action completed with no ingredients removed.")
 
         if self.session.is_finished():
             self._handle_run_finished()

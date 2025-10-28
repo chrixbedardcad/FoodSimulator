@@ -17,7 +17,7 @@
     "taste": "Salty",
     "Value": 12,
     "family": "Protein",
-    "rotten_turns": 3,
+    "rotten_turns": 4,
     "rotten_image": "img/ingredients/egg_rotten.png",
     "ui_circles": true
   },
@@ -28,7 +28,7 @@
     "taste": "Sour",
     "Value": 22,
     "family": "Fruit",
-    "rotten_turns": 3,
+    "rotten_turns": 4,
     "rotten_image": "img/ingredients/tomato_rotten.png",
     "ui_circles": true
   },
@@ -116,7 +116,7 @@
     "taste": "Salty",
     "Value": 14,
     "family": "Protein",
-    "rotten_turns": 2,
+    "rotten_turns": 3,
     "rotten_image": "img/ingredients/bacon_rotten.png",
     "ui_circles": true
   },
@@ -204,7 +204,7 @@
     "taste": "Umami",
     "Value": 10,
     "family": "Grain",
-    "rotten_turns": 3,
+    "rotten_turns": 4,
     "rotten_image": "img/ingredients/bread_rotten.png",
     "ui_circles": true
   },

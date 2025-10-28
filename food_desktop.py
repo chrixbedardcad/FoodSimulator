@@ -981,22 +981,32 @@ class GameSession:
         self._push_event("Deck refreshed to reflect your expanded chef lineup.")
         self._refill_hand()
 
-    def _apply_end_turn_decay(self) -> None:
-        if not self.hand:
-            return
-
-        for card in self.hand:
+    def _advance_decay(
+        self, cards: Iterable[IngredientCard], *, record_events: bool = True
+    ) -> List[IngredientCard]:
+        newly_rotten: List[IngredientCard] = []
+        for card in cards:
             if card.is_rotten:
                 continue
             limit = max(card.ingredient.rotten_turns, 0)
             card.turns_in_hand += 1
             if limit and card.turns_in_hand >= limit:
                 card.turns_in_hand = limit
-                card.is_rotten = True
-                name = getattr(card.ingredient, "display_name", None) or card.ingredient.name
-                self._push_event(
-                    f"{name} has gone rotten and will ruin any dish it joins."
-                )
+                if not card.is_rotten:
+                    card.is_rotten = True
+                    newly_rotten.append(card)
+                    if record_events:
+                        name = getattr(card.ingredient, "display_name", None) or card.ingredient.name
+                        self._push_event(
+                            f"{name} has gone rotten and will ruin any dish it joins."
+                        )
+        return newly_rotten
+
+    def _apply_end_turn_decay(self) -> None:
+        if not self.hand:
+            return
+
+        self._advance_decay(self.hand, record_events=True)
 
     def _handle_invalid_selection(
         self,
@@ -1019,15 +1029,7 @@ class GameSession:
         for offset, index in enumerate(indices):
             self.hand.pop(index - offset)
 
-        newly_rotten: List[IngredientCard] = []
-        for card in selected_cards:
-            card.turns_in_hand += 1
-            limit = max(card.ingredient.rotten_turns, 0)
-            if limit and card.turns_in_hand >= limit:
-                card.turns_in_hand = limit
-                if not card.is_rotten:
-                    card.is_rotten = True
-                    newly_rotten.append(card)
+        newly_rotten = self._advance_decay(self.hand, record_events=False)
 
         self.deck.extend(selected_cards)
         if self.deck:
@@ -1048,7 +1050,6 @@ class GameSession:
                 f"{rotten_names} {plural_word} now gone rotten and will ruin any dish {ruin_pronoun} joins."
             )
 
-        self._apply_end_turn_decay()
         self._refill_hand()
 
         plural = len(display_names) != 1
@@ -1382,15 +1383,7 @@ class GameSession:
         for offset, index in enumerate(unique):
             returned_cards.append(self.hand.pop(index - offset))
 
-        newly_rotten: List[IngredientCard] = []
-        for card in returned_cards:
-            card.turns_in_hand += 1
-            limit = max(card.ingredient.rotten_turns, 0)
-            if limit and card.turns_in_hand >= limit:
-                card.turns_in_hand = limit
-                if not card.is_rotten:
-                    card.is_rotten = True
-                    newly_rotten.append(card)
+        newly_rotten = self._advance_decay(self.hand, record_events=False)
 
         self.deck.extend(returned_cards)
         if self.deck:

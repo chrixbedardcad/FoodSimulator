@@ -43,14 +43,14 @@ def test_leaving_hand_preserves_turns_in_hand(game_data: GameData) -> None:
     turns = {card.ingredient.name: card.turns_in_hand for card in round_state.cards_in_hand()}
     assert turns["Tomato"] == 1
     assert turns["Egg"] == 1
-    assert turns["Mushroom"] == 1
+    assert turns["Mushroom"] == 2
 
     round_state.end_turn_decay()
 
     turns = {card.ingredient.name: card.turns_in_hand for card in round_state.cards_in_hand()}
     assert turns["Tomato"] == 2
     assert turns["Egg"] == 2
-    assert turns["Mushroom"] == 2
+    assert turns["Mushroom"] == 3
 
 
 def test_card_rots_when_turn_limit_reached(game_data: GameData) -> None:
@@ -84,6 +84,31 @@ def test_invalid_cook_returns_cards_and_preserves_decay(game_data: GameData) -> 
     round_state.end_turn_decay()
 
     assert all(card.turns_in_hand == 2 for card in round_state.cards_in_hand())
+
+
+
+def test_return_action_counts_as_turn_for_remaining_cards(game_data: GameData) -> None:
+    round_state = make_round(
+        game_data,
+        ["Tomato", "Basil", "Basil", "Mushroom"],
+        hand_size=3,
+    )
+
+    first_card = round_state.hand[0]
+    second_card = round_state.hand[1]
+    lingering_card = round_state.hand[2]
+    assert first_card is not None and second_card is not None and lingering_card is not None
+
+    first_card.turns_in_hand = 2
+    second_card.turns_in_hand = 0
+    lingering_card.turns_in_hand = 1
+
+    assert not round_state.play_attempt([0, 1])
+
+    assert first_card.turns_in_hand == 2
+    assert second_card.turns_in_hand == 0
+    assert lingering_card.turns_in_hand == 2
+    assert lingering_card.is_rotten
 
 
 def test_round_ends_when_basket_empty(game_data: GameData) -> None:

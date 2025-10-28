@@ -104,6 +104,7 @@ class RottingRound:
         cards = [card for _, card in chosen]
         if len(cards) < 3 or len(cards) > 5:
             self._return_to_basket(chosen)
+            self._age_remaining_hand_after_return()
             self.draw_to_full()
             return False
 
@@ -114,6 +115,7 @@ class RottingRound:
             return True
 
         self._return_to_basket(chosen)
+        self._age_remaining_hand_after_return()
         self.draw_to_full()
         return False
 
@@ -155,6 +157,16 @@ class RottingRound:
                 if self._data.is_valid_dish(ingredients):
                     return True
         return False
+
+    def _age_remaining_hand_after_return(self) -> None:
+        for card in self.hand:
+            if card is None or card.is_rotten:
+                continue
+            card.turns_in_hand += 1
+            limit = max(card.ingredient.rotten_turns, 0)
+            if limit and card.turns_in_hand >= limit:
+                card.turns_in_hand = limit
+                card.is_rotten = True
 
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
         for index, card in sorted(chosen, key=lambda pair: pair[0], reverse=True):

@@ -2,35 +2,35 @@
   "Basic": [
     {
       "ingredient": "Pasta",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Rice",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Tomato",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Parmesan",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Egg",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Bacon",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Mushroom",
-      "copies": 5
+      "copies": 2
     },
     {
       "ingredient": "Bread",
-      "copies": 6
+      "copies": 2
     }
   ],
   "Mediterranean": [

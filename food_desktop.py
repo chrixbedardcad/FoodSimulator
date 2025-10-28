@@ -1015,13 +1015,6 @@ class GameSession:
                     f"{name} has gone rotten and locks its slot until the round ends."
                 )
 
-        if self.hand and all(card.is_rotten for card in self.hand):
-            if not self.finished:
-                self.finished = True
-                self._push_event(
-                    "All of your hand ingredients have rotted. The run is over."
-                )
-
     def _handle_invalid_selection(
         self,
         indices: Sequence[int],
@@ -1441,9 +1434,15 @@ class GameSession:
         if any(index < 0 or index >= len(self.hand) for index in unique):
             raise IndexError("Selection index out of range for the current hand.")
 
-        selected_cards = [self.hand[index] for index in unique]
-        if any(card.is_rotten for card in selected_cards):
-            raise ValueError("You cannot cook with rotten ingredients.")
+        selected_cards: List[IngredientCard] = []
+        for index in unique:
+            card = self.hand[index]
+            if card is None:
+                raise ValueError("Selected slot is empty.")
+            selected_cards.append(card)
+
+        rotten_cards = [card for card in selected_cards if card.is_rotten]
+        rotten_count = len(rotten_cards)
 
         if len(selected_cards) > 1:
             identifiers = [
@@ -1474,12 +1473,18 @@ class GameSession:
             for alert in alerts:
                 self._push_event(alert)
         Value = dish.base_value
+        ingredient_value_total = sum(card.ingredient.Value for card in selected_cards)
+        original_recipe_name = recipe_name
+        rotted = rotten_count > 0
+        active_recipe_name = None if rotted else recipe_name
         recipe_display_name = (
-            self.data.recipe_display_name(recipe_name) if recipe_name else None
+            self.data.recipe_display_name(active_recipe_name)
+            if active_recipe_name
+            else None
         )
-        times_cooked_before = self._times_cooked(recipe_name)
+        times_cooked_before = self._times_cooked(active_recipe_name)
         recipe_multiplier = self.data.recipe_multiplier(
-            recipe_name,
+            active_recipe_name,
             chefs=self.chefs,
             times_cooked=times_cooked_before,
         )
@@ -1493,26 +1498,56 @@ class GameSession:
             self._push_event(ruined_message)
         base_value = seasoning_calc.seasoned_score
         final_score = int(round(base_value * recipe_multiplier))
+        if rotted:
+            penalty_value = int(ingredient_value_total * rotten_count)
+            base_value = -penalty_value
+            final_score = -penalty_value
+            recipe_multiplier = 1.0
+            active_recipe_name = None
+            recipe_display_name = None
+            seasoning_calc.base_score = base_value
+            seasoning_calc.seasoned_score = base_value
+            seasoning_calc.total_boost_pct = 0.0
+            seasoning_calc.total_penalty = 0.0
+            seasoning_calc.ruined = True
+            penalty_message = (
+                "Rotten ingredients spoiled the dish! Penalty "
+                f"{final_score} points ({ingredient_value_total} total value x{rotten_count})."
+            )
+            alerts.append(penalty_message)
+            self._push_event(penalty_message)
+            if original_recipe_name:
+                ruined_display = (
+                    self.data.recipe_display_name(original_recipe_name)
+                    or original_recipe_name
+                )
+                alerts.append(
+                    f"{ruined_display} was ruined by spoiled ingredients."
+                )
         chef_hits = sum(1 for ing in selected if ing.name in self._chef_key_set)
 
         discovered = False
         personal_discovery = False
         times_cooked_total = 0
-        if recipe_name:
-            recipe = self.data.recipe_by_name.get(recipe_name)
+        if active_recipe_name:
+            recipe = self.data.recipe_by_name.get(active_recipe_name)
             if recipe:
                 combo: Tuple[str, ...] = tuple(recipe.trio)
             else:
                 combo = tuple(sorted(ingredient.name for ingredient in selected))
-            entry = self.cookbook.get(recipe_name)
+            entry = self.cookbook.get(active_recipe_name)
             chef_has_recipe = any(
-                recipe_name in chef.recipe_names for chef in self.chefs
+                active_recipe_name in chef.recipe_names for chef in self.chefs
             )
             if not entry:
-                display_name = recipe_display_name or recipe_name or ", ".join(combo)
+                display_name = (
+                    recipe_display_name
+                    or active_recipe_name
+                    or ", ".join(combo)
+                )
                 entry = CookbookEntry(combo, display_name)
                 entry.personal_discovery = not chef_has_recipe
-                self.cookbook[recipe_name] = entry
+                self.cookbook[active_recipe_name] = entry
                 discovered = True
                 personal_discovery = entry.personal_discovery
                 self._cookbook_ingredients.update(combo)
@@ -1524,12 +1559,12 @@ class GameSession:
             if entry.personal_discovery and not chef_has_recipe:
                 display_times = max(entry.count - 1, 0)
             entry.multiplier = self.data.recipe_multiplier(
-                recipe_name,
+                active_recipe_name,
                 chefs=self.chefs,
                 times_cooked=display_times,
             )
             if discovered:
-                event_name = recipe_display_name or recipe_name
+                event_name = recipe_display_name or active_recipe_name
                 if personal_discovery:
                     self._push_event(
                         f"You personally discovered {event_name}! Added to your cookbook."
@@ -1597,7 +1632,7 @@ class GameSession:
             flavor_label=dish.flavor_label,
             family_pattern=dish.family_pattern,
             flavor_pattern=dish.flavor_pattern,
-            recipe_name=recipe_name,
+            recipe_name=active_recipe_name,
             recipe_display_name=recipe_display_name,
             recipe_multiplier=recipe_multiplier,
             final_score=final_score,

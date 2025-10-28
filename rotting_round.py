@@ -91,7 +91,7 @@ class RottingRound:
             if index < 0 or index >= len(self.hand):
                 raise IndexError("Selection index out of range for the current hand.")
             card = self.hand[index]
-            if card is None or card.is_rotten:
+            if card is None:
                 continue
             chosen.append((index, card))
 
@@ -139,10 +139,12 @@ class RottingRound:
         self._events.append((event, payload))
 
     def _fresh_count(self) -> int:
-        return sum(1 for card in self.hand if card is not None and not card.is_rotten)
+        """Return the number of occupied hand slots regardless of rot state."""
+
+        return sum(1 for card in self.hand if card is not None)
 
     def _has_valid_recipe_in_hand(self) -> bool:
-        available = [card for card in self.hand if card is not None and not card.is_rotten]
+        available = [card for card in self.hand if card is not None]
         if len(available) < 3:
             return False
 

@@ -1481,29 +1481,18 @@ class GameSession:
         rotten_cards = [card for card in selected_cards if card.is_rotten]
         rotten_count = len(rotten_cards)
 
-        if len(selected_cards) > 1:
-            identifiers = [
-                getattr(card.ingredient, "ingredient_id", None) or card.ingredient.name
-                for card in selected_cards
-            ]
-            if len(set(identifiers)) == 1:
-                raise self._handle_invalid_selection(
-                    unique,
-                    selected_cards,
-                    reason="all_same_ingredient",
-                    primary_ingredient=selected_cards[0].ingredient,
-                )
-
         selected = [card.ingredient for card in selected_cards]
 
         dish = self.data.evaluate_dish(selected)
         recipe_name = self.data.which_recipe(selected)
-        if recipe_name is None and dish.entry is None:
-            raise self._handle_invalid_selection(
-                unique,
-                selected_cards,
-                primary_ingredient=selected_cards[0].ingredient if selected_cards else None,
-            )
+
+        fallback_combo = recipe_name is None and dish.entry is None
+
+        dish_multiplier = dish.dish_multiplier
+        dish_value_for_scoring = dish.dish_value
+        if fallback_combo:
+            dish_multiplier = 1.0
+            dish_value_for_scoring = float(dish.base_value)
 
         alerts = list(dish.alerts)
         if alerts:
@@ -1527,7 +1516,7 @@ class GameSession:
         )
         applied = applied_seasonings or {}
         seasoning_calc = self.calculate_seasoning_adjustments(
-            selected, dish.dish_value, applied
+            selected, dish_value_for_scoring, applied
         )
         if seasoning_calc.ruined and seasoning_calc.usage:
             ruined_message = self.rng.choice(RUINED_SEASONING_MESSAGES)
@@ -1662,7 +1651,7 @@ class GameSession:
             selected=selected,
             Value=Value,
             dish_value=float(base_value),
-            dish_multiplier=dish.dish_multiplier,
+            dish_multiplier=dish_multiplier,
             dish_name=dish.name,
             dish_tier=dish.tier,
             family_label=dish.family_label,

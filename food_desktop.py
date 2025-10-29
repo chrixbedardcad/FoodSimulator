@@ -1055,16 +1055,13 @@ class GameSession:
     def _choose_bonus_ingredients(self, count: int = 3) -> List[Ingredient]:
         pool: List[Ingredient] = []
         seen: set[str] = set()
-        for ingredient_name, _copies in self.data.baskets.get(self.basket_name, []):
-            ingredient = self.data.ingredients.get(ingredient_name)
-            if not ingredient:
-                continue
+        for ingredient in self.data.ingredients.values():
             if ingredient.name in seen:
                 continue
             pool.append(ingredient)
             seen.add(ingredient.name)
         if len(pool) <= count:
-            return pool
+            return list(pool)
         return self.rng.sample(pool, count)
 
     def _refill_hand(self, *, log_new_cards: bool = True) -> bool:

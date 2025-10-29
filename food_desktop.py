@@ -126,6 +126,33 @@ def format_challenge_reward_text(reward: Mapping[str, str]) -> str:
     return f"{article} {descriptor}"
 
 
+def challenge_ingredient_counts(
+    data: GameData, challenge: BasketChallenge
+) -> Tuple[int, int]:
+    """Return (unique ingredient count, total card count) for a basket challenge."""
+
+    entries = data.baskets.get(challenge.basket_name, [])
+    unique_count = len(entries)
+    total_count = sum(max(0, copies) for _name, copies in entries)
+
+    if total_count <= 0:
+        total_count = len(challenge.added_ing_ids)
+    if unique_count <= 0 and challenge.added_ing_ids:
+        unique_count = len(set(challenge.added_ing_ids))
+
+    return unique_count, total_count
+
+
+def format_challenge_ingredient_text(unique_count: int, total_count: int) -> str:
+    """Return readable text describing ingredient counts for a challenge."""
+
+    if total_count > 0:
+        if unique_count == total_count or unique_count <= 0:
+            return f"{total_count} ingredients"
+        return f"{unique_count} ingredients ({total_count} cards)"
+    return "No listed ingredients"
+
+
 if Image is not None:
     try:
         RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -980,9 +1007,6 @@ class GameSession:
         self.challenge_target: Optional[int] = (
             int(challenge.target_score) if challenge else None
         )
-        self.challenge_plays_budget: Optional[int] = (
-            int(challenge.plays_budget) if challenge else None
-        )
         self.challenge_reward: Optional[Mapping[str, str]] = (
             dict(challenge.reward) if challenge else None
         )
@@ -1018,15 +1042,21 @@ class GameSession:
 
         if self.challenge:
             reward_text = format_challenge_reward_text(self.challenge.reward)
-            plays_text = (
-                f" within {self.challenge.plays_budget} plays"
-                if self.challenge.plays_budget
-                else ""
+            unique_count, total_count = challenge_ingredient_counts(
+                self.data, self.challenge
             )
+            ingredient_text = format_challenge_ingredient_text(
+                unique_count, total_count
+            )
+            if ingredient_text != "No listed ingredients":
+                ingredient_sentence = f"This basket adds {ingredient_text}."
+            else:
+                ingredient_sentence = "This basket has no listed ingredients."
+
             self._push_event(
                 "Basket challenge accepted: "
-                f"Reach {self.challenge.target_score} points{plays_text} "
-                f"to earn {reward_text}."
+                f"Reach {self.challenge.target_score} points to earn {reward_text}. "
+                f"{ingredient_sentence}"
             )
 
         self._cookbook_ingredients: set[str] = set()
@@ -3773,13 +3803,17 @@ class FoodGameApp:
         if self.session and self.session.challenge:
             challenge = self.session.challenge
             reward_text = format_challenge_reward_text(challenge.reward)
+            unique_count, total_count = challenge_ingredient_counts(DATA, challenge)
+            ingredient_text = format_challenge_ingredient_text(
+                unique_count, total_count
+            )
+
             summary = (
                 f"{challenge.basket_name} ({challenge.difficulty.title()}) — "
                 f"Target {challenge.target_score} pts"
+                f" · {ingredient_text}"
+                f" · Reward: {reward_text}"
             )
-            if challenge.plays_budget:
-                summary += f" in {challenge.plays_budget} plays"
-            summary += f" · Reward: {reward_text}"
             self.challenge_summary_var.set(summary)
         else:
             self.challenge_summary_var.set(self._default_challenge_message())
@@ -3910,16 +3944,16 @@ class FoodGameApp:
                 )
 
             reward_text = format_challenge_reward_text(challenge.reward)
+            unique_count, total_count = challenge_ingredient_counts(DATA, challenge)
+            ingredient_text = format_challenge_ingredient_text(
+                unique_count, total_count
+            )
             ttk.Label(
                 wrapper,
                 text=(
                     f"Target {challenge.target_score} pts"
-                    + (
-                        f" in {challenge.plays_budget} plays"
-                        if challenge.plays_budget
-                        else ""
-                    )
-                    + f" · Reward: {reward_text}"
+                    f" · {ingredient_text}"
+                    f" · Reward: {reward_text}"
                 ),
                 style="TileInfo.TLabel",
                 wraplength=320,
@@ -4027,15 +4061,15 @@ class FoodGameApp:
                 )
                 challenge_images.append(challenge_image)
 
+            unique_count, total_count = challenge_ingredient_counts(DATA, challenge)
+            ingredient_text = format_challenge_ingredient_text(
+                unique_count, total_count
+            )
             ttk.Label(
                 tile,
                 text=(
                     f"Target {challenge.target_score} pts"
-                    + (
-                        f" in {challenge.plays_budget} plays"
-                        if challenge.plays_budget
-                        else ""
-                    )
+                    f" · {ingredient_text}"
                 ),
                 style="TileInfo.TLabel",
                 justify="center",
@@ -6459,14 +6493,20 @@ def _blank_run_state() -> Dict[str, object]:
     }
 
 
-def _format_challenge_summary(challenge: BasketChallenge) -> str:
+def _format_challenge_summary(data: GameData, challenge: BasketChallenge) -> str:
     reward = challenge.reward
     reward_type = reward.get("type", "?")
     reward_rarity = reward.get("rarity", "?")
+    unique_count, total_count = challenge_ingredient_counts(data, challenge)
+    ingredient_text = format_challenge_ingredient_text(unique_count, total_count)
+    if ingredient_text != "No listed ingredients":
+        ingredient_phrase = f"adds {ingredient_text}"
+    else:
+        ingredient_phrase = ingredient_text
     return (
         f"[{challenge.difficulty.upper()}] {challenge.basket_name} — "
-        f"Target {challenge.target_score} pts in {challenge.plays_budget} plays; "
-        f"adds {len(challenge.added_ing_ids)} ingredients; "
+        f"Target {challenge.target_score} pts; "
+        f"{ingredient_phrase}; "
         f"reward {reward_type} ({reward_rarity})"
     )
 
@@ -6483,7 +6523,7 @@ def _debug_print_challenges(data: GameData, *, seed: Optional[int] = None) -> No
         print("Seed: random")
     for index, offer in enumerate(offers, start=1):
         print(f"{index}. {offer.id}")
-        print(f"   { _format_challenge_summary(offer)}")
+        print(f"   {_format_challenge_summary(data, offer)}")
         added_preview = ", ".join(offer.added_ing_ids[:6])
         if len(offer.added_ing_ids) > 6:
             added_preview += ", …"

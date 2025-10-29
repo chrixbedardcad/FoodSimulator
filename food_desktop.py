@@ -165,6 +165,7 @@ else:  # pragma: no cover - CLI debug path when Pillow missing
 _icon_cache: Dict[str, tk.PhotoImage] = {}
 _ingredient_image_cache: Dict[str, tk.PhotoImage] = {}
 _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
+_chef_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 _cookbook_indicator_cache: Dict[str, Optional[tk.PhotoImage]] = {}
@@ -393,6 +394,20 @@ def _load_seasoning_icon(
 
     image = ImageTk.PhotoImage(working)
     _seasoning_icon_cache[cache_key] = image
+    return image
+
+
+def _load_chef_icon(*, target_px: int = 80) -> tk.PhotoImage:
+    cache_key = f"chef:generic:{target_px}"
+    cached = _chef_icon_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    image = _load_button_image("chefs.png", target_px=target_px)
+    if image is None:
+        working = Image.new("RGBA", (target_px, target_px), (255, 255, 255, 255))
+        image = ImageTk.PhotoImage(working)
+    _chef_icon_cache[cache_key] = image
     return image
 
 
@@ -980,6 +995,7 @@ class GameSession:
         seed: Optional[int] = None,
         pantry_card_ids: Optional[Sequence[str]] = None,
         starting_cookbook: Optional[Mapping[str, "CookbookEntry"]] = None,
+        starting_seasonings: Optional[Sequence[Seasoning]] = None,
     ) -> None:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -1064,6 +1080,15 @@ class GameSession:
             name: tuple(recipes)
             for name, recipes in self.data.ingredient_recipes.items()
         }
+
+        if starting_seasonings:
+            for seasoning in starting_seasonings:
+                if not isinstance(seasoning, Seasoning):
+                    continue
+                if any(existing.seasoning_id == seasoning.seasoning_id for existing in self.seasonings):
+                    continue
+                self.seasonings.append(seasoning)
+                self._seasoning_charges[seasoning.seasoning_id] = seasoning.charges
 
         self._refresh_chef_data()
         self.cookbook: Dict[str, CookbookEntry] = {}
@@ -3169,6 +3194,8 @@ class FoodGameApp:
         self._log_start_time: Optional[datetime] = None
         self._lifetime_total_score = 0
         self._persistent_cookbook: Dict[str, CookbookEntry] = {}
+        self._persistent_chefs: List[Chef] = []
+        self._persistent_seasonings: List[Seasoning] = []
         self._last_run_config: Optional[Dict[str, int]] = None
 
         self.challenge_factory = BasketChallengeFactory(DATA, TARGET_SCORE_CONFIG)
@@ -4226,18 +4253,29 @@ class FoodGameApp:
         new_pantry_ids = list(self.pantry_card_ids)
         new_pantry_ids.extend(challenge.added_ing_ids)
 
+        starting_chefs = list(self._persistent_chefs)
+        max_chefs = config["max_chefs"]
+        if len(starting_chefs) > max_chefs:
+            self._log_action(
+                "Starting roster exceeds the max chef limit; extra chefs will sit out this run."
+            )
+            starting_chefs = starting_chefs[:max_chefs]
+
+        starting_seasonings = list(self._persistent_seasonings)
+
         try:
             self.session = GameSession(
                 DATA,
                 basket_name=challenge.basket_name,
-                chefs=[],
+                chefs=starting_chefs,
                 rounds=config["rounds"],
                 hand_size=config["hand_size"],
                 pick_size=config["pick_size"],
-                max_chefs=config["max_chefs"],
+                max_chefs=max_chefs,
                 challenge=challenge,
                 pantry_card_ids=new_pantry_ids,
                 starting_cookbook=self._persistent_cookbook,
+                starting_seasonings=starting_seasonings,
             )
             self._run_completion_notified = False
             self._last_run_config = dict(config)
@@ -4315,35 +4353,279 @@ class FoodGameApp:
         if total_score < target:
             return
 
+        self._present_challenge_reward(total_score)
+
+    def _present_challenge_reward(self, total_score: int) -> None:
+        if not self.session or not self.session.challenge:
+            return
+
         self.session.challenge_reward_claimed = True
+
         challenge = self.session.challenge
-        reward = getattr(self.session, "challenge_reward", {}) or {}
-        reward_type = reward.get("type", "reward").replace("_", " ").strip()
-        rarity = reward.get("rarity", "").strip()
-        reward_parts = [part.title() for part in (rarity, reward_type) if part]
-        reward_display = " ".join(reward_parts) if reward_parts else "Reward"
+        reward = dict(getattr(self.session, "challenge_reward", {}) or {})
+        reward_type, reward_obj, reward_id = self._resolve_challenge_reward_candidate(reward)
 
-        message_lines = [
-            f"You reached {total_score} points and cleared the {challenge.basket_name} basket!",
-            "",
-            f"Reward earned: {reward_display}.",
+        if reward_id:
+            reward["id"] = reward_id
+
+        display_name, perk_text = self._describe_reward_details(reward_type, reward_obj, reward)
+        reward["name"] = display_name
+        self.session.challenge_reward = reward
+
+        base_descriptor = format_challenge_reward_text(reward).capitalize()
+
+        if isinstance(reward_obj, Seasoning):
+            reward_image = _load_seasoning_icon(reward_obj, target_px=108)
+        elif isinstance(reward_obj, Chef):
+            reward_image = _load_chef_icon(target_px=108)
+        else:
+            reward_image = _load_button_image("reward.png", target_px=108)
+            if reward_image is None:
+                reward_image = _load_chef_icon(target_px=108)
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Basket Reward Earned")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+
+        frame = ttk.Frame(popup, padding=18)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(
+            frame,
+            text=f"You reached {total_score} points!",
+            style="Header.TLabel",
+            anchor="w",
+            justify="left",
+        ).grid(row=0, column=0, columnspan=2, sticky="w")
+
+        ttk.Label(
+            frame,
+            text=f"Reward earned: {display_name}",
+            style="Summary.TLabel",
+            anchor="w",
+            justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        ttk.Label(
+            frame,
+            text=base_descriptor,
+            style="TileSub.TLabel",
+            anchor="w",
+            justify="left",
+        ).grid(row=2, column=0, columnspan=2, sticky="w")
+
+        image_label = ttk.Label(frame, image=reward_image)
+        image_label.grid(row=3, column=0, sticky="nw", pady=(12, 0), padx=(0, 12))
+        image_label.image = reward_image  # type: ignore[attr-defined]
+
+        description = perk_text or "Perk details unavailable for this reward."
+        ttk.Label(
+            frame,
+            text=description,
+            style="Info.TLabel",
+            wraplength=360,
+            justify="left",
+        ).grid(row=3, column=1, sticky="w", pady=(12, 0))
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=4, column=0, columnspan=2, sticky="e", pady=(18, 0))
+
+        def finalize_reward() -> None:
+            if not self.session:
+                return
+
+            error_message: Optional[str] = None
+
+            if reward_type == "seasoning" and isinstance(reward_obj, Seasoning):
+                try:
+                    self.session.add_seasoning(reward_obj)
+                except Exception as exc:  # pragma: no cover - user feedback path
+                    error_message = str(exc)
+                else:
+                    self._store_persistent_seasoning(reward_obj)
+            elif reward_type == "chef" and isinstance(reward_obj, Chef):
+                try:
+                    self.session.add_chef(reward_obj)
+                except Exception as exc:  # pragma: no cover - user feedback path
+                    error_message = str(exc)
+                else:
+                    self._store_persistent_chef(reward_obj)
+
+            if error_message:
+                messagebox.showwarning("Reward not applied", error_message)
+
+            if popup.winfo_exists():
+                try:
+                    popup.grab_release()
+                except tk.TclError:
+                    pass
+                popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
+
+            if not self.session:
+                return
+
+            self.session.challenge_reward = reward
+            self.session.challenge_reward_claimed = True
+            self.session.finished = True
+
+            self.append_events(self.session.consume_events())
+            if self.team_tile:
+                self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
+            if self.seasoning_tile:
+                self.seasoning_tile.set_seasonings(
+                    self.session.get_seasonings(),
+                    len(self.session.available_seasonings()),
+                )
+            self._update_chef_button()
+            self._update_seasoning_button(None)
+            self._update_seasoning_panels()
+
+            summary_lines = [
+                f"You reached {total_score} points and cleared the {challenge.basket_name} basket!",
+                "",
+                f"Reward earned: {display_name}.",
+            ]
+            if description:
+                summary_lines.append("")
+                summary_lines.append(description)
+            if error_message:
+                summary_lines.append("")
+                summary_lines.append(f"Reward could not be applied: {error_message}")
+
+            message_text = "\n".join(summary_lines)
+
+            self._log_action(
+                f"Basket challenge completed at {total_score} points. Reward granted: {display_name}."
+            )
+            log_lines = [
+                f"Challenge complete! Reward earned: {display_name}.",
+                f"Total score: {total_score}",
+            ]
+            if description:
+                log_lines.append(description)
+            if error_message:
+                log_lines.append(f"Reward could not be applied: {error_message}")
+            self.write_result("\n".join(log_lines))
+
+            self._handle_run_finished(custom_message=("Basket Cleared!", message_text))
+            self.challenge_summary_var.set("Basket cleared! Select your next challenge.")
+
+            next_config = self._last_run_config or self._snapshot_run_config()
+            self.pending_run_config = dict(next_config)
+            self._prompt_basket_selection()
+
+        continue_button = ttk.Button(
+            button_frame,
+            text="Continue",
+            command=finalize_reward,
+            width=18,
+        )
+        continue_button.grid(row=0, column=0, sticky="e")
+
+        popup.protocol("WM_DELETE_WINDOW", lambda: finalize_reward())
+        popup.bind("<Escape>", lambda _e: finalize_reward())
+        popup.grab_set()
+        popup._image_refs = [reward_image]  # type: ignore[attr-defined]
+        self.active_popup = popup
+        self._center_popup(popup)
+
+    def _resolve_challenge_reward_candidate(
+        self, reward: Mapping[str, str]
+    ) -> Tuple[str, Optional[Union[Chef, Seasoning]], str]:
+        reward_type = reward.get("type", "reward").strip().lower().replace(" ", "_") or "reward"
+
+        if reward_type == "chef":
+            owned_names = {chef.name for chef in self._persistent_chefs}
+            if self.session:
+                owned_names.update(chef.name for chef in self.session.chefs)
+            candidates = [chef for chef in DATA.chefs if chef.name not in owned_names]
+            if not candidates:
+                candidates = list(DATA.chefs)
+            if not candidates:
+                return reward_type, None, ""
+            rng = getattr(self.session, "rng", random.Random())
+            chosen = rng.choice(candidates)
+            return reward_type, chosen, getattr(chosen, "chef_id", chosen.name)
+
+        if reward_type == "seasoning":
+            owned_ids = {seasoning.seasoning_id for seasoning in self._persistent_seasonings}
+            if self.session:
+                owned_ids.update(
+                    seasoning.seasoning_id for seasoning in self.session.get_seasonings()
+                )
+            candidates = [
+                seasoning
+                for seasoning in DATA.seasonings
+                if seasoning.seasoning_id not in owned_ids
+            ]
+            if not candidates:
+                candidates = list(DATA.seasonings)
+            if not candidates:
+                return reward_type, None, ""
+            rng = getattr(self.session, "rng", random.Random())
+            chosen = rng.choice(candidates)
+            return reward_type, chosen, chosen.seasoning_id
+
+        return reward_type, None, ""
+
+    def _format_chef_reward_description(self, chef: Chef) -> str:
+        lines: List[str] = []
+        recipe_names = [
+            DATA.recipe_display_name(name) or name for name in chef.recipe_names
         ]
-        message_text = "\n".join(message_lines)
+        if recipe_names:
+            lines.append("Signature recipes: " + ", ".join(recipe_names))
 
-        self._log_action(
-            f"Basket challenge completed at {total_score} points. Reward granted: {reward_display}."
-        )
-        self.write_result(
-            f"Challenge complete! Reward earned: {reward_display}.\nTotal score: {total_score}"
-        )
+        perks = chef.perks.get("recipe_multipliers") if isinstance(chef.perks, Mapping) else None
+        if isinstance(perks, Mapping):
+            for recipe_name, multiplier in sorted(perks.items()):
+                display = DATA.recipe_display_name(recipe_name) or recipe_name
+                try:
+                    value = float(multiplier)
+                except (TypeError, ValueError):
+                    continue
+                lines.append(f"• {display} {format_multiplier(value)}")
 
-        self.session.finished = True
-        self._handle_run_finished(custom_message=("Basket Cleared!", message_text))
-        self.challenge_summary_var.set("Basket cleared! Select your next challenge.")
+        if not lines:
+            lines.append("No perk description available.")
+        return "\n".join(lines)
 
-        next_config = self._last_run_config or self._snapshot_run_config()
-        self.pending_run_config = dict(next_config)
-        self._prompt_basket_selection()
+    def _describe_reward_details(
+        self,
+        reward_type: str,
+        reward_obj: Optional[Union[Chef, Seasoning]],
+        reward: Mapping[str, str],
+    ) -> Tuple[str, str]:
+        if reward_type == "seasoning" and isinstance(reward_obj, Seasoning):
+            display_name = reward_obj.display_name or reward_obj.name
+            perk_lines = [f"Taste: {reward_obj.taste}"]
+            perk = reward_obj.perk.strip()
+            if perk:
+                perk_lines.append(perk)
+            return display_name, "\n".join(perk_lines)
+
+        if reward_type == "chef" and isinstance(reward_obj, Chef):
+            display_name = reward_obj.name
+            perk_text = self._format_chef_reward_description(reward_obj)
+            return display_name, perk_text
+
+        fallback_name = format_challenge_reward_text(reward).title()
+        return fallback_name, "Perk details unavailable for this reward."
+
+    def _store_persistent_chef(self, chef: Chef) -> None:
+        if all(existing.name != chef.name for existing in self._persistent_chefs):
+            self._persistent_chefs.append(chef)
+
+    def _store_persistent_seasoning(self, seasoning: Seasoning) -> None:
+        if all(
+            existing.seasoning_id != seasoning.seasoning_id
+            for existing in self._persistent_seasonings
+        ):
+            self._persistent_seasonings.append(seasoning)
 
     def reset_session(self) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
@@ -4362,6 +4644,8 @@ class FoodGameApp:
         self._close_recruit_dialog()
         self.session = None
         self._persistent_cookbook.clear()
+        self._persistent_chefs.clear()
+        self._persistent_seasonings.clear()
         self.pantry_card_ids = []
         self._refresh_challenge_summary()
         self._update_basket_button()

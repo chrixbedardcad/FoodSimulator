@@ -920,6 +920,7 @@ class GameSession:
         self._awaiting_basket_reset = False
         self._basket_bonus_choices: List[Ingredient] = []
         self._basket_clear_summary: Optional[Dict[str, object]] = None
+        self._permanent_bonus_ingredients: List[Ingredient] = []
 
         self.hand: List[IngredientCard] = []
         self.deck: List[IngredientCard] = []
@@ -1049,6 +1050,11 @@ class GameSession:
             rng=self.rng,
         )
         cards = [IngredientCard(ingredient=item) for item in deck]
+        if self._permanent_bonus_ingredients:
+            cards.extend(
+                IngredientCard(ingredient=ingredient)
+                for ingredient in self._permanent_bonus_ingredients
+            )
         self.rng.shuffle(cards)
         return cards
 
@@ -1268,9 +1274,22 @@ class GameSession:
         self._basket_bonus_choices = []
         self._basket_clear_summary = None
 
+        self._permanent_bonus_ingredients.append(ingredient)
+
         self._start_next_round()
 
-        bonus_card = IngredientCard(ingredient=ingredient)
+        bonus_card: Optional[IngredientCard] = None
+        match_id = getattr(ingredient, "ingredient_id", None)
+        for index, card in enumerate(self.deck):
+            candidate_id = getattr(card.ingredient, "ingredient_id", None)
+            if match_id and candidate_id == match_id:
+                bonus_card = self.deck.pop(index)
+                break
+            if card.ingredient.name == ingredient.name:
+                bonus_card = self.deck.pop(index)
+                break
+        if bonus_card is None:
+            bonus_card = IngredientCard(ingredient=ingredient)
         bonus_card.freshen()
         inserted_into_empty_hand = False
         if self.hand:

@@ -141,7 +141,7 @@ _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 _cookbook_indicator_cache: Dict[str, Optional[tk.PhotoImage]] = {}
-_challenge_tile_image_cache: Dict[int, Optional[tk.PhotoImage]] = {}
+_challenge_tile_image_cache: Dict[Tuple[str, int], Optional[tk.PhotoImage]] = {}
 
 
 RecipeIconState = Literal["available", "blocked"]
@@ -389,18 +389,33 @@ def _load_button_image(filename: str, *, target_px: int = 88) -> Optional[tk.Pho
     return image
 
 
-def _load_challenge_tile_image(*, target_px: int = 160) -> Optional[tk.PhotoImage]:
-    cached = _challenge_tile_image_cache.get(target_px)
+def _basket_icon_path(basket_name: str) -> Path:
+    slug = re.sub(r"[^a-z0-9]+", "_", basket_name.lower()).strip("_")
+    if not slug:
+        slug = "basic"
+    filename = f"basket_{slug}.png"
+    image_path = BASKET_ART_DIR / filename
+    if not image_path.exists():
+        image_path = BASKET_ART_DIR / "basket_basic.png"
+    return image_path
+
+
+def _load_challenge_tile_image(
+    basket_name: str, *, target_px: int = 160
+) -> Optional[tk.PhotoImage]:
+    slug = re.sub(r"[^a-z0-9]+", "_", basket_name.lower()).strip("_") or "basic"
+    cache_key = (slug, target_px)
+    cached = _challenge_tile_image_cache.get(cache_key)
     if cached is not None:
         return cached
 
     if Image is None:
-        _challenge_tile_image_cache[target_px] = None
+        _challenge_tile_image_cache[cache_key] = None
         return None
 
-    image_path = BASKET_ART_DIR / "basket_basic.png"
+    image_path = _basket_icon_path(basket_name)
     if not image_path.exists():
-        _challenge_tile_image_cache[target_px] = None
+        _challenge_tile_image_cache[cache_key] = None
         return None
 
     with Image.open(image_path) as source_image:
@@ -409,7 +424,7 @@ def _load_challenge_tile_image(*, target_px: int = 160) -> Optional[tk.PhotoImag
         working = working.copy()
 
     image = ImageTk.PhotoImage(working)
-    _challenge_tile_image_cache[target_px] = image
+    _challenge_tile_image_cache[cache_key] = image
     return image
 
 
@@ -3824,51 +3839,115 @@ class FoodGameApp:
             detail.protocol("WM_DELETE_WINDOW", handle_close)
             detail.bind("<Escape>", lambda _e: handle_close())
 
+            detail.columnconfigure(0, weight=1)
+            detail.rowconfigure(0, weight=1)
+
             wrapper = ttk.Frame(detail, padding=16)
             wrapper.grid(row=0, column=0, sticky="nsew")
             wrapper.columnconfigure(0, weight=1)
+            wrapper.columnconfigure(1, weight=0)
+            wrapper.columnconfigure(2, weight=0)
+            wrapper.rowconfigure(3, weight=1)
 
             ttk.Label(
                 wrapper,
                 text=f"{challenge.basket_name} — {challenge.difficulty.title()}",
                 style="Header.TLabel",
-            ).grid(row=0, column=0, sticky="w")
+            ).grid(row=0, column=0, columnspan=2, sticky="w")
+
+            icon = _load_challenge_tile_image(challenge.basket_name, target_px=120)
+            if icon is not None:
+                ttk.Label(wrapper, image=icon).grid(
+                    row=1, column=0, sticky="w", pady=(8, 8)
+                )
+
+            reward_text = format_challenge_reward_text(challenge.reward)
+            ttk.Label(
+                wrapper,
+                text=(
+                    f"Target {challenge.target_score} pts"
+                    + (
+                        f" in {challenge.plays_budget} plays"
+                        if challenge.plays_budget
+                        else ""
+                    )
+                    + f" · Reward: {reward_text}"
+                ),
+                style="TileInfo.TLabel",
+                wraplength=320,
+                justify="left",
+            ).grid(row=2, column=0, columnspan=2, sticky="w")
+
+            if icon is not None:
+                detail._image_refs = [icon]  # type: ignore[attr-defined]
 
             if entries:
-                tree = ttk.Treeview(
-                    wrapper,
-                    columns=("ingredient", "copies"),
-                    show="headings",
-                    height=min(max(len(entries), 6), 14),
-                )
-                tree.heading("ingredient", text="Ingredient")
-                tree.heading("copies", text="Copies")
-                tree.column("ingredient", width=240, anchor="w")
-                tree.column("copies", width=80, anchor="center")
-                for name, copies in entries:
-                    tree.insert("", "end", values=(name, copies))
-                tree.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
-                wrapper.rowconfigure(1, weight=1)
+                canvas = tk.Canvas(wrapper, borderwidth=0, highlightthickness=0)
+                canvas.grid(row=3, column=0, columnspan=2, sticky="nsew", pady=(12, 0))
+                scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=canvas.yview)
+                scrollbar.grid(row=3, column=2, sticky="ns", pady=(12, 0))
+                canvas.configure(yscrollcommand=scrollbar.set)
 
-                scrollbar = ttk.Scrollbar(
-                    wrapper, orient="vertical", command=tree.yview
+                cards_frame = ttk.Frame(canvas)
+                canvas.create_window((0, 0), window=cards_frame, anchor="nw")
+                cards_frame.bind(
+                    "<Configure>",
+                    lambda _e: canvas.configure(scrollregion=canvas.bbox("all")),
                 )
-                scrollbar.grid(row=1, column=1, sticky="ns", pady=(10, 0))
-                tree.configure(yscrollcommand=scrollbar.set)
+                cards_frame.columnconfigure(0, weight=1)
+
+                card_views: List[CardView] = []
+                for index, (name, copies) in enumerate(entries):
+                    ingredient = DATA.ingredients.get(name)
+                    if not ingredient:
+                        missing = ttk.Label(
+                            cards_frame,
+                            text=f"{name} ×{copies} (ingredient data unavailable)",
+                            style="Info.TLabel",
+                            justify="left",
+                            wraplength=320,
+                        )
+                        missing.grid(row=index, column=0, sticky="ew", pady=(0, 8))
+                        continue
+
+                    recipe_hints = [
+                        DATA.recipe_display_name(recipe_name) or recipe_name
+                        for recipe_name in DATA.recipes_using_ingredient(ingredient.name)
+                    ]
+                    recipe_hints.sort(key=lambda value: value.lower())
+
+                    card = CardView(
+                        cards_frame,
+                        index=index,
+                        ingredient=ingredient,
+                        chef_names=[],
+                        recipe_hints=recipe_hints,
+                        cookbook_state=None,
+                        on_click=None,
+                        quantity=copies,
+                    )
+                    card.grid(row=index, column=0, sticky="ew", pady=(0, 12))
+                    cards_frame.rowconfigure(index, weight=0)
+                    card_views.append(card)
+
+                cards_frame.update_idletasks()
+                canvas.configure(scrollregion=canvas.bbox("all"))
+                detail._card_views = card_views  # type: ignore[attr-defined]
             else:
                 ttk.Label(
                     wrapper,
                     text="No ingredients listed for this basket.",
                     style="Info.TLabel",
-                ).grid(row=1, column=0, sticky="w", pady=(10, 0))
+                ).grid(row=3, column=0, sticky="w", pady=(12, 0))
 
             ttk.Button(
                 wrapper,
                 text="Close",
                 command=handle_close,
-            ).grid(row=2, column=0, sticky="e", pady=(12, 0))
+            ).grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
 
             detail.update_idletasks()
+            self._center_popup(detail)
             detail.focus_force()
 
         challenge_images: List[tk.PhotoImage] = []
@@ -3891,7 +3970,9 @@ class FoodGameApp:
                 anchor="center",
             ).grid(row=0, column=0, sticky="ew")
 
-            challenge_image = _load_challenge_tile_image(target_px=148)
+            challenge_image = _load_challenge_tile_image(
+                challenge.basket_name, target_px=148
+            )
             if challenge_image:
                 ttk.Label(tile, image=challenge_image).grid(
                     row=1, column=0, sticky="n", pady=(8, 4)

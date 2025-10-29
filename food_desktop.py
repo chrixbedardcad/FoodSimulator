@@ -3790,7 +3790,11 @@ class FoodGameApp:
             run_total = self.session.get_total_score()
             target = getattr(self.session, "challenge_target", None)
             if target is not None:
-                target_text = f"Target Score: {target}"
+                basket_name = getattr(getattr(self.session, "challenge", None), "basket_name", None)
+                if basket_name:
+                    target_text = f"Target Score: {target} — {basket_name}"
+                else:
+                    target_text = f"Target Score: {target}"
         self.target_score_var.set(target_text)
         self.run_score_detail_var.set(f"Run Score: {run_total}")
         self.lifetime_score_var.set(f"Lifetime Score: {self._lifetime_total_score}")

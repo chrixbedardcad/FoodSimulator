@@ -969,9 +969,13 @@ def simulate_run(
                 ingredient_use[ingredient.name] += 1
 
             recipe_name = data.which_recipe(trio)
-            times_cooked_before = recipe_counts.get(recipe_name, 0) if recipe_name else 0
+            times_cooked_before = (
+                recipe_counts.get(recipe_name, 0) if recipe_name else 0
+            )
+            times_cooked_total = times_cooked_before
             if recipe_name:
-                recipe_counts[recipe_name] = times_cooked_before + 1
+                times_cooked_total = times_cooked_before + 1
+                recipe_counts[recipe_name] = times_cooked_total
                 cookbook.setdefault(
                     recipe_name,
                     tuple(sorted(ingredient.name for ingredient in trio)),
@@ -982,7 +986,7 @@ def simulate_run(
             recipe_multiplier = data.recipe_multiplier(
                 recipe_name,
                 chefs=active_chefs,
-                times_cooked=times_cooked_before,
+                times_cooked=times_cooked_total,
             )
             final_score = int(round(dish.dish_value * recipe_multiplier))
             total_score += final_score

@@ -952,6 +952,7 @@ class GameSession:
         rng: Optional[random.Random] = None,
         seed: Optional[int] = None,
         pantry_card_ids: Optional[Sequence[str]] = None,
+        starting_cookbook: Optional[Mapping[str, "CookbookEntry"]] = None,
     ) -> None:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -1036,6 +1037,24 @@ class GameSession:
 
         self._refresh_chef_data()
         self.cookbook: Dict[str, CookbookEntry] = {}
+        if starting_cookbook:
+            for recipe_name, entry in starting_cookbook.items():
+                if not isinstance(entry, CookbookEntry):
+                    continue
+                clone = entry.clone()
+                self.cookbook[recipe_name] = clone
+                self._cookbook_ingredients.update(clone.ingredients)
+                chef_has_recipe = any(
+                    recipe_name in chef.recipe_names for chef in self.chefs
+                )
+                display_times = clone.count
+                if clone.personal_discovery and not chef_has_recipe:
+                    display_times = max(display_times - 1, 0)
+                clone.multiplier = self.data.recipe_multiplier(
+                    recipe_name,
+                    chefs=self.chefs,
+                    times_cooked=display_times,
+                )
 
         self._current_deck_total = 0
         self._start_next_round(initial=True)
@@ -3073,6 +3092,7 @@ class FoodGameApp:
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
         self._lifetime_total_score = 0
+        self._persistent_cookbook: Dict[str, CookbookEntry] = {}
         self._last_run_config: Optional[Dict[str, int]] = None
 
         self.challenge_factory = BasketChallengeFactory(DATA, TARGET_SCORE_CONFIG)
@@ -4138,6 +4158,7 @@ class FoodGameApp:
                 max_chefs=config["max_chefs"],
                 challenge=challenge,
                 pantry_card_ids=new_pantry_ids,
+                starting_cookbook=self._persistent_cookbook,
             )
             self._run_completion_notified = False
             self._last_run_config = dict(config)
@@ -4150,6 +4171,7 @@ class FoodGameApp:
             return
 
         cookbook_entries = self.session.get_cookbook()
+        self._persistent_cookbook = cookbook_entries
         if self.cookbook_tile:
             self.cookbook_tile.set_entries(cookbook_entries)
         self._update_cookbook_button()
@@ -4260,6 +4282,7 @@ class FoodGameApp:
         self._run_completion_notified = False
         self._close_recruit_dialog()
         self.session = None
+        self._persistent_cookbook.clear()
         self.pantry_card_ids = []
         self._refresh_challenge_summary()
         self._update_basket_button()
@@ -5298,6 +5321,8 @@ class FoodGameApp:
         if not self.session:
             return
 
+        self._persistent_cookbook = self.session.get_cookbook()
+
         if self.cook_button is not None:
             self.cook_button.configure(state="disabled")
         if self.return_button is not None:
@@ -5500,6 +5525,7 @@ class FoodGameApp:
         self.write_result(summary)
 
         cookbook_entries = self.session.get_cookbook()
+        self._persistent_cookbook = cookbook_entries
         if self.cookbook_tile:
             self.cookbook_tile.set_entries(cookbook_entries)
         self._update_cookbook_button()

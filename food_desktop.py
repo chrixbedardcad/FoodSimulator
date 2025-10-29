@@ -3026,6 +3026,17 @@ class FoodGameApp:
         self.deck_popup: Optional["DeckPopup"] = None
         self.dish_dialog: Optional[DishMatrixDialog] = None
 
+        self.cook_button: Optional[ttk.Button] = None
+        self.return_button: Optional[ttk.Button] = None
+        self.cookbook_button: Optional[ttk.Button] = None
+        self.dish_matrix_button: Optional[ttk.Button] = None
+        self.seasoning_button: Optional[ttk.Button] = None
+        self.basket_button: Optional[ttk.Button] = None
+        self.chef_button: Optional[ttk.Button] = None
+        self.log_panel: Optional[ttk.Frame] = None
+        self.log_toggle_button: Optional[ttk.Button] = None
+        self.log_text: Optional[tk.Text] = None
+
         self.hand_sort_modes: Tuple[str, ...] = ("name", "family", "taste")
         self.hand_sort_index = 0
         self.hand_sort_var = tk.StringVar(
@@ -3723,6 +3734,21 @@ class FoodGameApp:
             self.log_text.grid_remove()
         self.log_text.configure(state="disabled")
 
+    def _refresh_score_details(self) -> None:
+        target_text = "Target Score: —"
+        run_total = 0
+        if self.session:
+            run_total = self.session.get_total_score()
+            target = getattr(self.session, "challenge_target", None)
+            if target is not None:
+                target_text = f"Target Score: {target}"
+        self.target_score_var.set(target_text)
+        self.run_score_detail_var.set(f"Run Score: {run_total}")
+        self.lifetime_score_var.set(f"Lifetime Score: {self._lifetime_total_score}")
+        self._update_cookbook_button()
+        self._update_seasoning_button(None)
+        self._update_chef_button()
+
     # ----------------- Session management -----------------
     def _refresh_challenge_summary(self) -> None:
         if self.session and self.session.challenge:
@@ -4050,11 +4076,16 @@ class FoodGameApp:
         self._refresh_challenge_summary()
 
         self._set_controls_active(False)
-        self.cook_button.configure(state="normal")
-        self.return_button.configure(state="normal")
-        self.basket_button.configure(state="normal")
-        self.seasoning_button.configure(state="normal")
-        self.chef_button.configure(state="normal")
+        if self.cook_button is not None:
+            self.cook_button.configure(state="normal")
+        if self.return_button is not None:
+            self.return_button.configure(state="normal")
+        if self.basket_button is not None:
+            self.basket_button.configure(state="normal")
+        if self.seasoning_button is not None:
+            self.seasoning_button.configure(state="normal")
+        if self.chef_button is not None:
+            self.chef_button.configure(state="normal")
         self.reset_button.configure(state="normal")
         self.applied_seasonings.clear()
         self.estimated_score_var.set("Estimated Score: —")
@@ -4150,11 +4181,16 @@ class FoodGameApp:
         )
         self.applied_seasonings.clear()
         self.estimated_score_var.set("Estimated Score: —")
-        self.cook_button.configure(state="disabled")
-        self.return_button.configure(state="disabled")
-        self.basket_button.configure(state="disabled")
-        self.seasoning_button.configure(state="disabled")
-        self.chef_button.configure(state="disabled")
+        if self.cook_button is not None:
+            self.cook_button.configure(state="disabled")
+        if self.return_button is not None:
+            self.return_button.configure(state="disabled")
+        if self.basket_button is not None:
+            self.basket_button.configure(state="disabled")
+        if self.seasoning_button is not None:
+            self.seasoning_button.configure(state="disabled")
+        if self.chef_button is not None:
+            self.chef_button.configure(state="disabled")
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -4430,7 +4466,7 @@ class FoodGameApp:
         self._update_seasoning_button(seasoning)
 
     def _update_cookbook_button(self) -> None:
-        if not hasattr(self, "cookbook_button"):
+        if not self.cookbook_button:
             return
 
         if not self.session:
@@ -4451,7 +4487,7 @@ class FoodGameApp:
         self.cookbook_button.configure(image=icon)
 
     def _update_basket_button(self) -> None:
-        if not hasattr(self, "basket_button"):
+        if not self.basket_button:
             return
 
         if not self.session:
@@ -4462,7 +4498,7 @@ class FoodGameApp:
         self.basket_count_var.set(f"Basket\n{remaining}/{total}")
 
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
-        if not hasattr(self, "seasoning_button"):
+        if not self.seasoning_button:
             return
         if seasoning is None and self.session:
             seasonings = self.session.get_seasonings()
@@ -4726,7 +4762,7 @@ class FoodGameApp:
         self._log_action("Cleared all applied seasonings from the dish preview.")
 
     def _update_chef_button(self) -> None:
-        if not hasattr(self, "chef_button"):
+        if not self.chef_button:
             return
 
         if not self.session:
@@ -4749,6 +4785,8 @@ class FoodGameApp:
         self.chef_button.configure(image=icon, text=text)
 
     def toggle_log_panel(self) -> None:
+        if not self.log_text or not self.log_toggle_button:
+            return
         self.log_collapsed = not self.log_collapsed
         if self.log_collapsed:
             self.log_text.grid_remove()
@@ -4950,6 +4988,8 @@ class FoodGameApp:
     def _append_log_lines(self, lines: Iterable[str]) -> None:
         collected = list(lines)
         if not collected:
+            return
+        if self.log_text is None:
             return
         self.log_text.configure(state="normal")
         for line in collected:
@@ -5155,6 +5195,8 @@ class FoodGameApp:
         self._center_popup(popup)
 
     def clear_events(self) -> None:
+        if self.log_text is None:
+            return
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
@@ -5165,11 +5207,16 @@ class FoodGameApp:
         if not self.session:
             return
 
-        self.cook_button.configure(state="disabled")
-        self.return_button.configure(state="disabled")
-        self.basket_button.configure(state="disabled")
-        self.seasoning_button.configure(state="disabled")
-        self.chef_button.configure(state="disabled")
+        if self.cook_button is not None:
+            self.cook_button.configure(state="disabled")
+        if self.return_button is not None:
+            self.return_button.configure(state="disabled")
+        if self.basket_button is not None:
+            self.basket_button.configure(state="disabled")
+        if self.seasoning_button is not None:
+            self.seasoning_button.configure(state="disabled")
+        if self.chef_button is not None:
+            self.chef_button.configure(state="disabled")
         self._set_controls_active(True)
         self._close_recruit_dialog()
 
@@ -5279,10 +5326,12 @@ class FoodGameApp:
     def write_result(self, text: str) -> None:
         extra = self._cookbook_summary_text()
         lines: List[str] = []
-        try:
-            has_existing_text = self.log_text.index("end-1c") != "1.0"
-        except tk.TclError:  # pragma: no cover - defensive guard
-            has_existing_text = False
+        has_existing_text = False
+        if self.log_text is not None:
+            try:
+                has_existing_text = self.log_text.index("end-1c") != "1.0"
+            except tk.TclError:  # pragma: no cover - defensive guard
+                has_existing_text = False
         if has_existing_text:
             lines.append("")
         lines.extend(text.splitlines())

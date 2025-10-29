@@ -3046,7 +3046,7 @@ class FoodGameApp:
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
         self._seasoning_hand_icons: List[tk.PhotoImage] = []
-        self.log_collapsed = True
+        self.log_collapsed = False
         self._run_completion_notified = False
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
@@ -3312,6 +3312,7 @@ class FoodGameApp:
         self.game_frame.grid(row=0, column=1, sticky="nsew")
         self.game_frame.columnconfigure(0, weight=1)
         self.game_frame.rowconfigure(1, weight=1)
+        self.game_frame.rowconfigure(3, weight=1)
 
         self._build_controls()
         self._build_game_panel()
@@ -3699,8 +3700,9 @@ class FoodGameApp:
         self._update_chef_button()
 
         self.log_panel = ttk.Frame(self.game_frame)
-        self.log_panel.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        self.log_panel.grid(row=3, column=0, sticky="nsew", pady=(12, 0))
         self.log_panel.columnconfigure(0, weight=1)
+        self.log_panel.rowconfigure(1, weight=1)
 
         log_header = ttk.Frame(self.log_panel)
         log_header.grid(row=0, column=0, sticky="ew")
@@ -3729,7 +3731,7 @@ class FoodGameApp:
             pady=10,
             font=("Helvetica", 10),
         )
-        self.log_text.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.log_text.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         if self.log_collapsed:
             self.log_text.grid_remove()
         self.log_text.configure(state="disabled")

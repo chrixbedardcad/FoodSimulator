@@ -1125,7 +1125,7 @@ class GameSession:
         self.hand.clear()
         self.pending_new_chef_offer = False
         self._push_event(
-            f"Round {self.round_index}/{self.rounds} begins. Deck shuffled for the team."
+            f"Round {self.round_index}/{self.rounds} begins. Pantry shuffled for the team."
         )
         self._refill_hand(log_new_cards=not initial)
         if initial:
@@ -1216,7 +1216,7 @@ class GameSession:
         self.deck = self._build_market_deck()
         self._current_deck_total = len(self.deck)
         self.hand.clear()
-        self._push_event("Deck refreshed to reflect your expanded chef lineup.")
+        self._push_event("Pantry refreshed to reflect your expanded chef lineup.")
         self._refill_hand()
 
     def _advance_decay(
@@ -1274,7 +1274,7 @@ class GameSession:
             self.rng.shuffle(self.deck)
 
         self._push_event(
-            f"{combo_text} didn't form a dish and returned to the basket to be reshuffled."
+            f"{combo_text} didn't form a dish and returned to the pantry to be reshuffled."
         )
 
         if newly_rotten:
@@ -1295,7 +1295,7 @@ class GameSession:
         pronoun = "They" if plural else "It"
         return_verb = "return" if plural else "returns"
         message = (
-            f"{combo_text} {verb} not form a dish. {pronoun} {return_verb} to the basket to be "
+            f"{combo_text} {verb} not form a dish. {pronoun} {return_verb} to the pantry to be "
             "reshuffled and will only rot while in your hand."
         )
         if reason == "all_same_ingredient" and primary_ingredient is not None:
@@ -1349,7 +1349,7 @@ class GameSession:
 
     def begin_next_round_from_empty_basket(self, ingredient: Ingredient) -> None:
         if not self._awaiting_basket_reset:
-            raise RuntimeError("No empty-basket reset is pending.")
+            raise RuntimeError("No pantry refill is pending.")
 
         self._awaiting_basket_reset = False
         self._basket_bonus_choices = []
@@ -1671,7 +1671,7 @@ class GameSession:
 
         removed_cards = [self.hand[index] for index in unique]
         if any(card.is_rotten for card in removed_cards):
-            raise ValueError("Rotten ingredients cannot be returned to the basket.")
+            raise ValueError("Rotten ingredients cannot be returned to the pantry.")
 
         returned_cards: List[IngredientCard] = []
         for offset, index in enumerate(unique):
@@ -1689,12 +1689,12 @@ class GameSession:
             if len(returned_cards) == 1:
                 name = returned_cards[0].ingredient.name
                 self._push_event(
-                    f"Returned {name} to the basket and drew a replacement."
+                    f"Returned {name} to the pantry and drew a replacement."
                 )
             else:
                 names = ", ".join(card.ingredient.name for card in returned_cards)
                 self._push_event(
-                    f"Returned {names} to the basket and drew replacements."
+                    f"Returned {names} to the pantry and drew replacements."
                 )
 
         if newly_rotten:
@@ -1712,7 +1712,7 @@ class GameSession:
         return removed, deck_refreshed
 
     def discard_indices(self, indices: Sequence[int]) -> Tuple[List[Ingredient], bool]:
-        """Backward-compatible alias for returning cards to the basket."""
+        """Backward-compatible alias for returning cards to the pantry."""
 
         return self.return_indices(indices)
 
@@ -2593,7 +2593,7 @@ class DeckPopup(tk.Toplevel):
         self._on_close = on_close
         self._card_views: List[CardView] = []
 
-        self.title("Ingredient Basket")
+        self.title("Ingredient Pantry")
         self.geometry("760x560")
         self.minsize(520, 400)
 
@@ -2607,7 +2607,7 @@ class DeckPopup(tk.Toplevel):
 
         heading = ttk.Label(
             container,
-            text="Remaining ingredients in your basket",
+            text="Remaining ingredients in your pantry",
             style="Header.TLabel",
             anchor="w",
         )
@@ -2669,7 +2669,7 @@ class DeckPopup(tk.Toplevel):
         if not deck:
             ttk.Label(
                 self.cards_frame,
-                text="Your basket is empty. Draw or start a new round to refill it.",
+                text="Your pantry is empty. Draw or start a new round to restock it.",
                 style="Info.TLabel",
                 wraplength=600,
                 justify="left",
@@ -3653,7 +3653,7 @@ class FoodGameApp:
                 "basket", "BK", size=RESOURCE_BUTTON_ICON_PX
             )
         self._resource_button_images["basket"] = basket_icon
-        self.basket_count_var = tk.StringVar(value="Basket\n0/0")
+        self.basket_count_var = tk.StringVar(value="Pantry\n0/0")
         self.basket_button = ttk.Button(
             resource_frame,
             textvariable=self.basket_count_var,
@@ -4368,11 +4368,11 @@ class FoodGameApp:
         self.card_views = {}
 
     def show_deck_popup(self) -> None:
-        self._log_action("Basket button pressed.")
+        self._log_action("Pantry button pressed.")
         if not self.session:
-            self._log_action("Basket button pressed without an active session.")
+            self._log_action("Pantry button pressed without an active session.")
             messagebox.showinfo(
-                "No run in progress", "Start a run to view your ingredient basket."
+                "No run in progress", "Start a run to view your ingredient pantry."
             )
             return
 
@@ -4380,7 +4380,7 @@ class FoodGameApp:
             self.deck_popup.set_session(self.session)
             self.deck_popup.lift()
             self.deck_popup.focus_force()
-            self._log_action("Deck popup focused.")
+            self._log_action("Pantry popup focused.")
             return
 
         def handle_close() -> None:
@@ -4390,7 +4390,7 @@ class FoodGameApp:
         self.deck_popup.transient(self.root)
         self.deck_popup.focus_force()
         self._center_popup(self.deck_popup)
-        self._log_action("Deck popup opened for the current run.")
+        self._log_action("Pantry popup opened for the current run.")
 
     def show_cookbook_panel(self) -> None:
         self._log_action("Cookbook button pressed.")
@@ -4548,11 +4548,11 @@ class FoodGameApp:
             return
 
         if not self.session:
-            self.basket_count_var.set("Basket\n0/0")
+            self.basket_count_var.set("Pantry\n0/0")
             return
 
         remaining, total = self.session.get_basket_counts()
-        self.basket_count_var.set(f"Basket\n{remaining}/{total}")
+        self.basket_count_var.set(f"Pantry\n{remaining}/{total}")
 
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not self.seasoning_button:
@@ -5624,10 +5624,10 @@ class FoodGameApp:
         if removed:
             names = ", ".join(ingredient.name for ingredient in removed)
             if deck_refreshed:
-                message = f"Returned {names}. Market deck refreshed."
+                message = f"Returned {names}. Market pantry refreshed."
             else:
                 replacement_text = "replacements" if len(removed) > 1 else "a replacement"
-                message = f"Returned {names} to the basket and drew {replacement_text}."
+                message = f"Returned {names} to the pantry and drew {replacement_text}."
         else:
             message = "No ingredient was returned."
         self.write_result(message)
@@ -5978,7 +5978,7 @@ class FoodGameApp:
         points_lines.append(chef_hits)
 
         if outcome.deck_refreshed:
-            points_lines.append("Deck refreshed for the next hand!")
+            points_lines.append("Pantry refreshed for the next hand!")
 
         total_score = self.session.get_total_score() if self.session else outcome.final_score
         points_lines.append(f"Cumulative score: {total_score}")
@@ -6376,7 +6376,7 @@ class FoodGameApp:
             f"Chef key ingredients used: {outcome.chef_hits}/{max(len(outcome.selected), 1)}"
         )
         if outcome.deck_refreshed:
-            parts.append("Deck refreshed for the next turn.")
+            parts.append("Pantry refreshed for the next turn.")
 
         parts.append("")
         parts.append(f"Cumulative score: {self.session.get_total_score()}")

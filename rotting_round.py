@@ -24,7 +24,7 @@ class IngredientCard:
 
 
 class RottingRound:
-    """Manage the basket/hand flow for a single round with rotting logic."""
+    """Manage the pantry/hand flow for a single round with rotting logic."""
 
     def __init__(
         self,
@@ -170,7 +170,7 @@ class RottingRound:
 
     def _return_to_basket(self, chosen: MutableSequence[tuple[int, IngredientCard]]) -> None:
         for index, card in sorted(chosen, key=lambda pair: pair[0], reverse=True):
-            # Keep decay history when cards return to the basket so rot resumes
+            # Keep decay history when cards return to the pantry so rot resumes
             # from the same state when the ingredient is drawn again.
             self.hand[index] = None
             self.basket.append(card)

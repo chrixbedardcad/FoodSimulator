@@ -23,7 +23,6 @@ def make_session(data: GameData, names: list[str]) -> GameSession:
         basket_name=basket_name,
         chefs=[],
         rounds=1,
-        cooks_per_round=1,
         hand_size=hand_size,
         pick_size=pick_size,
         deck_size=max(10, hand_size),

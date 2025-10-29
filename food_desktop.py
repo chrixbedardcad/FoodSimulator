@@ -2391,13 +2391,15 @@ class CardView(ttk.Frame):
         cookbook_state: Optional[RecipeIconState],
         on_click: Optional[Callable[[int], None]] = None,
         *,
+        compact: bool = False,
         quantity: Optional[int] = None,
         rot_info: Optional[Mapping[str, Any]] = None,
         locked: bool = False,
         is_rotten: bool = False,
     ) -> None:
         base_style = "CardDisabled.TFrame" if locked else "Card.TFrame"
-        super().__init__(master, style=base_style, padding=(10, 8))
+        padding = (8, 6) if compact else (10, 8)
+        super().__init__(master, style=base_style, padding=padding)
         self.index = index
         self.on_click = on_click
         self.selected = False
@@ -2405,9 +2407,16 @@ class CardView(ttk.Frame):
         self.quantity = quantity
         self.locked = locked
         self.is_rotten = is_rotten
+        self.compact = compact
         self.rot_label: Optional[ttk.Label] = None
         self._rot_color: Optional[str] = None
         self.cookbook_icon: Optional[tk.PhotoImage] = None
+        self.taste_image: Optional[tk.PhotoImage] = None
+        self.family_image: Optional[tk.PhotoImage] = None
+        self.taste_label: Optional[ttk.Label] = None
+        self.family_label: Optional[ttk.Label] = None
+        self.chef_label: Optional[ttk.Label] = None
+        self.recipe_label: Optional[ttk.Label] = None
 
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=0)
@@ -2461,7 +2470,8 @@ class CardView(ttk.Frame):
         self.value_label.grid(row=0, column=1, sticky="ne")
 
         separator = ttk.Separator(self, orient="horizontal")
-        separator.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 8))
+        sep_padding = (4, 6) if compact else (6, 8)
+        separator.grid(row=1, column=0, columnspan=2, sticky="ew", pady=sep_padding)
 
         row_index = 2
 
@@ -2475,7 +2485,11 @@ class CardView(ttk.Frame):
             style="CardImage.TLabel",
         )
         self.ingredient_image_label.grid(
-            row=row_index, column=0, columnspan=2, sticky="n", pady=(0, 6)
+            row=row_index,
+            column=0,
+            columnspan=2,
+            sticky="n",
+            pady=(0, 6 if not compact else 4),
         )
         row_index += 1
 
@@ -2497,77 +2511,107 @@ class CardView(ttk.Frame):
             row_index += 1
 
         body_style = "CardBodyDisabled.TLabel" if locked else "CardBody.TLabel"
-        if locked:
-            self.taste_image = None
-            taste_text = f"Original: {display_name}"
-        else:
-            self.taste_image = _load_icon("taste", ingredient.taste)
-            taste_text = f"Taste: {ingredient.taste}"
-        taste_compound = "left" if self.taste_image else "none"
-        self.taste_label = ttk.Label(
-            self,
-            text=taste_text,
-            style=body_style,
-            image=self.taste_image,
-            compound=taste_compound,
-        )
-        self.taste_label.grid(row=row_index, column=0, columnspan=2, sticky="w")
-        row_index += 1
+        if compact:
+            if locked:
+                self.taste_image = None
+                self.family_image = None
+            else:
+                self.taste_image = _load_icon("taste", ingredient.taste)
+                self.family_image = _load_icon("family", ingredient.family)
 
-        if locked:
-            self.family_image = None
-            family_text = "Slot locked until next round."
-        else:
-            self.family_image = _load_icon("family", ingredient.family)
-            family_text = f"Family: {ingredient.family}"
-        family_compound = "left" if self.family_image else "none"
-        self.family_label = ttk.Label(
-            self,
-            text=family_text,
-            style=body_style,
-            image=self.family_image,
-            compound=family_compound,
-        )
-        self.family_label.grid(
-            row=row_index, column=0, columnspan=2, sticky="w", pady=(2, 0)
-        )
-        row_index += 1
+            icon_frame = ttk.Frame(self)
+            icon_frame.grid(row=row_index, column=0, columnspan=2, sticky="ew")
+            icon_frame.columnconfigure(0, weight=1)
+            icon_frame.columnconfigure(1, weight=1)
 
-        marker_style = "CardMarkerDisabled.TLabel" if locked else "CardMarker.TLabel"
-        self.chef_label: Optional[ttk.Label] = None
-        if chef_names and not locked:
-            first, *rest = chef_names
-            lines = [f"Chef Key: {first}"]
-            lines.extend(f"           {name}" for name in rest)
-            self.chef_label = ttk.Label(
+            if self.taste_image:
+                self.taste_label = ttk.Label(
+                    icon_frame,
+                    image=self.taste_image,
+                    style=body_style,
+                )
+                self.taste_label.grid(row=0, column=0, sticky="e", padx=(0, 6))
+
+            if self.family_image:
+                self.family_label = ttk.Label(
+                    icon_frame,
+                    image=self.family_image,
+                    style=body_style,
+                )
+                self.family_label.grid(row=0, column=1, sticky="w", padx=(6, 0))
+
+            row_index += 1
+        else:
+            if locked:
+                self.taste_image = None
+                taste_text = f"Original: {display_name}"
+            else:
+                self.taste_image = _load_icon("taste", ingredient.taste)
+                taste_text = f"Taste: {ingredient.taste}"
+            taste_compound = "left" if self.taste_image else "none"
+            self.taste_label = ttk.Label(
                 self,
-                text="\n".join(lines),
-                style=marker_style,
-                justify="left",
+                text=taste_text,
+                style=body_style,
+                image=self.taste_image,
+                compound=taste_compound,
             )
-            self.chef_label.grid(
-                row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            self.taste_label.grid(row=row_index, column=0, columnspan=2, sticky="w")
+            row_index += 1
+
+            if locked:
+                self.family_image = None
+                family_text = "Slot locked until next round."
+            else:
+                self.family_image = _load_icon("family", ingredient.family)
+                family_text = f"Family: {ingredient.family}"
+            family_compound = "left" if self.family_image else "none"
+            self.family_label = ttk.Label(
+                self,
+                text=family_text,
+                style=body_style,
+                image=self.family_image,
+                compound=family_compound,
+            )
+            self.family_label.grid(
+                row=row_index, column=0, columnspan=2, sticky="w", pady=(2, 0)
             )
             row_index += 1
 
-        hint_style = "CardHintDisabled.TLabel" if locked else "CardHint.TLabel"
-        if locked:
-            hint_text = "Recipes: Unavailable while rotten."
-        else:
-            hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
-            hint_text = f"Recipes: {hint_text}"
-            if is_rotten:
-                hint_text += "\nRotten ingredients ruin dishes."
-        self.recipe_label = ttk.Label(
-            self,
-            text=hint_text,
-            style=hint_style,
-            wraplength=220,
-            justify="left",
-        )
-        self.recipe_label.grid(
-            row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
-        )
+            marker_style = "CardMarkerDisabled.TLabel" if locked else "CardMarker.TLabel"
+            if chef_names and not locked:
+                first, *rest = chef_names
+                lines = [f"Chef Key: {first}"]
+                lines.extend(f"           {name}" for name in rest)
+                self.chef_label = ttk.Label(
+                    self,
+                    text="\n".join(lines),
+                    style=marker_style,
+                    justify="left",
+                )
+                self.chef_label.grid(
+                    row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
+                )
+                row_index += 1
+
+            hint_style = "CardHintDisabled.TLabel" if locked else "CardHint.TLabel"
+            if locked:
+                hint_text = "Recipes: Unavailable while rotten."
+            else:
+                hint_text = ", ".join(recipe_hints) if recipe_hints else "(none)"
+                hint_text = f"Recipes: {hint_text}"
+                if is_rotten:
+                    hint_text += "\nRotten ingredients ruin dishes."
+            self.recipe_label = ttk.Label(
+                self,
+                text=hint_text,
+                style=hint_style,
+                wraplength=220,
+                justify="left",
+            )
+            self.recipe_label.grid(
+                row=row_index, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            )
 
         if self.on_click and not self.locked:
             self.bind("<Button-1>", self._handle_click)
@@ -2625,8 +2669,10 @@ class CardView(ttk.Frame):
         self.name_label.configure(style=title_style)
         self.value_label.configure(style=value_style)
         self.ingredient_image_label.configure(style=image_style)
-        self.taste_label.configure(style=body_style)
-        self.family_label.configure(style=body_style)
+        if self.taste_label:
+            self.taste_label.configure(style=body_style)
+        if self.family_label:
+            self.family_label.configure(style=body_style)
         if self.chef_label:
             self.chef_label.configure(style=marker_style)
         if self.recipe_label:
@@ -3996,20 +4042,15 @@ class FoodGameApp:
                         missing.grid(row=index, column=0, sticky="ew", pady=(0, 8))
                         continue
 
-                    recipe_hints = [
-                        DATA.recipe_display_name(recipe_name) or recipe_name
-                        for recipe_name in DATA.recipes_using_ingredient(ingredient.name)
-                    ]
-                    recipe_hints.sort(key=lambda value: value.lower())
-
                     card = CardView(
                         cards_frame,
                         index=index,
                         ingredient=ingredient,
                         chef_names=[],
-                        recipe_hints=recipe_hints,
+                        recipe_hints=[],
                         cookbook_state=None,
                         on_click=None,
+                        compact=True,
                         quantity=copies,
                     )
                     card.grid(row=index, column=0, sticky="ew", pady=(0, 12))

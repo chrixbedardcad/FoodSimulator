@@ -951,6 +951,7 @@ class GameSession:
         challenge: Optional[BasketChallenge] = None,
         rng: Optional[random.Random] = None,
         seed: Optional[int] = None,
+        pantry_card_ids: Optional[Sequence[str]] = None,
     ) -> None:
         if rounds <= 0:
             raise ValueError("rounds must be positive")
@@ -1004,6 +1005,9 @@ class GameSession:
         self._basket_bonus_choices: List[Ingredient] = []
         self._basket_clear_summary: Optional[Dict[str, object]] = None
         self._permanent_bonus_ingredients: List[Ingredient] = []
+        self._starting_pantry_cards: Optional[List[Ingredient]] = None
+        if pantry_card_ids:
+            self._starting_pantry_cards = self.data.ingredients_for_ids(pantry_card_ids)
 
         self.hand: List[IngredientCard] = []
         self.deck: List[IngredientCard] = []
@@ -1132,15 +1136,18 @@ class GameSession:
             self._log_hand_snapshot("Opening hand")
 
     def _build_market_deck(self) -> List[IngredientCard]:
-        deck = build_market_deck(
-            self.data,
-            self.basket_name,
-            self.chefs,
-            deck_size=self.deck_size,
-            bias=self.bias,
-            rng=self.rng,
-        )
-        cards = [IngredientCard(ingredient=item) for item in deck]
+        if self._starting_pantry_cards is not None:
+            cards = [IngredientCard(ingredient=item) for item in self._starting_pantry_cards]
+        else:
+            deck = build_market_deck(
+                self.data,
+                self.basket_name,
+                self.chefs,
+                deck_size=self.deck_size,
+                bias=self.bias,
+                rng=self.rng,
+            )
+            cards = [IngredientCard(ingredient=item) for item in deck]
         if self._permanent_bonus_ingredients:
             cards.extend(
                 IngredientCard(ingredient=ingredient)
@@ -3075,6 +3082,7 @@ class FoodGameApp:
         self.challenge_offers: Optional[Tuple[BasketChallenge, ...]] = None
         self.challenge_dialog: Optional[tk.Toplevel] = None
         self.pending_run_config: Optional[Dict[str, int]] = None
+        self.pantry_card_ids: List[str] = []
 
         self._init_styles()
         self._build_layout()
@@ -3766,13 +3774,33 @@ class FoodGameApp:
         self.challenge_dialog = None
         self.challenge_offers = None
 
+    def _challenge_run_state(self) -> Dict[str, object]:
+        run_state = _blank_run_state()
+        run_state["pantry"] = list(self.pantry_card_ids)
+        if self.session:
+            chef_ids: List[str] = []
+            for chef in self.session.chefs:
+                identifier = getattr(chef, "chef_id", None) or getattr(chef, "name", "")
+                if identifier:
+                    chef_ids.append(identifier)
+            if chef_ids:
+                run_state["chefs_active"] = chef_ids
+            owned_ids = [
+                seasoning.seasoning_id
+                for seasoning in self.session.get_seasonings()
+                if getattr(seasoning, "seasoning_id", None)
+            ]
+            if owned_ids:
+                run_state["seasoning_owned"] = owned_ids
+        return run_state
+
     def _prompt_basket_selection(self) -> None:
         self._close_challenge_dialog()
 
         if not self.pending_run_config:
             return
 
-        offers = self.challenge_factory.three_offers(_blank_run_state())
+        offers = self.challenge_factory.three_offers(self._challenge_run_state())
         self.challenge_offers = offers
 
         dialog = tk.Toplevel(self.root)
@@ -4096,6 +4124,9 @@ class FoodGameApp:
         if config is None:
             return
 
+        new_pantry_ids = list(self.pantry_card_ids)
+        new_pantry_ids.extend(challenge.added_ing_ids)
+
         try:
             self.session = GameSession(
                 DATA,
@@ -4106,9 +4137,11 @@ class FoodGameApp:
                 pick_size=config["pick_size"],
                 max_chefs=config["max_chefs"],
                 challenge=challenge,
+                pantry_card_ids=new_pantry_ids,
             )
             self._run_completion_notified = False
             self._last_run_config = dict(config)
+            self.pantry_card_ids = new_pantry_ids
         except Exception as exc:  # pragma: no cover - user feedback path
             self._log_action(f"Start Run failed: {exc}")
             messagebox.showerror("Cannot start run", str(exc))
@@ -4227,6 +4260,7 @@ class FoodGameApp:
         self._run_completion_notified = False
         self._close_recruit_dialog()
         self.session = None
+        self.pantry_card_ids = []
         self._refresh_challenge_summary()
         self._update_basket_button()
         self.selected_indices.clear()

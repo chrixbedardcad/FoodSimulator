@@ -132,8 +132,8 @@
       "Mushroom",
       "Honey"
     ],
-    "base_multiplier": 0.0,
-    "delta_multiplier": 0.0
+    "base_multiplier": 0.8,
+    "delta_multiplier": 0.2
   },
   {
     "name": "SharpEggDrop",
@@ -143,8 +143,8 @@
       "Lemon",
       "Garlic"
     ],
-    "base_multiplier": 0.0,
-    "delta_multiplier": 0.0
+    "base_multiplier": 1.0,
+    "delta_multiplier": 0.3
   },
   {
     "name": "MuddyMeltdown",
@@ -154,7 +154,7 @@
       "Fish",
       "Garlic"
     ],
-    "base_multiplier": 0.0,
-    "delta_multiplier": 0.0
+    "base_multiplier": 0.5,
+    "delta_multiplier": 0.1
   }
 ]

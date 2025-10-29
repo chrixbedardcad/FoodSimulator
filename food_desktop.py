@@ -68,6 +68,7 @@ ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
 RECIPE_ASSET_DIR = ASSET_DIR / "recipes"
+BASKET_ART_DIR = ASSET_DIR / "baskets"
 
 
 TASTE_ICON_FILES: Mapping[str, str] = {
@@ -140,6 +141,7 @@ _seasoning_icon_cache: Dict[str, tk.PhotoImage] = {}
 _button_icon_cache: Dict[str, tk.PhotoImage] = {}
 _recipe_image_cache: Dict[str, Optional[tk.PhotoImage]] = {}
 _cookbook_indicator_cache: Dict[str, Optional[tk.PhotoImage]] = {}
+_challenge_tile_image_cache: Dict[int, Optional[tk.PhotoImage]] = {}
 
 
 RecipeIconState = Literal["available", "blocked"]
@@ -384,6 +386,30 @@ def _load_button_image(filename: str, *, target_px: int = 88) -> Optional[tk.Pho
 
     image = ImageTk.PhotoImage(working)
     _button_icon_cache[cache_key] = image
+    return image
+
+
+def _load_challenge_tile_image(*, target_px: int = 160) -> Optional[tk.PhotoImage]:
+    cached = _challenge_tile_image_cache.get(target_px)
+    if cached is not None:
+        return cached
+
+    if Image is None:
+        _challenge_tile_image_cache[target_px] = None
+        return None
+
+    image_path = BASKET_ART_DIR / "basket_basic.png"
+    if not image_path.exists():
+        _challenge_tile_image_cache[target_px] = None
+        return None
+
+    with Image.open(image_path) as source_image:
+        working = source_image.convert("RGBA")
+        working.thumbnail((target_px, target_px), RESAMPLE_LANCZOS)
+        working = working.copy()
+
+    image = ImageTk.PhotoImage(working)
+    _challenge_tile_image_cache[target_px] = image
     return image
 
 
@@ -3013,6 +3039,8 @@ class FoodGameApp:
         self._run_completion_notified = False
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
+        self._lifetime_total_score = 0
+        self._last_run_config: Optional[Dict[str, int]] = None
 
         self.challenge_factory = BasketChallengeFactory(DATA, TARGET_SCORE_CONFIG)
         self.challenge_summary_var = tk.StringVar(
@@ -3024,6 +3052,7 @@ class FoodGameApp:
 
         self._init_styles()
         self._build_layout()
+        self._refresh_score_details()
 
     # ----------------- UI setup -----------------
     def _default_challenge_message(self) -> str:
@@ -3350,6 +3379,15 @@ class FoodGameApp:
         spin.pack(anchor="w", pady=(2, 0))
         self.spinboxes.append(spin)
 
+    def _snapshot_run_config(self) -> Dict[str, int]:
+        return {
+            "rounds": int(self.round_var.get()),
+            "cooks": int(self.cooks_var.get()),
+            "hand_size": int(self.hand_var.get()),
+            "pick_size": int(self.pick_var.get()),
+            "max_chefs": int(self.max_chefs_var.get()),
+        }
+
     def _build_game_panel(self) -> None:
         score_frame = ttk.Frame(self.game_frame)
         score_frame.grid(row=0, column=0, sticky="ew")
@@ -3364,14 +3402,33 @@ class FoodGameApp:
             row=0, column=1, sticky="w", padx=(8, 0)
         )
 
+        self.target_score_var = tk.StringVar(value="Target Score: —")
+        ttk.Label(score_frame, textvariable=self.target_score_var, style="Info.TLabel").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(6, 0)
+        )
+
+        self.run_score_detail_var = tk.StringVar(value="Run Score: 0")
+        ttk.Label(
+            score_frame,
+            textvariable=self.run_score_detail_var,
+            style="Info.TLabel",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(2, 0))
+
+        self.lifetime_score_var = tk.StringVar(value="Lifetime Score: 0")
+        ttk.Label(
+            score_frame,
+            textvariable=self.lifetime_score_var,
+            style="Info.TLabel",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(2, 0))
+
         self.progress_var = tk.StringVar(value="Round 0 / 0 — Turn 0 / 0")
         ttk.Label(score_frame, textvariable=self.progress_var, style="Info.TLabel").grid(
-            row=1, column=0, columnspan=2, sticky="w", pady=(6, 0)
+            row=4, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
         self.selection_var = tk.StringVar(value="Selection: 0")
         ttk.Label(score_frame, textvariable=self.selection_var, style="Info.TLabel").grid(
-            row=2, column=0, columnspan=2, sticky="w", pady=(6, 0)
+            row=5, column=0, columnspan=2, sticky="w", pady=(6, 0)
         )
 
         self.selection_summary_var = tk.StringVar(value="Value × Dish = Score")
@@ -3383,7 +3440,7 @@ class FoodGameApp:
             justify="center",
         )
         self.selection_summary_label.grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0)
+            row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0)
         )
 
         self.estimated_score_var = tk.StringVar(value="Estimated Score: —")
@@ -3395,7 +3452,7 @@ class FoodGameApp:
             justify="center",
         )
         self.estimated_score_label.grid(
-            row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0)
+            row=7, column=0, columnspan=2, sticky="ew", pady=(6, 0)
         )
 
         self.sort_button = ttk.Button(
@@ -3403,17 +3460,17 @@ class FoodGameApp:
             textvariable=self.hand_sort_var,
             command=self.cycle_hand_sort_mode,
         )
-        self.sort_button.grid(row=5, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.sort_button.grid(row=8, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
         self.chefs_var = tk.StringVar(
             value=f"Active chefs ({DEFAULT_MAX_CHEFS} max): —"
         )
         ttk.Label(score_frame, textvariable=self.chefs_var, style="Info.TLabel").grid(
-            row=6, column=0, columnspan=2, sticky="w", pady=(4, 0)
+            row=9, column=0, columnspan=2, sticky="w", pady=(4, 0)
         )
 
         seasoning_frame = ttk.LabelFrame(score_frame, text="Seasoning Prep", padding=(10, 6))
-        seasoning_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        seasoning_frame.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         seasoning_frame.columnconfigure(0, weight=1)
 
         ttk.Label(
@@ -3469,6 +3526,18 @@ class FoodGameApp:
         action_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
+
+    def _refresh_score_details(self) -> None:
+        target_text = "Target Score: —"
+        run_total = 0
+        if self.session:
+            run_total = self.session.get_total_score()
+            target = getattr(self.session, "challenge_target", None)
+            if target is not None:
+                target_text = f"Target Score: {target}"
+        self.target_score_var.set(target_text)
+        self.run_score_detail_var.set(f"Run Score: {run_total}")
+        self.lifetime_score_var.set(f"Lifetime Score: {self._lifetime_total_score}")
 
         self.cook_button = ttk.Button(
             action_frame,
@@ -3698,6 +3767,14 @@ class FoodGameApp:
         for column in range(3):
             tiles_frame.columnconfigure(column, weight=1)
 
+        detail_windows: List[tk.Toplevel] = []
+
+        def close_detail_windows() -> None:
+            for window in list(detail_windows):
+                if window.winfo_exists():
+                    window.destroy()
+            detail_windows.clear()
+
         def ingredient_preview(challenge: BasketChallenge) -> str:
             entries = DATA.baskets.get(challenge.basket_name, [])
             lines: List[str] = []
@@ -3709,8 +3786,75 @@ class FoodGameApp:
             return "\n".join(lines) if lines else "No ingredients listed."
 
         def choose_challenge(challenge: BasketChallenge) -> None:
+            close_detail_windows()
             self._close_challenge_dialog()
             self._finalize_start_run(challenge)
+
+        def show_basket_details(challenge: BasketChallenge) -> None:
+            entries = DATA.baskets.get(challenge.basket_name, [])
+            detail = tk.Toplevel(dialog)
+            detail.title(f"{challenge.basket_name} Ingredients")
+            detail.transient(dialog)
+            detail.resizable(False, False)
+            detail_windows.append(detail)
+
+            def handle_close() -> None:
+                if detail in detail_windows:
+                    detail_windows.remove(detail)
+                if detail.winfo_exists():
+                    detail.destroy()
+
+            detail.protocol("WM_DELETE_WINDOW", handle_close)
+            detail.bind("<Escape>", lambda _e: handle_close())
+
+            wrapper = ttk.Frame(detail, padding=16)
+            wrapper.grid(row=0, column=0, sticky="nsew")
+            wrapper.columnconfigure(0, weight=1)
+
+            ttk.Label(
+                wrapper,
+                text=f"{challenge.basket_name} — {challenge.difficulty.title()}",
+                style="Header.TLabel",
+            ).grid(row=0, column=0, sticky="w")
+
+            if entries:
+                tree = ttk.Treeview(
+                    wrapper,
+                    columns=("ingredient", "copies"),
+                    show="headings",
+                    height=min(max(len(entries), 6), 14),
+                )
+                tree.heading("ingredient", text="Ingredient")
+                tree.heading("copies", text="Copies")
+                tree.column("ingredient", width=240, anchor="w")
+                tree.column("copies", width=80, anchor="center")
+                for name, copies in entries:
+                    tree.insert("", "end", values=(name, copies))
+                tree.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
+                wrapper.rowconfigure(1, weight=1)
+
+                scrollbar = ttk.Scrollbar(
+                    wrapper, orient="vertical", command=tree.yview
+                )
+                scrollbar.grid(row=1, column=1, sticky="ns", pady=(10, 0))
+                tree.configure(yscrollcommand=scrollbar.set)
+            else:
+                ttk.Label(
+                    wrapper,
+                    text="No ingredients listed for this basket.",
+                    style="Info.TLabel",
+                ).grid(row=1, column=0, sticky="w", pady=(10, 0))
+
+            ttk.Button(
+                wrapper,
+                text="Close",
+                command=handle_close,
+            ).grid(row=2, column=0, sticky="e", pady=(12, 0))
+
+            detail.update_idletasks()
+            detail.focus_force()
+
+        challenge_images: List[tk.PhotoImage] = []
 
         for column, challenge in enumerate(offers):
             tile = ttk.Frame(tiles_frame, style="Tile.TFrame", padding=(14, 12))
@@ -3730,6 +3874,13 @@ class FoodGameApp:
                 anchor="center",
             ).grid(row=0, column=0, sticky="ew")
 
+            challenge_image = _load_challenge_tile_image(target_px=148)
+            if challenge_image:
+                ttk.Label(tile, image=challenge_image).grid(
+                    row=1, column=0, sticky="n", pady=(8, 4)
+                )
+                challenge_images.append(challenge_image)
+
             ttk.Label(
                 tile,
                 text=(
@@ -3744,7 +3895,7 @@ class FoodGameApp:
                 justify="center",
                 anchor="center",
                 wraplength=220,
-            ).grid(row=1, column=0, sticky="ew", pady=(8, 4))
+            ).grid(row=2, column=0, sticky="ew", pady=(8, 4))
 
             ttk.Label(
                 tile,
@@ -3753,10 +3904,10 @@ class FoodGameApp:
                 justify="center",
                 anchor="center",
                 wraplength=220,
-            ).grid(row=2, column=0, sticky="ew")
+            ).grid(row=3, column=0, sticky="ew")
 
             ttk.Separator(tile, orient="horizontal").grid(
-                row=3, column=0, sticky="ew", pady=(8, 8)
+                row=4, column=0, sticky="ew", pady=(8, 8)
             )
 
             ttk.Label(
@@ -3765,14 +3916,21 @@ class FoodGameApp:
                 style="TileInfo.TLabel",
                 justify="left",
                 anchor="w",
-            ).grid(row=4, column=0, sticky="ew")
+            ).grid(row=5, column=0, sticky="ew")
+
+            ttk.Button(
+                tile,
+                text="View Ingredients",
+                command=lambda c=challenge: show_basket_details(c),
+                style="TileAction.TButton",
+            ).grid(row=6, column=0, sticky="ew", pady=(6, 0))
 
             ttk.Button(
                 tile,
                 text="Select",
                 command=lambda c=challenge: choose_challenge(c),
                 style="TileAction.TButton",
-            ).grid(row=5, column=0, sticky="ew", pady=(10, 0))
+            ).grid(row=7, column=0, sticky="ew", pady=(10, 0))
 
         button_frame = ttk.Frame(container)
         button_frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
@@ -3782,6 +3940,7 @@ class FoodGameApp:
             self._log_action("Basket selection canceled.")
             self.pending_run_config = None
             self.challenge_summary_var.set(self._default_challenge_message())
+            close_detail_windows()
             self._close_challenge_dialog()
 
         ttk.Button(
@@ -3794,6 +3953,7 @@ class FoodGameApp:
         dialog.bind("<Escape>", lambda _e: cancel_selection())
         dialog.grab_set()
         self._center_popup(dialog)
+        dialog._image_refs = challenge_images  # type: ignore[attr-defined]
 
     def start_run(self) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
@@ -3850,6 +4010,7 @@ class FoodGameApp:
                 challenge=challenge,
             )
             self._run_completion_notified = False
+            self._last_run_config = dict(config)
         except Exception as exc:  # pragma: no cover - user feedback path
             self._log_action(f"Start Run failed: {exc}")
             messagebox.showerror("Cannot start run", str(exc))
@@ -3902,6 +4063,50 @@ class FoodGameApp:
         self.write_result("Run started. Select ingredients and press COOK!")
         if self.session.is_finished():
             self._handle_run_finished()
+
+    def _check_challenge_completion(self) -> None:
+        if not self.session or not self.session.challenge:
+            return
+        if getattr(self.session, "challenge_reward_claimed", False):
+            return
+
+        target = getattr(self.session, "challenge_target", None)
+        if target is None:
+            return
+
+        total_score = self.session.get_total_score()
+        if total_score < target:
+            return
+
+        self.session.challenge_reward_claimed = True
+        challenge = self.session.challenge
+        reward = getattr(self.session, "challenge_reward", {}) or {}
+        reward_type = reward.get("type", "reward").replace("_", " ").strip()
+        rarity = reward.get("rarity", "").strip()
+        reward_parts = [part.title() for part in (rarity, reward_type) if part]
+        reward_display = " ".join(reward_parts) if reward_parts else "Reward"
+
+        message_lines = [
+            f"You reached {total_score} points and cleared the {challenge.basket_name} basket!",
+            "",
+            f"Reward earned: {reward_display}.",
+        ]
+        message_text = "\n".join(message_lines)
+
+        self._log_action(
+            f"Basket challenge completed at {total_score} points. Reward granted: {reward_display}."
+        )
+        self.write_result(
+            f"Challenge complete! Reward earned: {reward_display}.\nTotal score: {total_score}"
+        )
+
+        self.session.finished = True
+        self._handle_run_finished(custom_message=("Basket Cleared!", message_text))
+        self.challenge_summary_var.set("Basket cleared! Select your next challenge.")
+
+        next_config = self._last_run_config or self._snapshot_run_config()
+        self.pending_run_config = dict(next_config)
+        self._prompt_basket_selection()
 
     def reset_session(self) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
@@ -4697,6 +4902,7 @@ class FoodGameApp:
 
     def update_status(self) -> None:
         if not self.session:
+            self._refresh_score_details()
             return
         round_text = (
             f"Round {self.session.round_index} / {self.session.rounds}"
@@ -4938,7 +5144,9 @@ class FoodGameApp:
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
 
-    def _handle_run_finished(self) -> None:
+    def _handle_run_finished(
+        self, *, custom_message: Optional[Tuple[str, str]] = None
+    ) -> None:
         if not self.session:
             return
 
@@ -4950,14 +5158,19 @@ class FoodGameApp:
         self._set_controls_active(True)
         self._close_recruit_dialog()
 
-        if self._run_completion_notified:
+        if custom_message is None and self._run_completion_notified:
             return
 
+        title: str
+        message: str
+        if custom_message is not None:
+            title, message = custom_message
+        else:
+            title = "Run complete"
+            message = f"Final score: {self.session.get_total_score()}"
+
         self._run_completion_notified = True
-        messagebox.showinfo(
-            "Run complete",
-            f"Final score: {self.session.get_total_score()}",
-        )
+        messagebox.showinfo(title, message)
         summary_text = self._final_summary_text()
         if summary_text:
             self.write_result(summary_text)
@@ -5144,6 +5357,9 @@ class FoodGameApp:
         self.append_events(self.session.consume_events())
         self.show_turn_summary_popup(outcome)
         self.maybe_prompt_new_chef()
+        self._lifetime_total_score += outcome.final_score
+        self._refresh_score_details()
+        self._check_challenge_completion()
 
         if self.session.is_finished():
             self._handle_run_finished()

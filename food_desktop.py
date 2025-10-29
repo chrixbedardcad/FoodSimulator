@@ -1031,11 +1031,6 @@ class GameSession:
         self._push_event(
             f"Round {self.round_index}/{self.rounds} begins. Deck shuffled for the team."
         )
-        if not initial and (self.available_chefs() or self.available_seasonings()):
-            self.pending_new_chef_offer = True
-            self._push_event(
-                "You may recruit an additional chef or claim a seasoning wildcard before drawing the next hand."
-            )
         self._refill_hand(log_new_cards=not initial)
         if initial:
             self._log_hand_snapshot("Opening hand")
@@ -1109,22 +1104,12 @@ class GameSession:
 
         self._awaiting_basket_reset = True
         self._basket_bonus_choices = self._choose_bonus_ingredients()
-        reward_options = []
-        if self.available_chefs():
-            reward_options.append("chef")
-        if self.available_seasonings():
-            reward_options.append("seasoning")
+        self.pending_new_chef_offer = False
         if self._basket_bonus_choices:
-            reward_options.append("ingredient")
-        if reward_options:
-            self.pending_new_chef_offer = True
-            option_text = ", ".join(reward_options)
             self._push_event(
-                "Round complete! Choose a reward to prepare for the next round "
-                f"({option_text})."
+                "Round complete! Choose an ingredient to prepare for the next round."
             )
         else:
-            self.pending_new_chef_offer = False
             self._push_event(
                 "Round complete! Draws will resume automatically when you continue."
             )
@@ -4558,8 +4543,6 @@ class FoodGameApp:
 
         summary = self.session.peek_basket_clear_summary() or {}
         choices = list(self.session.get_basket_bonus_choices())
-        chefs = list(self.session.available_chefs())
-        seasonings = list(self.session.available_seasonings())
         if not choices:
             ingredients = list(self.session.data.ingredients.values())
             if ingredients:
@@ -4595,7 +4578,7 @@ class FoodGameApp:
 
         ttk.Label(
             frame,
-            text="Round complete! Review your progress and claim a reward.",
+            text="Round complete! Review your progress and claim an ingredient bonus.",
             style="Header.TLabel",
             anchor="center",
             justify="center",
@@ -4616,9 +4599,14 @@ class FoodGameApp:
             anchor="center",
         ).grid(row=1, column=0, sticky="ew", pady=(8, 12))
 
+        instruction_text = (
+            "Pick an ingredient to jump-start the next round:"
+            if choices
+            else "No ingredient bonus is available this time."
+        )
         ttk.Label(
             frame,
-            text="Choose one reward to prepare for the next round:",
+            text=instruction_text,
             justify="center",
             anchor="center",
         ).grid(row=2, column=0, sticky="ew")
@@ -4667,69 +4655,9 @@ class FoodGameApp:
                 return
             finalize_reward()
 
-        def handle_chef_choice(chef: Chef) -> None:
-            if not self.session:
-                return
-            try:
-                self.session.add_chef(chef)
-                self.session.begin_next_round_after_reward()
-            except Exception as exc:  # pragma: no cover - user feedback path
-                messagebox.showerror("Unable to recruit chef", str(exc))
-                return
-            finalize_reward()
-
-        def handle_seasoning_choice(seasoning: Seasoning) -> None:
-            if not self.session:
-                return
-            try:
-                self.session.add_seasoning(seasoning)
-                self.session.begin_next_round_after_reward()
-            except Exception as exc:  # pragma: no cover - user feedback path
-                messagebox.showerror("Unable to claim seasoning", str(exc))
-                return
-            finalize_reward()
-
-        row_index = 0
-        if chefs:
-            chef_frame = ttk.LabelFrame(reward_frame, text="Recruit a chef")
-            chef_frame.grid(row=row_index, column=0, sticky="ew")
-            chef_frame.columnconfigure(0, weight=1)
-            chef_buttons = min(3, len(chefs))
-            for column in range(chef_buttons):
-                chef_frame.columnconfigure(column, weight=1)
-            for column, chef in enumerate(sorted(chefs, key=lambda c: c.name)[:chef_buttons]):
-                button = ttk.Button(
-                    chef_frame,
-                    text=chef.name,
-                    command=lambda pick=chef: handle_chef_choice(pick),
-                    width=20,
-                )
-                button.grid(row=0, column=column, padx=6, pady=4)
-            row_index += 1
-
-        if seasonings:
-            season_frame = ttk.LabelFrame(reward_frame, text="Claim a seasoning")
-            season_frame.grid(row=row_index, column=0, sticky="ew", pady=(8, 0))
-            season_frame.columnconfigure(0, weight=1)
-            season_buttons = min(3, len(seasonings))
-            for column in range(season_buttons):
-                season_frame.columnconfigure(column, weight=1)
-            for column, seasoning in enumerate(
-                sorted(seasonings, key=lambda s: s.display_name or s.name)[:season_buttons]
-            ):
-                display_name = seasoning.display_name or seasoning.name
-                button = ttk.Button(
-                    season_frame,
-                    text=display_name,
-                    command=lambda pick=seasoning: handle_seasoning_choice(pick),
-                    width=20,
-                )
-                button.grid(row=0, column=column, padx=6, pady=4)
-            row_index += 1
-
         if choices:
             ingredient_frame = ttk.LabelFrame(reward_frame, text="Add an ingredient")
-            ingredient_frame.grid(row=row_index, column=0, sticky="ew", pady=(8, 0))
+            ingredient_frame.grid(row=0, column=0, sticky="ew")
             for column in range(len(choices)):
                 ingredient_frame.columnconfigure(column, weight=1)
             for column, ingredient in enumerate(choices):
@@ -4746,9 +4674,8 @@ class FoodGameApp:
                 )
                 button.image = image  # type: ignore[attr-defined]
                 button.grid(row=0, column=column, padx=6, pady=4)
-            row_index += 1
 
-        if row_index == 0:
+        if not choices:
             ttk.Button(
                 reward_frame,
                 text="Continue",

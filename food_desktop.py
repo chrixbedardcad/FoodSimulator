@@ -3646,14 +3646,14 @@ class FoodGameApp:
         self.seasoning_button.grid(row=0, column=2, sticky="ew", padx=(0, 6))
 
         basket_icon = _load_button_image(
-            "basket.png", target_px=RESOURCE_BUTTON_ICON_PX
+            "pantry.png", target_px=RESOURCE_BUTTON_ICON_PX
         )
         if basket_icon is None:
             basket_icon = _generate_button_icon(
-                "basket", "BK", size=RESOURCE_BUTTON_ICON_PX
+                "pantry", "PT", size=RESOURCE_BUTTON_ICON_PX
             )
         self._resource_button_images["basket"] = basket_icon
-        self.basket_count_var = tk.StringVar(value="Pantry\n0/0")
+        self.basket_count_var = tk.StringVar(value="Pantry\n0")
         self.basket_button = ttk.Button(
             resource_frame,
             textvariable=self.basket_count_var,
@@ -4548,11 +4548,11 @@ class FoodGameApp:
             return
 
         if not self.session:
-            self.basket_count_var.set("Pantry\n0/0")
+            self.basket_count_var.set("Pantry\n0")
             return
 
-        remaining, total = self.session.get_basket_counts()
-        self.basket_count_var.set(f"Pantry\n{remaining}/{total}")
+        remaining, _ = self.session.get_basket_counts()
+        self.basket_count_var.set(f"Pantry\n{remaining}")
 
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not self.seasoning_button:

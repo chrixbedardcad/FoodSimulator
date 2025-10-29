@@ -3522,10 +3522,10 @@ class FoodGameApp:
             lambda _e: self.hand_canvas.configure(scrollregion=self.hand_canvas.bbox("all")),
         )
 
-        action_frame = ttk.Frame(self.game_frame)
-        action_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
-        action_frame.columnconfigure(0, weight=1)
-        action_frame.columnconfigure(1, weight=1)
+        self.action_frame = ttk.Frame(self.game_frame)
+        self.action_frame.grid(row=2, column=0, sticky="ew", pady=(12, 0))
+        self.action_frame.columnconfigure(0, weight=1)
+        self.action_frame.columnconfigure(1, weight=1)
 
     def _refresh_score_details(self) -> None:
         target_text = "Target Score: —"
@@ -3540,7 +3540,7 @@ class FoodGameApp:
         self.lifetime_score_var.set(f"Lifetime Score: {self._lifetime_total_score}")
 
         self.cook_button = ttk.Button(
-            action_frame,
+            self.action_frame,
             text="Cook",
             command=self.cook_selected,
             state="disabled",
@@ -3555,7 +3555,7 @@ class FoodGameApp:
         self.cook_button.configure(image=cook_icon)
 
         self.return_button = ttk.Button(
-            action_frame,
+            self.action_frame,
             text="Return",
             command=self.return_selected,
             state="disabled",
@@ -3569,7 +3569,7 @@ class FoodGameApp:
         self._action_button_images["return"] = return_icon
         self.return_button.configure(image=return_icon)
 
-        resource_frame = ttk.Frame(action_frame)
+        resource_frame = ttk.Frame(self.action_frame)
         resource_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         for column in range(5):
             resource_frame.columnconfigure(column, weight=1)
@@ -3669,6 +3669,21 @@ class FoodGameApp:
             state="disabled",
         )
         self.chef_button.grid(row=0, column=4, sticky="ew")
+
+        self._update_cookbook_button()
+
+    def _refresh_score_details(self) -> None:
+        target_text = "Target Score: —"
+        run_total = 0
+        if self.session:
+            run_total = self.session.get_total_score()
+            target = getattr(self.session, "challenge_target", None)
+            if target is not None:
+                target_text = f"Target Score: {target}"
+        self.target_score_var.set(target_text)
+        self.run_score_detail_var.set(f"Run Score: {run_total}")
+        self.lifetime_score_var.set(f"Lifetime Score: {self._lifetime_total_score}")
+        self._update_cookbook_button()
         self._update_seasoning_button(None)
         self._update_chef_button()
 

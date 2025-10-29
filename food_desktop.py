@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 import random
 import re
+import sys
 import tkinter as tk
 from collections import Counter
 from dataclasses import dataclass, field, replace
@@ -33,8 +34,12 @@ from typing import (
 )
 
 from tkinter import ttk
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageTk
+except ModuleNotFoundError:  # pragma: no cover - optional dependency for CLI debug mode
+    Image = ImageDraw = ImageFont = ImageTk = None  # type: ignore[assignment]
 
+from basket_challenges import BasketChallenge, BasketChallengeFactory
 from food_api import (
     DEFAULT_HAND_SIZE,
     DEFAULT_PICK_SIZE,
@@ -98,10 +103,22 @@ RUINED_SEASONING_MESSAGES = [
 INGREDIENT_IMAGE_TARGET_PX = 160
 RECIPE_IMAGE_TARGET_PX = 240
 
-try:
-    RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
-except AttributeError:  # Pillow<9.1 fallback
-    RESAMPLE_LANCZOS = Image.LANCZOS
+TARGET_SCORE_CONFIG = {
+    "samples": 220,
+    "top_percentile": 0.80,
+    "plays_by_difficulty": {"easy": 8, "medium": 10, "hard": 12},
+    "mult_by_difficulty": {"easy": 0.85, "medium": 1.00, "hard": 1.20},
+    "perk_cushion": 0.08,
+    "min_target": 60,
+}
+
+if Image is not None:
+    try:
+        RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
+    except AttributeError:  # Pillow<9.1 fallback
+        RESAMPLE_LANCZOS = Image.LANCZOS
+else:  # pragma: no cover - CLI debug path when Pillow missing
+    RESAMPLE_LANCZOS = None
 
 
 _icon_cache: Dict[str, tk.PhotoImage] = {}
@@ -5805,7 +5822,68 @@ class FoodGameApp:
         return "\n".join(parts)
 
 
+def make_run_id() -> str:
+    return datetime.now().strftime("run-%Y%m%d-%H%M%S")
+
+
+def _blank_run_state() -> Dict[str, object]:
+    return {
+        "run_id": make_run_id(),
+        "turn_index": 1,
+        "pantry": [],
+        "chefs_active": [],
+        "seasoning_owned": [],
+        "lives": 0,
+        "stats": {"total_score": 0, "baskets_cleared": 0},
+    }
+
+
+def _format_challenge_summary(challenge: BasketChallenge) -> str:
+    reward = challenge.reward
+    reward_type = reward.get("type", "?")
+    reward_rarity = reward.get("rarity", "?")
+    return (
+        f"[{challenge.difficulty.upper()}] {challenge.basket_name} — "
+        f"Target {challenge.target_score} pts in {challenge.plays_budget} plays; "
+        f"adds {len(challenge.added_ing_ids)} ingredients; "
+        f"reward {reward_type} ({reward_rarity})"
+    )
+
+
+def _debug_print_challenges(data: GameData, *, seed: Optional[int] = None) -> None:
+    rng = random.Random(seed) if seed is not None else random.Random()
+    run_state = _blank_run_state()
+    factory = BasketChallengeFactory(data, TARGET_SCORE_CONFIG)
+    offers = factory.three_offers(run_state, rng=rng)
+    print("=== Basket Challenge Debug ===")
+    if seed is not None:
+        print(f"Seed: {seed}")
+    else:
+        print("Seed: random")
+    for index, offer in enumerate(offers, start=1):
+        print(f"{index}. {offer.id}")
+        print(f"   { _format_challenge_summary(offer)}")
+        added_preview = ", ".join(offer.added_ing_ids[:6])
+        if len(offer.added_ing_ids) > 6:
+            added_preview += ", …"
+        if not added_preview:
+            added_preview = "None"
+        print(f"   Pantry adds ({len(offer.added_ing_ids)}): {added_preview}")
+    print()
+
+
 def main() -> None:
+    if "--debug-baskets" in sys.argv:
+        debug_seed: Optional[int] = None
+        idx = sys.argv.index("--debug-baskets")
+        if idx + 1 < len(sys.argv):
+            try:
+                debug_seed = int(sys.argv[idx + 1])
+            except ValueError:
+                debug_seed = None
+        _debug_print_challenges(DATA, seed=debug_seed)
+        return
+
     root = tk.Tk()
     app = FoodGameApp(root)
     root.mainloop()

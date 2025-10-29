@@ -254,6 +254,26 @@ class GameData:
     def ingredient_for_id(self, identifier: str) -> Optional[Ingredient]:
         return self.ingredient_by_id.get(identifier)
 
+    def ingredients_for_ids(self, identifiers: Sequence[str]) -> List[Ingredient]:
+        """Return all ingredients matching the provided identifiers."""
+
+        result: List[Ingredient] = []
+        for identifier in identifiers:
+            ingredient = self.ingredient_by_id.get(identifier)
+            if ingredient:
+                result.append(ingredient)
+        return result
+
+    def feasible_dish_sizes(self) -> List[int]:
+        """Return sorted ingredient counts that can form valid dishes."""
+
+        sizes: set[int] = set()
+        for entry in self.dish_matrix:
+            sizes.update(range(entry.min_ingredients, entry.max_ingredients + 1))
+        # Recipes always require exactly three cards.
+        sizes.add(3)
+        return sorted(size for size in sizes if size >= 3)
+
     def is_valid_dish(self, ingredients: Sequence[Ingredient]) -> bool:
         if len(ingredients) < 3:
             return False

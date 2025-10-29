@@ -112,6 +112,19 @@ TARGET_SCORE_CONFIG = {
     "min_target": 60,
 }
 
+
+def format_challenge_reward_text(reward: Mapping[str, str]) -> str:
+    """Return a readable description of a basket reward."""
+
+    reward_type = reward.get("type", "reward").replace("_", " ").strip().lower()
+    rarity = reward.get("rarity", "").strip().lower()
+
+    descriptor_parts = [part for part in (rarity, reward_type) if part]
+    descriptor = " ".join(descriptor_parts) or "reward"
+    article = "an" if descriptor[:1] in "aeiou" else "a"
+    return f"{article} {descriptor}"
+
+
 if Image is not None:
     try:
         RESAMPLE_LANCZOS = Image.Resampling.LANCZOS
@@ -894,6 +907,7 @@ class GameSession:
         deck_size: int = DEFAULT_DECK_SIZE,
         bias: float = DEFAULT_BIAS,
         max_chefs: int = DEFAULT_MAX_CHEFS,
+        challenge: Optional[BasketChallenge] = None,
         rng: Optional[random.Random] = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -919,6 +933,17 @@ class GameSession:
         self.deck_size = deck_size
         self.bias = bias
         self.max_chefs = max_chefs
+        self.challenge: Optional[BasketChallenge] = challenge
+        self.challenge_target: Optional[int] = (
+            int(challenge.target_score) if challenge else None
+        )
+        self.challenge_plays_budget: Optional[int] = (
+            int(challenge.plays_budget) if challenge else None
+        )
+        self.challenge_reward: Optional[Mapping[str, str]] = (
+            dict(challenge.reward) if challenge else None
+        )
+        self.challenge_reward_claimed = False
         if rng is not None:
             self.rng = rng
             self.seed = seed
@@ -944,6 +969,19 @@ class GameSession:
         self.seasonings: List[Seasoning] = []
         self._seasoning_charges: Dict[str, Optional[int]] = {}
         self._events: List[str] = []
+
+        if self.challenge:
+            reward_text = format_challenge_reward_text(self.challenge.reward)
+            plays_text = (
+                f" within {self.challenge.plays_budget} plays"
+                if self.challenge.plays_budget
+                else ""
+            )
+            self._push_event(
+                "Basket challenge accepted: "
+                f"Reach {self.challenge.target_score} points{plays_text} "
+                f"to earn {reward_text}."
+            )
 
         self._cookbook_ingredients: set[str] = set()
         self._ingredient_recipe_map = {
@@ -2976,10 +3014,21 @@ class FoodGameApp:
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
 
+        self.challenge_factory = BasketChallengeFactory(DATA, TARGET_SCORE_CONFIG)
+        self.challenge_summary_var = tk.StringVar(
+            value=self._default_challenge_message()
+        )
+        self.challenge_offers: Optional[Tuple[BasketChallenge, ...]] = None
+        self.challenge_dialog: Optional[tk.Toplevel] = None
+        self.pending_run_config: Optional[Dict[str, int]] = None
+
         self._init_styles()
         self._build_layout()
 
     # ----------------- UI setup -----------------
+    def _default_challenge_message(self) -> str:
+        return "No basket selected. Start a run to choose from three baskets."
+
     def _init_styles(self) -> None:
         style = ttk.Style(self.root)
         try:
@@ -3228,25 +3277,22 @@ class FoodGameApp:
         self._build_game_panel()
 
     def _build_controls(self) -> None:
-        ttk.Label(self.control_frame, text="Basket", style="Header.TLabel").pack(anchor="w")
-        self.basket_var = tk.StringVar()
-        basket_names = sorted(DATA.baskets.keys())
-        if "Basic" in basket_names:
-            basket_names = ["Basic"] + [name for name in basket_names if name != "Basic"]
-        self.basket_combo = ttk.Combobox(
+        ttk.Label(
             self.control_frame,
-            textvariable=self.basket_var,
-            values=basket_names,
-            state="readonly",
-            width=28,
-        )
-        if basket_names:
-            self.basket_combo.current(0)
-        self.basket_combo.pack(anchor="w", pady=(4, 12))
+            text="Basket Challenge",
+            style="Header.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            self.control_frame,
+            textvariable=self.challenge_summary_var,
+            style="Info.TLabel",
+            wraplength=260,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 12))
 
         ttk.Label(
             self.control_frame,
-            text="You'll be prompted to recruit chefs or claim seasonings once a run begins.",
+            text="Start a run to draw three basket options. Each has a target score and reward.",
             style="Info.TLabel",
             wraplength=260,
             justify="left",
@@ -3594,6 +3640,161 @@ class FoodGameApp:
         self.log_text.configure(state="disabled")
 
     # ----------------- Session management -----------------
+    def _refresh_challenge_summary(self) -> None:
+        if self.session and self.session.challenge:
+            challenge = self.session.challenge
+            reward_text = format_challenge_reward_text(challenge.reward)
+            summary = (
+                f"{challenge.basket_name} ({challenge.difficulty.title()}) — "
+                f"Target {challenge.target_score} pts"
+            )
+            if challenge.plays_budget:
+                summary += f" in {challenge.plays_budget} plays"
+            summary += f" · Reward: {reward_text}"
+            self.challenge_summary_var.set(summary)
+        else:
+            self.challenge_summary_var.set(self._default_challenge_message())
+
+    def _close_challenge_dialog(self) -> None:
+        if self.challenge_dialog and self.challenge_dialog.winfo_exists():
+            try:
+                self.challenge_dialog.grab_release()
+            except tk.TclError:
+                pass
+            self.challenge_dialog.destroy()
+        self.challenge_dialog = None
+        self.challenge_offers = None
+
+    def _prompt_basket_selection(self) -> None:
+        self._close_challenge_dialog()
+
+        if not self.pending_run_config:
+            return
+
+        offers = self.challenge_factory.three_offers(_blank_run_state())
+        self.challenge_offers = offers
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Choose a Basket Challenge")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        self.challenge_dialog = dialog
+
+        container = ttk.Frame(dialog, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            container,
+            text="Select a basket to set your starting ingredients and reward.",
+            style="Header.TLabel",
+            wraplength=420,
+            justify="center",
+            anchor="center",
+        ).grid(row=0, column=0, sticky="ew")
+
+        tiles_frame = ttk.Frame(container)
+        tiles_frame.grid(row=1, column=0, sticky="nsew", pady=(12, 0))
+        for column in range(3):
+            tiles_frame.columnconfigure(column, weight=1)
+
+        def ingredient_preview(challenge: BasketChallenge) -> str:
+            entries = DATA.baskets.get(challenge.basket_name, [])
+            lines: List[str] = []
+            for name, copies in entries[:6]:
+                qty = f"×{copies}" if copies > 1 else ""
+                lines.append(f"• {name} {qty}".rstrip())
+            if len(entries) > 6:
+                lines.append("• …")
+            return "\n".join(lines) if lines else "No ingredients listed."
+
+        def choose_challenge(challenge: BasketChallenge) -> None:
+            self._close_challenge_dialog()
+            self._finalize_start_run(challenge)
+
+        for column, challenge in enumerate(offers):
+            tile = ttk.Frame(tiles_frame, style="Tile.TFrame", padding=(14, 12))
+            tile.grid(
+                row=0,
+                column=column,
+                sticky="nsew",
+                padx=(0 if column == 0 else 12, 0),
+            )
+            tile.columnconfigure(0, weight=1)
+
+            ttk.Label(
+                tile,
+                text=f"{challenge.basket_name}\n{challenge.difficulty.title()}",
+                style="TileHeader.TLabel",
+                justify="center",
+                anchor="center",
+            ).grid(row=0, column=0, sticky="ew")
+
+            ttk.Label(
+                tile,
+                text=(
+                    f"Target {challenge.target_score} pts"
+                    + (
+                        f" in {challenge.plays_budget} plays"
+                        if challenge.plays_budget
+                        else ""
+                    )
+                ),
+                style="TileInfo.TLabel",
+                justify="center",
+                anchor="center",
+                wraplength=220,
+            ).grid(row=1, column=0, sticky="ew", pady=(8, 4))
+
+            ttk.Label(
+                tile,
+                text=f"Reward: {format_challenge_reward_text(challenge.reward)}",
+                style="TileSub.TLabel",
+                justify="center",
+                anchor="center",
+                wraplength=220,
+            ).grid(row=2, column=0, sticky="ew")
+
+            ttk.Separator(tile, orient="horizontal").grid(
+                row=3, column=0, sticky="ew", pady=(8, 8)
+            )
+
+            ttk.Label(
+                tile,
+                text=ingredient_preview(challenge),
+                style="TileInfo.TLabel",
+                justify="left",
+                anchor="w",
+            ).grid(row=4, column=0, sticky="ew")
+
+            ttk.Button(
+                tile,
+                text="Select",
+                command=lambda c=challenge: choose_challenge(c),
+                style="TileAction.TButton",
+            ).grid(row=5, column=0, sticky="ew", pady=(10, 0))
+
+        button_frame = ttk.Frame(container)
+        button_frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
+        button_frame.columnconfigure(0, weight=1)
+
+        def cancel_selection() -> None:
+            self._log_action("Basket selection canceled.")
+            self.pending_run_config = None
+            self.challenge_summary_var.set(self._default_challenge_message())
+            self._close_challenge_dialog()
+
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=cancel_selection,
+        ).grid(row=0, column=0, padx=4)
+
+        dialog.protocol("WM_DELETE_WINDOW", cancel_selection)
+        dialog.bind("<Escape>", lambda _e: cancel_selection())
+        dialog.grab_set()
+        self._center_popup(dialog)
+
     def start_run(self) -> None:
         if self.active_popup and self.active_popup.winfo_exists():
             self.active_popup.destroy()
@@ -3602,11 +3803,9 @@ class FoodGameApp:
             self.deck_popup.destroy()
         self.deck_popup = None
         self._close_recruit_dialog()
-        try:
-            basket = self.basket_var.get()
-            if not basket:
-                raise ValueError("Select a basket before starting a run.")
+        self._close_challenge_dialog()
 
+        try:
             rounds = int(self.round_var.get())
             cooks = int(self.cooks_var.get())
             hand_size = int(self.hand_var.get())
@@ -3617,20 +3816,45 @@ class FoodGameApp:
                 raise ValueError("Pick size cannot exceed hand size.")
             if max_chefs <= 0:
                 raise ValueError("Max chefs must be at least 1.")
+        except Exception as exc:  # pragma: no cover - user feedback path
+            self._log_action(f"Start Run failed: {exc}")
+            messagebox.showerror("Cannot start run", str(exc))
+            return
 
+        self.pending_run_config = {
+            "rounds": rounds,
+            "cooks": cooks,
+            "hand_size": hand_size,
+            "pick_size": pick_size,
+            "max_chefs": max_chefs,
+        }
+        self.challenge_summary_var.set("Select a basket to begin this run.")
+        self._log_action("Start Run button pressed. Awaiting basket selection.")
+        self._prompt_basket_selection()
+
+    def _finalize_start_run(self, challenge: BasketChallenge) -> None:
+        config = self.pending_run_config
+        self.pending_run_config = None
+        if config is None:
+            return
+
+        try:
             self.session = GameSession(
                 DATA,
-                basket_name=basket,
+                basket_name=challenge.basket_name,
                 chefs=[],
-                rounds=rounds,
-                hand_size=hand_size,
-                pick_size=pick_size,
-                max_chefs=max_chefs,
+                rounds=config["rounds"],
+                hand_size=config["hand_size"],
+                pick_size=config["pick_size"],
+                max_chefs=config["max_chefs"],
+                challenge=challenge,
             )
             self._run_completion_notified = False
         except Exception as exc:  # pragma: no cover - user feedback path
             self._log_action(f"Start Run failed: {exc}")
             messagebox.showerror("Cannot start run", str(exc))
+            self.session = None
+            self._refresh_challenge_summary()
             return
 
         cookbook_entries = self.session.get_cookbook()
@@ -3646,6 +3870,8 @@ class FoodGameApp:
                 self.session.get_seasonings(),
                 len(self.session.available_seasonings()),
             )
+
+        self._refresh_challenge_summary()
 
         self._set_controls_active(False)
         self.cook_button.configure(state="normal")
@@ -3664,17 +3890,15 @@ class FoodGameApp:
         self.clear_events()
         self._log_start_time = datetime.now()
         self._log_run_settings()
-        self._log_action("Start Run button pressed. Run initialized.")
+        self._log_action(
+            "Basket selected: "
+            f"{challenge.basket_name} ({challenge.difficulty.title()}) — "
+            f"target {challenge.target_score} pts."
+        )
+        self._log_action("Run initialized.")
         self.append_events(self.session.consume_events())
         self._update_seasoning_button(None)
         self._update_chef_button()
-        if not self.session.chefs and (
-            self.session.available_chefs() or self.session.available_seasonings()
-        ):
-            self.session.pending_new_chef_offer = True
-            self._update_chef_button()
-            self.append_events(["Choose a chef or seasoning to begin your run."])
-            self.show_recruit_dialog()
         self.write_result("Run started. Select ingredients and press COOK!")
         if self.session.is_finished():
             self._handle_run_finished()
@@ -3695,6 +3919,7 @@ class FoodGameApp:
         self._run_completion_notified = False
         self._close_recruit_dialog()
         self.session = None
+        self._refresh_challenge_summary()
         self._update_basket_button()
         self.selected_indices.clear()
         self.update_selection_label()
@@ -3729,7 +3954,6 @@ class FoodGameApp:
 
     def _set_controls_active(self, active: bool) -> None:
         state = "normal" if active else "disabled"
-        self.basket_combo.configure(state="readonly" if active else "disabled")
         for spin in self.spinboxes:
             spin.configure(state=state)
         self.start_button.configure(state="normal" if active else "disabled")

@@ -4545,7 +4545,7 @@ class FoodGameApp:
             ingredients = list(self.session.data.ingredients.values())
             if ingredients:
                 sample_count = min(3, len(ingredients))
-                choices = self.session.rng.sample(ingredients, sample_count)
+                choices = random.sample(ingredients, sample_count)
 
         if self.active_popup and self.active_popup.winfo_exists():
             if getattr(self.active_popup, "_popup_kind", None) == "basket_clear":

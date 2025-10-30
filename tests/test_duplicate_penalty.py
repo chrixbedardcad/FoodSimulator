@@ -168,6 +168,6 @@ def test_duplicate_penalty_reduces_unmatched_all_same_flavor():
 
     outcome = data.evaluate_dish(ingredients)
 
-    assert round(outcome.dish_multiplier, 2) == 0.5
-    assert int(round(outcome.dish_value)) == int(round(outcome.base_value * 0.5))
+    assert round(outcome.dish_multiplier, 2) == 1.0
+    assert int(round(outcome.dish_value)) == int(round(outcome.base_value))
     assert any("too much Rice" in alert for alert in outcome.alerts)

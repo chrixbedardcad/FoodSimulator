@@ -156,5 +156,61 @@
     ],
     "base_multiplier": 0.5,
     "delta_multiplier": 0.1
+  },
+  {
+    "name": "CarbonaraPasta",
+    "display_name": "Carbonara Pasta",
+    "trio": [
+      "Pasta",
+      "Egg",
+      "Parmesan",
+      "Bacon"
+    ],
+    "base_multiplier": 4.8,
+    "delta_multiplier": 1.1
+  },
+  {
+    "name": "GarlicBread",
+    "display_name": "Garlic Bread",
+    "trio": [
+      "Bread",
+      "Garlic",
+      "Butter"
+    ],
+    "base_multiplier": 3.0,
+    "delta_multiplier": 0.8
+  },
+  {
+    "name": "LemonFishBowl",
+    "display_name": "Lemon Fish Bowl",
+    "trio": [
+      "Fish",
+      "Lemon",
+      "Rice"
+    ],
+    "base_multiplier": 3.5,
+    "delta_multiplier": 0.9
+  },
+  {
+    "name": "HoneyYogurtCup",
+    "display_name": "Honey Yogurt Cup",
+    "trio": [
+      "Honey",
+      "Yogurt",
+      "Cream"
+    ],
+    "base_multiplier": 2.8,
+    "delta_multiplier": 0.7
+  },
+  {
+    "name": "TruffleOmelette",
+    "display_name": "Truffle Omelette",
+    "trio": [
+      "Egg",
+      "Truffle",
+      "Cream"
+    ],
+    "base_multiplier": 4.0,
+    "delta_multiplier": 1.0
   }
 ]

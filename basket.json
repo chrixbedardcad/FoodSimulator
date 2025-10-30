@@ -2,73 +2,81 @@
   "Basic": [
     {
       "ingredient": "Pasta",
-      "copies": 2
+      "copies": 3
     },
     {
       "ingredient": "Rice",
-      "copies": 2
+      "copies": 3
     },
     {
       "ingredient": "Tomato",
-      "copies": 2
-    },
-    {
-      "ingredient": "Parmesan",
-      "copies": 2
+      "copies": 3
     },
     {
       "ingredient": "Egg",
-      "copies": 2
+      "copies": 3
+    },
+    {
+      "ingredient": "Parmesan",
+      "copies": 3
     },
     {
       "ingredient": "Bacon",
-      "copies": 2
+      "copies": 3
     },
     {
       "ingredient": "Mushroom",
-      "copies": 2
+      "copies": 3
     },
     {
       "ingredient": "Bread",
-      "copies": 2
+      "copies": 3
+    },
+    {
+      "ingredient": "Onion",
+      "copies": 3
+    },
+    {
+      "ingredient": "Garlic",
+      "copies": 3
     }
   ],
   "Mediterranean": [
     {
       "ingredient": "Tomato",
-      "copies": 5
+      "copies": 3
     },
     {
       "ingredient": "Onion",
-      "copies": 5
+      "copies": 3
     },
     {
       "ingredient": "Garlic",
-      "copies": 4
+      "copies": 3
     },
     {
       "ingredient": "Bread",
-      "copies": 4
+      "copies": 2
     },
     {
       "ingredient": "Egg",
-      "copies": 3
+      "copies": 2
     },
     {
       "ingredient": "Pasta",
-      "copies": 4
+      "copies": 3
     },
     {
       "ingredient": "Rice",
-      "copies": 4
+      "copies": 2
     },
     {
       "ingredient": "Parmesan",
-      "copies": 4
+      "copies": 3
     },
     {
       "ingredient": "Lemon",
-      "copies": 3
+      "copies": 2
     },
     {
       "ingredient": "Yogurt",
@@ -79,101 +87,61 @@
       "copies": 2
     },
     {
-      "ingredient": "Mushroom",
-      "copies": 2
-    },
-    {
-      "ingredient": "Honey",
-      "copies": 2
-    },
-    {
       "ingredient": "Fish",
       "copies": 2
     },
     {
-      "ingredient": "Bacon",
+      "ingredient": "Capers",
       "copies": 2
     },
     {
-      "ingredient": "Truffle",
-      "copies": 1
-    },
-    {
-      "ingredient": "Beef",
-      "copies": 1
-    },
-    {
-      "ingredient": "Seaweed",
-      "copies": 1
-    },
-    {
-      "ingredient": "Chocolate",
-      "copies": 1
-    },
-    {
-      "ingredient": "Capers",
-      "copies": 3
-    },
-    {
-      "ingredient": "PickledCucumber",
+      "ingredient": "Basil",
       "copies": 2
     }
   ],
   "Asian": [
     {
       "ingredient": "Rice",
-      "copies": 6
+      "copies": 4
     },
     {
       "ingredient": "Fish",
-      "copies": 4
+      "copies": 3
     },
     {
       "ingredient": "Seaweed",
-      "copies": 4
+      "copies": 3
     },
     {
       "ingredient": "Onion",
-      "copies": 4
-    },
-    {
-      "ingredient": "Garlic",
-      "copies": 4
-    },
-    {
-      "ingredient": "PickledCucumber",
-      "copies": 3
-    },
-    {
-      "ingredient": "Lemon",
-      "copies": 3
-    },
-    {
-      "ingredient": "Yogurt",
       "copies": 2
     },
     {
-      "ingredient": "Mushroom",
-      "copies": 4
+      "ingredient": "Garlic",
+      "copies": 2
     },
     {
-      "ingredient": "Bacon",
+      "ingredient": "PickledCucumber",
       "copies": 2
     },
     {
       "ingredient": "Egg",
-      "copies": 4
+      "copies": 3
     },
     {
-      "ingredient": "Cream",
-      "copies": 1
+      "ingredient": "Mushroom",
+      "copies": 3
     },
     {
       "ingredient": "Honey",
       "copies": 2
     },
     {
-      "ingredient": "Truffle",
+      "ingredient": "Lemon",
+      "copies": 2
+    },
+    {
+      "ingredient": "Yogurt",
       "copies": 1
     },
     {
@@ -182,22 +150,6 @@
     },
     {
       "ingredient": "Pasta",
-      "copies": 1
-    },
-    {
-      "ingredient": "Parmesan",
-      "copies": 1
-    },
-    {
-      "ingredient": "Bread",
-      "copies": 1
-    },
-    {
-      "ingredient": "Tomato",
-      "copies": 2
-    },
-    {
-      "ingredient": "Capers",
       "copies": 1
     }
   ]

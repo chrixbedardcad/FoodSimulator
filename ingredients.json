@@ -240,5 +240,49 @@
     "rotten_turns": 8,
     "rotten_image": "img/ingredients/pickledcucumber_rotten.png",
     "ui_circles": true
+  },
+  {
+    "name": "OliveOil",
+    "display_name": "Olive Oil",
+    "ingredient_id": "ing.oliveoil",
+    "taste": "Bitter",
+    "Value": 6,
+    "family": "Fruit",
+    "rotten_turns": 999,
+    "rotten_image": "img/ingredients/oliveoil_rotten.png",
+    "ui_circles": true
+  },
+  {
+    "name": "BlackPepper",
+    "display_name": "Black Pepper",
+    "ingredient_id": "ing.blackpepper",
+    "taste": "Bitter",
+    "Value": 5,
+    "family": "Vegetable",
+    "rotten_turns": 999,
+    "rotten_image": "img/ingredients/blackpepper_rotten.png",
+    "ui_circles": true
+  },
+  {
+    "name": "Milk",
+    "display_name": "Milk",
+    "ingredient_id": "ing.milk",
+    "taste": "Sweet",
+    "Value": 8,
+    "family": "Dairy",
+    "rotten_turns": 2,
+    "rotten_image": "img/ingredients/milk_rotten.png",
+    "ui_circles": true
+  },
+  {
+    "name": "Butter",
+    "display_name": "Butter",
+    "ingredient_id": "ing.butter",
+    "taste": "Sweet",
+    "Value": 9,
+    "family": "Dairy",
+    "rotten_turns": 3,
+    "rotten_image": "img/ingredients/butter_rotten.png",
+    "ui_circles": true
   }
 ]

@@ -1198,7 +1198,13 @@ class GameSession:
         self._awaiting_basket_reset = False
         self._basket_bonus_choices = []
         self._basket_clear_summary = None
-        self.deck = self._build_market_deck()
+        carryover_cards: List[IngredientCard] = []
+        if not initial:
+            carryover_cards = self._collect_pantry_carryover()
+        self.deck = self._build_market_deck(
+            carryover_cards=carryover_cards,
+            use_starting_pantry=initial,
+        )
         self._current_deck_total = len(self.deck)
         self.hand.clear()
         self.pending_new_chef_offer = False
@@ -1209,11 +1215,36 @@ class GameSession:
         if initial:
             self._log_hand_snapshot("Opening hand")
 
-    def _build_market_deck(self) -> List[IngredientCard]:
-        if self._starting_pantry_cards is not None:
-            cards = [IngredientCard(ingredient=item) for item in self._starting_pantry_cards]
+    def _collect_pantry_carryover(self) -> List[IngredientCard]:
+        carryover: List[IngredientCard] = []
+        if self.hand:
+            carryover.extend(self.hand)
+            self.hand.clear()
+        if self.deck:
+            carryover.extend(self.deck)
+            self.deck.clear()
+        return carryover
+
+    def _build_market_deck(
+        self,
+        *,
+        carryover_cards: Optional[Sequence[IngredientCard]] = None,
+        use_starting_pantry: Optional[bool] = None,
+    ) -> List[IngredientCard]:
+        cards: List[IngredientCard] = []
+        if carryover_cards:
+            cards.extend(carryover_cards)
+
+        if use_starting_pantry is None:
+            use_saved_pantry = self._starting_pantry_cards is not None
         else:
-            deck = build_market_deck(
+            use_saved_pantry = (
+                self._starting_pantry_cards is not None and use_starting_pantry
+            )
+        if use_saved_pantry:
+            base_deck = list(self._starting_pantry_cards or [])
+        else:
+            base_deck = build_market_deck(
                 self.data,
                 self.basket_name,
                 self.chefs,
@@ -1221,7 +1252,8 @@ class GameSession:
                 bias=self.bias,
                 rng=self.rng,
             )
-            cards = [IngredientCard(ingredient=item) for item in deck]
+
+        cards.extend(IngredientCard(ingredient=item) for item in base_deck)
         if self._permanent_bonus_ingredients:
             cards.extend(
                 IngredientCard(ingredient=ingredient)

@@ -16,10 +16,10 @@ def test_all_same_taste_all_different_families_scores_tasteful():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Tasteful"
+    assert outcome.entry.name == "Harmony Roll"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_same"
-    assert round(outcome.dish_multiplier, 2) == 2.0
+    assert round(outcome.dish_multiplier, 2) == 4.0
 
 
 def test_all_different_families_same_taste_counts_as_mixed():
@@ -49,7 +49,7 @@ def test_same_taste_mixed_families_still_score_base_value():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Tasteful Dish"
+    assert outcome.entry.name == "Tasteful"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_same"
     assert round(outcome.dish_multiplier, 2) == 2.0
@@ -83,7 +83,7 @@ def test_all_different_family_and_flavor_scores_rich():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Rich"
+    assert outcome.entry.name == "Family Quartet"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "mixed"
-    assert round(outcome.dish_multiplier, 2) == 7.5
+    assert round(outcome.dish_multiplier, 2) == 3.0

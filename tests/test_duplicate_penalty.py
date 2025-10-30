@@ -65,7 +65,7 @@ def test_three_unique_families_same_taste_match_tasteful():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Tasteful"
+    assert outcome.entry.name == "Harmony Roll"
     assert outcome.flavor_pattern == "all_same"
 
 

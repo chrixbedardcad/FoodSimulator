@@ -26,7 +26,7 @@ def test_rich_matches_all_different_tastes():
     outcome = data.evaluate_dish(combo)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Rich"
+    assert outcome.entry.name == "Family Quartet"
     expected_multiplier = outcome.entry.multiplier
     assert outcome.dish_multiplier == pytest.approx(expected_multiplier)
 

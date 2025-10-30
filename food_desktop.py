@@ -14,7 +14,7 @@ import random
 import re
 import sys
 import tkinter as tk
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +61,7 @@ from food_api import (
     describe_flavor_pattern,
     quantize_multiplier,
     build_market_deck,
+    distribute_unique_draws,
 )
 from rotting_round import IngredientCard, rot_circles
 from seed_utils import resolve_seed
@@ -1233,24 +1234,11 @@ class GameSession:
         if not cards:
             return []
 
-        grouped: Dict[str, List[IngredientCard]] = defaultdict(list)
-        for card in cards:
-            grouped[card.ingredient.name].append(card)
-
-        for stack in grouped.values():
-            self.rng.shuffle(stack)
-
-        ordered: List[IngredientCard] = []
-        counts = {name: len(stack) for name, stack in grouped.items()}
-        while counts:
-            choice = self.rng.choice(list(counts.keys()))
-            stack = grouped[choice]
-            ordered.append(stack.pop())
-            counts[choice] -= 1
-            if counts[choice] <= 0:
-                del counts[choice]
-                del grouped[choice]
-        return ordered
+        return distribute_unique_draws(
+            list(cards),
+            key_func=lambda card: card.ingredient.name,
+            rng=self.rng,
+        )
 
     def _build_market_deck(
         self,

@@ -4,10 +4,21 @@ import json
 import os
 import random
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    MutableMapping,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
 
 try:
     import numpy as np  # type: ignore
@@ -27,6 +38,64 @@ DEFAULT_RECIPES_JSON = "recipes.json"
 DEFAULT_CHEFS_JSON = "chefs.json"
 DEFAULT_BASKETS_JSON = "basket.json"
 DEFAULT_SEASONINGS_JSON = "seasonings.json"
+
+
+T = TypeVar("T")
+
+
+def distribute_unique_draws(
+    items: Sequence[T],
+    *,
+    key_func: Callable[[T], str],
+    rng: random.Random,
+    limit: Optional[int] = None,
+) -> List[T]:
+    """Shuffle ``items`` so unique keys appear before duplicates repeat.
+
+    The returned order guarantees each distinct key produced by ``key_func``
+    will be drawn at most once per cycle. Within a cycle the keys are shuffled
+    uniformly using ``rng``. This avoids overweighting ingredients that have
+    many copies while still preserving their overall counts.
+
+    Args:
+        items: The sequence of items to shuffle.
+        key_func: Function returning the grouping key for each item.
+        rng: Random number generator used for shuffling.
+        limit: Optional cap on the number of returned items.
+
+    Returns:
+        A list containing the reordered items.
+    """
+
+    if not items:
+        return []
+
+    grouped: Dict[str, List[T]] = defaultdict(list)
+    for item in items:
+        grouped[key_func(item)].append(item)
+
+    for stack in grouped.values():
+        rng.shuffle(stack)
+
+    ordered: List[T] = []
+    active_keys: List[str] = list(grouped.keys())
+    while active_keys and (limit is None or len(ordered) < limit):
+        rng.shuffle(active_keys)
+        next_keys: List[str] = []
+        for key in active_keys:
+            if limit is not None and len(ordered) >= limit:
+                break
+            stack = grouped[key]
+            ordered.append(stack.pop())
+            if stack:
+                next_keys.append(key)
+            else:
+                del grouped[key]
+        if limit is not None and len(ordered) >= limit:
+            break
+        active_keys = next_keys
+
+    return ordered
 
 
 def quantize_multiplier(value: float) -> float:
@@ -793,17 +862,17 @@ def build_market_deck(
     if not counts or deck_size <= 0:
         return []
 
-    deck: List[Ingredient] = []
-    limit = min(deck_size, sum(counts.values()))
-    while counts and len(deck) < limit:
-        choices = list(counts.keys())
-        selected_name = rng.choice(choices)
-        deck.append(resolved[selected_name])
-        counts[selected_name] -= 1
-        if counts[selected_name] <= 0:
-            del counts[selected_name]
+    pool: List[Ingredient] = []
+    for name, total in counts.items():
+        ingredient = resolved[name]
+        pool.extend(ingredient for _ in range(total))
 
-    return deck
+    return distribute_unique_draws(
+        pool,
+        key_func=lambda ingredient: ingredient.name,
+        rng=rng,
+        limit=deck_size,
+    )
 
 
 def _refill_hand(

@@ -478,7 +478,6 @@ def play_single_run(
             bias=DEFAULT_BIAS,
             rng=rng,
         )
-        rng.shuffle(deck)
         hand: List[Ingredient] = []
         print(f"\n=== Round {round_index}/{rounds} ===")
 
@@ -495,7 +494,6 @@ def play_single_run(
                         bias=DEFAULT_BIAS,
                         rng=rng,
                     )
-                    rng.shuffle(deck)
                     print("\n-- Deck refreshed for the team --")
                 hand.extend(deck.pop() for _ in range(needed))
 

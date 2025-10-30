@@ -777,18 +777,33 @@ def build_market_deck(
     rng = rng or random
     basket_pool = data.baskets[basket_name]
     keyset = data.chefs_key_ingredients(chefs)
-    weighted: List[Ingredient] = []
+    counts: Dict[str, int] = {}
+    resolved: Dict[str, Ingredient] = {}
     for ingredient_name, copies in basket_pool:
         ingredient = data.ingredients.get(ingredient_name)
         if not ingredient:
             continue
         weight = bias if ingredient_name in keyset else 1.0
         total = max(0, int(round(copies * weight)))
-        weighted.extend([ingredient] * total)
-    rng.shuffle(weighted)
-    if len(weighted) <= deck_size:
-        return list(weighted)
-    return list(weighted[:deck_size])
+        if total <= 0:
+            continue
+        counts[ingredient_name] = counts.get(ingredient_name, 0) + total
+        resolved[ingredient_name] = ingredient
+
+    if not counts or deck_size <= 0:
+        return []
+
+    deck: List[Ingredient] = []
+    limit = min(deck_size, sum(counts.values()))
+    while counts and len(deck) < limit:
+        choices = list(counts.keys())
+        selected_name = rng.choice(choices)
+        deck.append(resolved[selected_name])
+        counts[selected_name] -= 1
+        if counts[selected_name] <= 0:
+            del counts[selected_name]
+
+    return deck
 
 
 def _refill_hand(

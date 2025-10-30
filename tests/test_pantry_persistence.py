@@ -57,3 +57,30 @@ def test_get_pantry_card_ids_reflects_remaining_cards(game_data: GameData) -> No
         session.deck.pop()
 
     assert Counter(session.get_pantry_card_ids()) == expected_counts()
+
+
+def test_leftover_cards_carry_into_next_round(game_data: GameData) -> None:
+    basket_name = next(iter(game_data.baskets))
+    session = GameSession(
+        game_data,
+        basket_name=basket_name,
+        chefs=[],
+        rounds=2,
+        hand_size=3,
+        pick_size=3,
+        deck_size=6,
+        rng=random.Random(4321),
+    )
+
+    leftover_cards = list(session.hand)
+    session.deck.clear()
+    session._awaiting_basket_reset = True
+
+    session.begin_next_round_after_reward()
+
+    total_cards = len(session.hand) + len(session.deck)
+    assert total_cards == session.deck_size + len(leftover_cards)
+
+    current_ids = {id(card) for card in session.hand + session.deck}
+    for card in leftover_cards:
+        assert id(card) in current_ids

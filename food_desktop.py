@@ -1414,6 +1414,27 @@ class GameSession:
     def get_remaining_deck(self) -> Sequence[Ingredient]:
         return [card.ingredient for card in self.deck]
 
+    def get_pantry_card_ids(self) -> List[str]:
+        ids: List[str] = []
+
+        def append_id(ingredient: Ingredient) -> None:
+            ingredient_id = getattr(ingredient, "ingredient_id", "")
+            if ingredient_id:
+                ids.append(ingredient_id)
+                return
+            lookup = self.data.ingredients.get(getattr(ingredient, "name", ""))
+            if lookup:
+                fallback_id = getattr(lookup, "ingredient_id", "")
+                if fallback_id:
+                    ids.append(fallback_id)
+
+        for card in self.get_hand():
+            append_id(card.ingredient)
+        for ingredient in self.get_remaining_deck():
+            append_id(ingredient)
+
+        return ids
+
     def get_basket_counts(self) -> Tuple[int, int]:
         return len(self.deck), self._current_deck_total
 
@@ -5684,6 +5705,7 @@ class FoodGameApp:
         if not self.session:
             return
 
+        self.pantry_card_ids = self.session.get_pantry_card_ids()
         self._persistent_cookbook = self.session.get_cookbook()
 
         if self.cook_button is not None:

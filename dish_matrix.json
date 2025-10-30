@@ -26,7 +26,7 @@
         },
         {
             "id": 4,
-            "name": "Family Quartet",
+            "name": "Rich",
             "min_ingredients": 3,
             "max_ingredients": 5,
             "family_pattern": "all_different",
@@ -38,39 +38,15 @@
         },
         {
             "id": 12,
-            "name": "Harmony Roll",
+            "name": "Harmony",
             "min_ingredients": 3,
             "max_ingredients": 3,
-            "family_pattern": "all_different",
+            "family_pattern": "mixed",
             "flavor_pattern": "all_same",
             "multiplier": 4.0,
             "description": "Three distinct families wrapped in one taste — perfect for sushi-style spreads.",
             "chance": 1.395,
             "tier": "Uncommon"
-        },
-        {
-            "id": 13,
-            "name": "Family Medley",
-            "min_ingredients": 4,
-            "max_ingredients": 4,
-            "family_pattern": "all_different",
-            "flavor_pattern": "mixed",
-            "multiplier": 2.0,
-            "description": "Four distinct families coming together with varied tastes for a rich special.",
-            "chance": 0.30579,
-            "tier": "Uncommon"
-        },
-        {
-            "id": 14,
-            "name": "Mosaic Feast",
-            "min_ingredients": 5,
-            "max_ingredients": 5,
-            "family_pattern": "mixed",
-            "flavor_pattern": "all_different",
-            "multiplier": 7.5,
-            "description": "Five distinct tastes woven through a patchwork of culinary families.",
-            "chance": 0.017695,
-            "tier": "Legendary"
         }
     ]
 }

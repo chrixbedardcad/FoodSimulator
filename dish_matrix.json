@@ -7,46 +7,46 @@
             "max_ingredients": 5,
             "family_pattern": "mixed",
             "flavor_pattern": "all_same",
-            "multiplier": 2.0,
+            "multiplier": 1.5,
             "description": "All ingredients share the same taste while the families may repeat or all differ.",
-            "chance": 75,
+            "chance": 0.75,
             "tier": "Common"
         },
         {
-            "id": 2,
+            "id": 4,
             "name": "Fusion",
             "min_ingredients": 3,
             "max_ingredients": 5,
             "family_pattern": "all_same",
             "flavor_pattern": "all_same",
-            "multiplier": 6.0,
+            "multiplier": 4.0,
             "description": "All ingredients belong to one family and one taste for perfect unity.",
-            "chance": 7.5,
+            "chance": 0.01,
             "tier": "Rare"
         },
         {
-            "id": 4,
+            "id": 3,
             "name": "Rich",
             "min_ingredients": 3,
             "max_ingredients": 5,
             "family_pattern": "all_different",
             "flavor_pattern": "all_different",
-            "multiplier": 3.0,
+            "multiplier": 2.0,
             "description": "All ingredients differ in both family and taste for a vibrant spread.",
-            "chance": 98,
+            "chance": 0.5,
             "tier": "Common"
         },
-        {
-            "id": 12,
-            "name": "Harmony",
-            "min_ingredients": 3,
-            "max_ingredients": 3,
-            "family_pattern": "mixed",
-            "flavor_pattern": "all_same",
-            "multiplier": 4.0,
-            "description": "Three distinct families wrapped in one taste — perfect for sushi-style spreads.",
-            "chance": 1.395,
-            "tier": "Uncommon"
-        }
+      {
+        "id": 12,
+        "name": "Harmony",
+        "min_ingredients": 3,
+        "max_ingredients": 5,
+        "family_pattern": "all_same",
+        "flavor_pattern": "mixed",
+        "multiplier": 1.5,
+        "description": "Three distinct families wrapped in one taste — perfect for sushi-style spreads.",
+        "chance": 0.75,
+        "tier": "Uncommon"
+      }
     ]
 }

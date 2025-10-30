@@ -347,6 +347,10 @@ def _load_recipe_image(
         return _recipe_image_cache[cache_key]
 
     image_path = _find_recipe_image_path(recipe_name, display_name)
+    if not image_path or not image_path.exists():
+        fallback = RECIPE_ASSET_DIR / "emptydish.png"
+        image_path = fallback if fallback.exists() else None
+
     if image_path and image_path.exists():
         try:
             with Image.open(image_path) as source_image:

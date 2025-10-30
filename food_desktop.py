@@ -3203,6 +3203,195 @@ class SeasoningPopup(tk.Toplevel):
         self.canvas.yview_moveto(0)
 
 
+class ChefTeamPopup(tk.Toplevel):
+    """Display the active chef roster with their signature recipe boosts."""
+
+    def __init__(
+        self,
+        master: tk.Widget,
+        chefs: Sequence[Chef],
+        data: GameData,
+        on_close: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(master)
+        self._on_close = on_close
+        self._data = data
+        self._chefs: List[Chef] = []
+        self._image_refs: List[tk.PhotoImage] = []
+
+        self.title("Chef Team")
+        self.geometry("680x520")
+        self.minsize(520, 420)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self, padding=16)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(2, weight=1)
+
+        heading = ttk.Label(
+            container,
+            text="Active chefs and their perked recipes",
+            style="Header.TLabel",
+            anchor="w",
+        )
+        heading.grid(row=0, column=0, sticky="w")
+
+        self.count_var = tk.StringVar(value="")
+        self.count_label = ttk.Label(
+            container,
+            textvariable=self.count_var,
+            style="Info.TLabel",
+            anchor="w",
+            justify="left",
+        )
+        self.count_label.grid(row=1, column=0, sticky="w", pady=(6, 8))
+
+        self.canvas = tk.Canvas(container, borderwidth=0, highlightthickness=0)
+        self.canvas.grid(row=2, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(
+            container, orient="vertical", command=self.canvas.yview
+        )
+        scrollbar.grid(row=2, column=1, sticky="ns")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.entries_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.entries_frame, anchor="nw")
+        self.entries_frame.columnconfigure(0, weight=1)
+        self.entries_frame.bind(
+            "<Configure>",
+            lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")),
+        )
+
+        self.protocol("WM_DELETE_WINDOW", self._handle_close)
+        self.bind("<Escape>", lambda _e: self._handle_close())
+
+        self.set_team(chefs)
+
+    def _handle_close(self) -> None:
+        if self._on_close:
+            self._on_close()
+        self.destroy()
+
+    def set_team(self, chefs: Sequence[Chef]) -> None:
+        self._chefs = list(chefs)
+        self._render_entries()
+
+    def _render_entries(self) -> None:
+        for child in self.entries_frame.winfo_children():
+            child.destroy()
+        self._image_refs.clear()
+
+        total = len(self._chefs)
+        if total == 0:
+            self.count_var.set("No chefs recruited yet.")
+            ttk.Label(
+                self.entries_frame,
+                text="Complete a cook to earn a new chef offer.",
+                style="Info.TLabel",
+                wraplength=520,
+                justify="left",
+            ).grid(row=0, column=0, sticky="w")
+            return
+
+        plural = "chef" if total == 1 else "chefs"
+        self.count_var.set(f"{total} {plural} on your team.")
+
+        for row_index, chef in enumerate(self._chefs):
+            chef_frame = ttk.Frame(
+                self.entries_frame,
+                style="Tile.TFrame",
+                padding=(12, 10),
+            )
+            chef_frame.grid(row=row_index, column=0, sticky="ew", pady=(0, 12))
+            chef_frame.columnconfigure(0, weight=1)
+
+            name_label = ttk.Label(
+                chef_frame,
+                text=chef.name,
+                style="Header.TLabel",
+                anchor="w",
+                justify="left",
+            )
+            name_label.grid(row=0, column=0, sticky="w")
+
+            recipes = list(getattr(chef, "recipe_names", []))
+            if not recipes:
+                ttk.Label(
+                    chef_frame,
+                    text="No signature recipes listed.",
+                    style="Body.TLabel",
+                    anchor="w",
+                    justify="left",
+                ).grid(row=1, column=0, sticky="w", pady=(6, 0))
+                continue
+
+            multipliers: Dict[str, float] = {}
+            if isinstance(chef.perks, Mapping):
+                raw_perks = chef.perks.get("recipe_multipliers", {})
+                if isinstance(raw_perks, Mapping):
+                    for recipe_name, value in raw_perks.items():
+                        try:
+                            multipliers[recipe_name] = float(value)
+                        except (TypeError, ValueError):
+                            continue
+
+            recipes_frame = ttk.Frame(chef_frame)
+            recipes_frame.grid(row=1, column=0, sticky="ew", pady=(10, 0))
+            recipes_frame.columnconfigure(1, weight=1)
+
+            for recipe_index, recipe_name in enumerate(recipes):
+                display_name = (
+                    self._data.recipe_display_name(recipe_name) or recipe_name
+                )
+                multiplier = multipliers.get(recipe_name)
+                if multiplier is None:
+                    base = self._data.recipe_multipliers.get(recipe_name)
+                    multiplier = float(base) if base is not None else 1.0
+                formatted_multiplier = format_multiplier(multiplier)
+
+                entry_frame = ttk.Frame(recipes_frame, padding=(0, 6))
+                entry_frame.grid(row=recipe_index, column=0, sticky="ew")
+                entry_frame.columnconfigure(1, weight=1)
+
+                image = _load_recipe_image(recipe_name, display_name, target_px=132)
+                if image is not None:
+                    self._image_refs.append(image)
+                    image_label = ttk.Label(entry_frame, image=image)
+                else:
+                    image_label = ttk.Label(
+                        entry_frame,
+                        text="No art",
+                        style="Info.TLabel",
+                        width=14,
+                        anchor="center",
+                    )
+                image_label.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 12))
+
+                recipe_label = ttk.Label(
+                    entry_frame,
+                    text=display_name,
+                    style="Body.TLabel",
+                    anchor="w",
+                    justify="left",
+                )
+                recipe_label.grid(row=0, column=1, sticky="w")
+
+                multiplier_label = ttk.Label(
+                    entry_frame,
+                    text=f"Multiplier: {formatted_multiplier}",
+                    style="Info.TLabel",
+                    anchor="w",
+                    justify="left",
+                )
+                multiplier_label.grid(row=1, column=1, sticky="w", pady=(2, 0))
+
+        self.canvas.yview_moveto(0)
+
+
 class FoodGameApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -3221,6 +3410,7 @@ class FoodGameApp:
         self.active_popup: Optional[tk.Toplevel] = None
         self.cookbook_popup: Optional["CookbookPopup"] = None
         self.seasoning_popup: Optional["SeasoningPopup"] = None
+        self.chef_popup: Optional["ChefTeamPopup"] = None
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
         self.dish_dialog: Optional[DishMatrixDialog] = None
@@ -4980,21 +5170,31 @@ class FoodGameApp:
         if not self.session.chefs:
             message = "No chefs recruited yet. Complete a cook to earn a new offer."
             self._log_action("Chef roster viewed with no active chefs.")
-        else:
-            lines = ["Active chefs:"]
-            for chef in self.session.chefs:
-                recipes = (
-                    ", ".join(chef.recipe_names)
-                    if getattr(chef, "recipe_names", None)
-                    else "No signature recipes"
-                )
-                lines.append(f"• {chef.name} — {recipes}")
-            message = "\n".join(lines)
-            self._log_action(
-                f"Chef roster viewed with {len(self.session.chefs)} active chef(s)."
-            )
+            messagebox.showinfo("Chef Team", message)
+            return
 
-        messagebox.showinfo("Chef Team", message)
+        if self.chef_popup and self.chef_popup.winfo_exists():
+            self.chef_popup.set_team(self.session.chefs)
+            self.chef_popup.lift()
+            self.chef_popup.focus_force()
+            self._log_action("Chef popup focused.")
+            return
+
+        def handle_close() -> None:
+            self.chef_popup = None
+
+        self.chef_popup = ChefTeamPopup(
+            self.root,
+            self.session.chefs,
+            DATA,
+            on_close=handle_close,
+        )
+        self.chef_popup.transient(self.root)
+        self._center_popup(self.chef_popup)
+        self.chef_popup.focus_force()
+        self._log_action(
+            f"Chef popup opened with {len(self.session.chefs)} active chef(s)."
+        )
 
     def _handle_seasoning_selected(self, seasoning: Optional[Seasoning]) -> None:
         self._update_seasoning_button(seasoning)

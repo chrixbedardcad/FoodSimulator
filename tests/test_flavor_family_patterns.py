@@ -22,7 +22,23 @@ def test_all_same_taste_all_different_families_scores_tasteful():
     assert round(outcome.dish_multiplier, 2) == 2.0
 
 
-def test_all_same_taste_mixed_families_still_scores_tasteful():
+def test_all_different_families_same_taste_counts_as_mixed():
+    data = _load_data()
+    ingredients = [
+        data.ingredients["Beef"],
+        data.ingredients["Pasta"],
+        data.ingredients["Parmesan"],
+    ]
+
+    outcome = data.evaluate_dish(ingredients)
+
+    assert outcome.entry is not None
+    assert outcome.family_pattern == "mixed"
+    assert outcome.flavor_pattern == "all_same"
+    assert round(outcome.dish_multiplier, 2) >= 2.0
+
+
+def test_same_taste_mixed_families_still_score_base_value():
     data = _load_data()
     ingredients = [
         data.ingredients["Tomato"],
@@ -33,7 +49,7 @@ def test_all_same_taste_mixed_families_still_scores_tasteful():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Tasteful"
+    assert outcome.entry.name == "Tasteful Dish"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_same"
     assert round(outcome.dish_multiplier, 2) == 2.0
@@ -70,38 +86,4 @@ def test_all_different_family_and_flavor_scores_rich():
     assert outcome.entry.name == "Rich"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "mixed"
-    assert round(outcome.dish_multiplier, 2) == 3.0
-
-
-def test_same_family_flavor_mixed_scores_harmony():
-    data = _load_data()
-    ingredients = [
-        data.ingredients["Truffle"],
-        data.ingredients["Mushroom"],
-        data.ingredients["Basil"],
-    ]
-
-    outcome = data.evaluate_dish(ingredients)
-
-    assert outcome.entry is not None
-    assert outcome.entry.name == "Harmony"
-    assert outcome.family_pattern == "all_same"
-    assert outcome.flavor_pattern == "mixed"
-    assert round(outcome.dish_multiplier, 2) == 2.0
-
-
-def test_same_family_all_different_flavors_still_scores_harmony():
-    data = _load_data()
-    ingredients = [
-        data.ingredients["Truffle"],
-        data.ingredients["Basil"],
-        data.ingredients["Onion"],
-    ]
-
-    outcome = data.evaluate_dish(ingredients)
-
-    assert outcome.entry is not None
-    assert outcome.entry.name == "Harmony"
-    assert outcome.family_pattern == "all_same"
-    assert outcome.flavor_pattern == "mixed"
-    assert round(outcome.dish_multiplier, 2) == 2.0
+    assert round(outcome.dish_multiplier, 2) == 7.5

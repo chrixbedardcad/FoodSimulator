@@ -827,6 +827,18 @@ class RoundStats:
     recipes_completed: int = 0
     points_earned: int = 0
     _unique_recipes: set[str] = field(default_factory=set, init=False, repr=False)
+    _ingredient_usage: Counter[str] = field(
+        default_factory=Counter, init=False, repr=False
+    )
+    _ingredient_labels: Dict[str, str] = field(
+        default_factory=dict, init=False, repr=False
+    )
+    _recipe_usage: Counter[str] = field(default_factory=Counter, init=False, repr=False)
+    _recipe_labels: Dict[str, str] = field(default_factory=dict, init=False, repr=False)
+    _dish_usage: Counter[str] = field(default_factory=Counter, init=False, repr=False)
+    _dish_details: Dict[str, Dict[str, str]] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def record_turn(
         self,
@@ -834,6 +846,12 @@ class RoundStats:
         score: int,
         rotten_count: int,
         recipe_name: Optional[str],
+        ingredients: Sequence[Ingredient],
+        dish_name: Optional[str],
+        dish_tier: Optional[str],
+        recipe_display_name: Optional[str] = None,
+        family_label: str = "",
+        flavor_label: str = "",
     ) -> None:
         self.dishes_cooked += 1
         self.points_earned += score
@@ -841,15 +859,73 @@ class RoundStats:
         if recipe_name:
             self.recipes_completed += 1
             self._unique_recipes.add(recipe_name)
+            self._recipe_usage[recipe_name] += 1
+            if recipe_display_name:
+                self._recipe_labels.setdefault(recipe_name, recipe_display_name)
 
-    def summary_payload(self) -> dict[str, int]:
-        return {
+        for ingredient in ingredients:
+            identifier = getattr(ingredient, "ingredient_id", "") or ingredient.name
+            display = getattr(ingredient, "display_name", "") or ingredient.name
+            self._ingredient_usage[identifier] += 1
+            self._ingredient_labels.setdefault(identifier, display)
+
+        if dish_name:
+            label = dish_name
+            if dish_tier:
+                label = f"{dish_name} ({dish_tier})"
+        else:
+            label = "Freestyle Dish"
+        self._dish_usage[label] += 1
+        self._dish_details.setdefault(
+            label,
+            {
+                "family_label": family_label,
+                "flavor_label": flavor_label,
+                "tier": dish_tier or "",
+                "name": dish_name or label,
+            },
+        )
+
+    def summary_payload(self) -> dict[str, object]:
+        payload: Dict[str, object] = {
             "dishes_cooked": self.dishes_cooked,
             "rotten_ingredients": self.rotten_ingredients,
             "recipes_completed": self.recipes_completed,
             "unique_recipes": len(self._unique_recipes),
             "round_points": self.points_earned,
         }
+
+        payload["ingredient_usage"] = [
+            {
+                "id": identifier,
+                "name": self._ingredient_labels.get(identifier, identifier),
+                "count": count,
+            }
+            for identifier, count in self._ingredient_usage.most_common()
+        ]
+        payload["recipe_usage"] = [
+            {
+                "name": name,
+                "display": self._recipe_labels.get(name, name),
+                "count": count,
+            }
+            for name, count in self._recipe_usage.most_common()
+        ]
+        payload["dish_usage"] = [
+            {
+                "label": label,
+                "count": count,
+                "family_label": self._dish_details.get(label, {}).get(
+                    "family_label", ""
+                ),
+                "flavor_label": self._dish_details.get(label, {}).get(
+                    "flavor_label", ""
+                ),
+                "tier": self._dish_details.get(label, {}).get("tier", ""),
+            }
+            for label, count in self._dish_usage.most_common()
+        ]
+        return payload
 
 
 @dataclass
@@ -2031,6 +2107,12 @@ class GameSession:
             score=final_score,
             rotten_count=rotten_count,
             recipe_name=active_recipe_name,
+            ingredients=selected,
+            dish_name=dish.name,
+            dish_tier=dish.tier,
+            recipe_display_name=recipe_display_name,
+            family_label=dish.family_label,
+            flavor_label=dish.flavor_label,
         )
 
         for offset, index in enumerate(unique):
@@ -3421,6 +3503,9 @@ class FoodGameApp:
         self.cookbook_popup: Optional["CookbookPopup"] = None
         self.seasoning_popup: Optional["SeasoningPopup"] = None
         self.chef_popup: Optional["ChefTeamPopup"] = None
+        self._pending_round_summary: Optional[Dict[str, object]] = None
+        self._round_summary_shown = False
+        self._deferring_round_summary = False
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
         self.dish_dialog: Optional[DishMatrixDialog] = None
@@ -4897,6 +4982,9 @@ class FoodGameApp:
         if self.seasoning_popup and self.seasoning_popup.winfo_exists():
             self.seasoning_popup.destroy()
         self.seasoning_popup = None
+        self._pending_round_summary = None
+        self._round_summary_shown = False
+        self._deferring_round_summary = False
         self._run_completion_notified = False
         self._close_recruit_dialog()
         self.session = None
@@ -5778,16 +5866,278 @@ class FoodGameApp:
         if not self.session:
             return
         if self.session.awaiting_new_round():
+            summary = self.session.peek_basket_clear_summary() or {}
+            if self._pending_round_summary is None:
+                self._pending_round_summary = summary
+                self._round_summary_shown = False
+            else:
+                self._pending_round_summary = summary or self._pending_round_summary
             self._show_basket_clear_popup()
             return
         if self.session.is_finished():
             self._handle_run_finished()
 
+    def _show_round_summary_popup(self, summary: Mapping[str, object]) -> None:
+        if not self.session:
+            return
+        if self.active_popup and self.active_popup.winfo_exists():
+            popup_kind = getattr(self.active_popup, "_popup_kind", None)
+            if popup_kind == "turn_summary":
+                return
+            if popup_kind == "round_summary":
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            self.active_popup.destroy()
+            self.active_popup = None
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Round Summary")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+        popup._popup_kind = "round_summary"  # type: ignore[attr-defined]
+
+        frame = ttk.Frame(popup, padding=18)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        round_index = int(summary.get("round_index", self.session.round_index))
+        total_rounds = int(summary.get("total_rounds", self.session.rounds))
+        round_points = int(summary.get("round_points", summary.get("round_score", 0)))
+        total_score = int(summary.get("total_score", self.session.get_total_score()))
+        dishes_cooked = int(summary.get("dishes_cooked", 0))
+        recipes_completed = int(summary.get("recipes_completed", 0))
+        unique_recipes = int(summary.get("unique_recipes", recipes_completed))
+        rotten_used = int(summary.get("rotten_ingredients", 0))
+
+        ttk.Label(
+            frame,
+            text=f"Round {round_index} / {total_rounds}",
+            style="Header.TLabel",
+            anchor="center",
+            justify="center",
+        ).grid(row=0, column=0, sticky="ew")
+
+        highlight_text = f"{round_points:+d} pts this round"
+        highlight = tk.Label(
+            frame,
+            text=highlight_text,
+            font=("Helvetica", 20, "bold"),
+            fg="#1e2a33" if round_points >= 0 else "#611a15",
+            bg="#ffe9a8" if round_points >= 0 else "#fdecea",
+            padx=18,
+            pady=10,
+            anchor="center",
+            justify="center",
+        )
+        highlight.grid(row=1, column=0, sticky="ew", pady=(8, 12))
+
+        stats_lines = [
+            f"Dishes cooked: {dishes_cooked}",
+            f"Recipes completed: {recipes_completed} (unique {unique_recipes})",
+            f"Rotten ingredients used: {rotten_used}",
+            f"Total score so far: {total_score}",
+        ]
+        ttk.Label(
+            frame,
+            text="\n".join(stats_lines),
+            justify="center",
+            anchor="center",
+        ).grid(row=2, column=0, sticky="ew")
+
+        ttk.Label(
+            frame,
+            text="Prize unlocked: Choose a bonus ingredient to start the next round.",
+            style="Info.TLabel",
+            wraplength=420,
+            justify="center",
+        ).grid(row=3, column=0, sticky="ew", pady=(10, 16))
+
+        ingredients_section = ttk.LabelFrame(
+            frame, text="Ingredients cooked this round"
+        )
+        ingredients_section.grid(row=4, column=0, sticky="ew")
+        ingredients_section.columnconfigure(0, weight=1)
+
+        ingredient_entries = list(summary.get("ingredient_usage", []))
+        image_refs: List[tk.PhotoImage] = []
+
+        def resolve_ingredient(identifier: str, name: str) -> Optional[Ingredient]:
+            if not self.session:
+                return None
+            ingredient = None
+            if identifier:
+                ingredient = self.session.data.ingredient_for_id(identifier)
+            if not ingredient:
+                lookup_name = name.strip()
+                for candidate in self.session.data.ingredients.values():
+                    display = getattr(candidate, "display_name", "") or candidate.name
+                    if candidate.name == lookup_name or display == lookup_name:
+                        ingredient = candidate
+                        break
+            return ingredient
+
+        if ingredient_entries:
+            grid = ttk.Frame(ingredients_section)
+            grid.grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+            max_columns = 4
+            for column in range(max_columns):
+                grid.columnconfigure(column, weight=1)
+            for index, entry in enumerate(ingredient_entries):
+                identifier = str(entry.get("id", ""))
+                name = str(entry.get("name", ""))
+                count = int(entry.get("count", 0))
+                ingredient = resolve_ingredient(identifier, name)
+                card = ttk.Frame(grid, padding=6)
+                row = index // max_columns
+                column = index % max_columns
+                card.grid(row=row, column=column, padx=4, pady=4, sticky="nsew")
+                text = f"{name} ×{count}" if count else name
+                if ingredient:
+                    image = _load_ingredient_image(ingredient, target_px=72)
+                else:
+                    image = None
+                if image is not None:
+                    image_refs.append(image)
+                    label = ttk.Label(
+                        card,
+                        image=image,
+                        text=text,
+                        compound="top",
+                        justify="center",
+                        wraplength=120,
+                    )
+                else:
+                    label = ttk.Label(
+                        card,
+                        text=text,
+                        justify="center",
+                        wraplength=140,
+                    )
+                label.pack(anchor="center")
+        else:
+            ttk.Label(
+                ingredients_section,
+                text="No dishes were prepared this round.",
+                style="Info.TLabel",
+                anchor="center",
+                justify="center",
+            ).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+
+        recipe_section = ttk.LabelFrame(frame, text="Recipes cooked")
+        recipe_section.grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        recipe_section.columnconfigure(0, weight=1)
+
+        recipe_entries = list(summary.get("recipe_usage", []))
+        if recipe_entries:
+            lines = [
+                f"• {str(entry.get('display') or entry.get('name'))} ×{int(entry.get('count', 0))}"
+                for entry in recipe_entries
+            ]
+            ttk.Label(
+                recipe_section,
+                text="\n".join(lines),
+                justify="left",
+                anchor="w",
+            ).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+        else:
+            ttk.Label(
+                recipe_section,
+                text="No recipes completed this round.",
+                style="Info.TLabel",
+                anchor="center",
+                justify="center",
+            ).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+
+        dish_section = ttk.LabelFrame(frame, text="Dish classifications")
+        dish_section.grid(row=6, column=0, sticky="ew", pady=(12, 0))
+        dish_section.columnconfigure(0, weight=1)
+
+        dish_entries = list(summary.get("dish_usage", []))
+        if dish_entries:
+            lines = []
+            for entry in dish_entries:
+                label = str(entry.get("label", "Dish"))
+                count = int(entry.get("count", 0))
+                family = str(entry.get("family_label", "")).strip()
+                flavor = str(entry.get("flavor_label", "")).strip()
+                details = " / ".join(
+                    part for part in (family, flavor) if part
+                )
+                if details:
+                    lines.append(f"• {label} ×{count} ({details})")
+                else:
+                    lines.append(f"• {label} ×{count}")
+            ttk.Label(
+                dish_section,
+                text="\n".join(lines),
+                justify="left",
+                anchor="w",
+            ).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+        else:
+            ttk.Label(
+                dish_section,
+                text="No dish matrix bonuses recorded this round.",
+                style="Info.TLabel",
+                anchor="center",
+                justify="center",
+            ).grid(row=0, column=0, sticky="ew", padx=4, pady=6)
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=7, column=0, sticky="e", pady=(16, 0))
+
+        def close_popup() -> None:
+            if popup.winfo_exists():
+                try:
+                    popup.grab_release()
+                except tk.TclError:
+                    pass
+                popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
+            self._round_summary_shown = True
+            popup.after(50, self._show_basket_clear_popup)
+
+        ttk.Button(button_frame, text="OK", command=close_popup, width=12).grid(
+            row=0, column=0, sticky="e"
+        )
+
+        popup.bind("<Escape>", lambda _e: close_popup())
+        popup.bind("<Return>", lambda _e: close_popup())
+        popup.protocol("WM_DELETE_WINDOW", close_popup)
+
+        popup._image_refs = image_refs  # type: ignore[attr-defined]
+        popup.grab_set()
+        self.active_popup = popup
+        self._center_popup(popup)
+        popup.focus_force()
+
     def _show_basket_clear_popup(self) -> None:
+        if self._deferring_round_summary:
+            return
         if not self.session or not self.session.awaiting_new_round():
             return
 
-        summary = self.session.peek_basket_clear_summary() or {}
+        summary = self._pending_round_summary or {}
+        if not summary:
+            summary = self.session.peek_basket_clear_summary() or {}
+            self._pending_round_summary = summary
+
+        if not self._round_summary_shown:
+            if self.active_popup and self.active_popup.winfo_exists():
+                popup_kind = getattr(self.active_popup, "_popup_kind", None)
+                if popup_kind == "turn_summary":
+                    return
+                if popup_kind == "round_summary":
+                    self.active_popup.lift()
+                    self.active_popup.focus_force()
+                    return
+                self.active_popup.destroy()
+                self.active_popup = None
+            self._pending_round_summary = summary
+            self._show_round_summary_popup(summary)
+            return
+
         choices = list(self.session.get_basket_bonus_choices())
         if not choices:
             ingredients = list(self.session.data.ingredients.values())
@@ -5822,25 +6172,36 @@ class FoodGameApp:
         recipes_completed = int(summary.get("recipes_completed", 0))
         unique_recipes = int(summary.get("unique_recipes", recipes_completed))
 
+        if not self._round_summary_shown:
+            header_text = (
+                "Round complete! Review your progress and claim an ingredient bonus."
+            )
+            stats_lines = [
+                f"Round {round_index}/{total_rounds} summary:",
+                f"  • Dishes cooked: {dishes_cooked}",
+                f"  • Recipes completed: {recipes_completed} (unique {unique_recipes})",
+                f"  • Rotten ingredients used: {rotten_used}",
+                f"  • Points earned this round: {round_points}",
+                f"Total score so far: {total_score}",
+            ]
+            summary_text = "\n".join(stats_lines)
+        else:
+            header_text = "Claim your round reward"
+            summary_text = (
+                "You already reviewed this round. Choose your bonus ingredient to begin the next round."
+            )
+
         ttk.Label(
             frame,
-            text="Round complete! Review your progress and claim an ingredient bonus.",
+            text=header_text,
             style="Header.TLabel",
             anchor="center",
             justify="center",
         ).grid(row=0, column=0, sticky="ew")
 
-        stats_lines = [
-            f"Round {round_index}/{total_rounds} summary:",
-            f"  • Dishes cooked: {dishes_cooked}",
-            f"  • Recipes completed: {recipes_completed} (unique {unique_recipes})",
-            f"  • Rotten ingredients used: {rotten_used}",
-            f"  • Points earned this round: {round_points}",
-            f"Total score so far: {total_score}",
-        ]
         ttk.Label(
             frame,
-            text="\n".join(stats_lines),
+            text=summary_text,
             justify="center",
             anchor="center",
         ).grid(row=1, column=0, sticky="ew", pady=(8, 12))
@@ -5877,6 +6238,9 @@ class FoodGameApp:
                 popup.destroy()
             if self.active_popup is popup:
                 self.active_popup = None
+
+            self._pending_round_summary = None
+            self._round_summary_shown = False
 
             self.render_hand()
             self.update_status()
@@ -6166,8 +6530,11 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.log_turn_points(outcome)
+        self._deferring_round_summary = True
         self.append_events(self.session.consume_events())
+        self._deferring_round_summary = False
         self.show_turn_summary_popup(outcome)
+        self._show_basket_clear_popup()
         self.maybe_prompt_new_chef()
         self._lifetime_total_score += outcome.final_score
         self._refresh_score_details()
@@ -6348,6 +6715,8 @@ class FoodGameApp:
                 popup.destroy()
             if self.active_popup is popup:
                 self.active_popup = None
+            if self._pending_round_summary:
+                popup.after(50, self._show_basket_clear_popup)
 
         popup.protocol("WM_DELETE_WINDOW", close_popup)
         popup.bind("<Escape>", lambda _e: close_popup())

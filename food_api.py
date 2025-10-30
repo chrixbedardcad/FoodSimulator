@@ -130,6 +130,15 @@ def describe_flavor_pattern(pattern: str) -> str:
     return FLAVOR_LABELS.get(pattern, pattern.replace("_", " ").title())
 
 
+def _determine_pattern(values: Sequence[str]) -> Tuple[str, str]:
+    unique_values = set(values)
+    if len(unique_values) <= 1:
+        return "all_same", "all_same"
+    if len(unique_values) == len(values):
+        return "all_different", "mixed"
+    return "mixed", "mixed"
+
+
 @dataclass(frozen=True)
 class DishOutcome:
     base_value: int
@@ -343,21 +352,16 @@ class GameData:
         families = [ingredient.family for ingredient in ingredients]
         tastes = [ingredient.taste for ingredient in ingredients]
 
-        unique_families = set(families)
-        if len(unique_families) == 1:
-            family_pattern = "all_same"
-        elif len(unique_families) == len(families):
-            family_pattern = "all_different"
-        else:
-            family_pattern = "mixed"
+        family_pattern_detail, family_pattern = _determine_pattern(families)
+        flavor_pattern_detail, flavor_pattern = _determine_pattern(tastes)
 
-        unique_tastes = set(tastes)
-        if len(unique_tastes) == 1:
-            flavor_pattern = "all_same"
-        elif len(unique_tastes) == len(tastes):
-            flavor_pattern = "all_different"
-        else:
-            flavor_pattern = "mixed"
+        family_candidates = [family_pattern_detail]
+        if family_pattern_detail == "all_different":
+            family_candidates.append("mixed")
+
+        flavor_candidates = [flavor_pattern_detail]
+        if flavor_pattern_detail == "all_different":
+            flavor_candidates.append("mixed")
 
         entry: Optional[DishMatrixEntry] = None
         alerts: List[str] = []
@@ -366,7 +370,9 @@ class GameData:
         has_duplicates = False
         effective_penalty_multiplier = 1.0
 
-        entry = self._match_dish_matrix(count, family_pattern, flavor_pattern)
+        entry = self._match_dish_matrix(
+            count, tuple(family_candidates), tuple(flavor_candidates)
+        )
         if entry:
             multiplier = float(entry.multiplier)
         elif flavor_pattern == "all_same" and family_pattern == "all_same":
@@ -530,21 +536,16 @@ class GameData:
         )
 
     def _match_dish_matrix(
-        self, count: int, family_pattern: str, flavor_pattern: str
+        self,
+        count: int,
+        family_patterns: Sequence[str],
+        flavor_patterns: Sequence[str],
     ) -> Optional[DishMatrixEntry]:
-        for entry in self.dish_matrix:
-            if entry.matches(count, family_pattern, flavor_pattern):
-                return entry
-
-        if flavor_pattern == "all_different":
-            for entry in self.dish_matrix:
-                if (
-                    entry.min_ingredients <= count <= entry.max_ingredients
-                    and entry.family_pattern == family_pattern
-                    and entry.flavor_pattern == "mixed"
-                ):
-                    return entry
-
+        for family_pattern in family_patterns:
+            for flavor_pattern in flavor_patterns:
+                for entry in self.dish_matrix:
+                    if entry.matches(count, family_pattern, flavor_pattern):
+                        return entry
         return None
 
 

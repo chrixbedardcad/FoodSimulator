@@ -1,160 +1,52 @@
 {
-  "dish_matrix": [
-    {
-      "id": 1,
-      "name": "Tasting Flight",
-      "min_ingredients": 3,
-      "max_ingredients": 3,
-      "family_pattern": "all_different",
-      "flavor_pattern": "all_different",
-      "multiplier": 1.5,
-      "tier": "Common",
-      "chance": 0.63679,
-      "description": "A simple but well-balanced tasting flight of different families and flavors."
-    },
-    {
-      "id": 2,
-      "name": "Signature Trio",
-      "min_ingredients": 3,
-      "max_ingredients": 3,
-      "family_pattern": "all_same",
-      "flavor_pattern": "all_different",
-      "multiplier": 5.0,
-      "tier": "Rare",
-      "chance": 0.11566,
-      "description": "A unique dish expressing one family in multiple taste variations."
-    },
-    {
-      "id": 12,
-      "name": "Harmony Roll",
-      "min_ingredients": 3,
-      "max_ingredients": 3,
-      "family_pattern": "all_different",
-      "flavor_pattern": "all_same",
-      "multiplier": 4.12,
-      "tier": "Uncommon",
-      "chance": 0.15044,
-      "description": "Three distinct families wrapped in one taste \u2014 perfect for sushi-style spreads."
-    },
-    {
-      "id": 10,
-      "name": "Plain Trio",
-      "min_ingredients": 3,
-      "max_ingredients": 3,
-      "family_pattern": "all_same",
-      "flavor_pattern": "all_same",
-      "multiplier": 5.88,
-      "tier": "Rare",
-      "chance": 0.06855,
-      "description": "Three ingredients from the same family and taste, yielding a flat but serviceable plate."
-    },
-    {
-      "id": 3,
-      "name": "Chef's Plate",
-      "min_ingredients": 4,
-      "max_ingredients": 4,
-      "family_pattern": "all_same",
-      "flavor_pattern": "mixed",
-      "multiplier": 6.75,
-      "tier": "Rare",
-      "chance": 0.055235,
-      "description": "A crafted composition from a single family with subtle flavor diversity."
-    },
-    {
-      "id": 4,
-      "name": "Family Quartet",
-      "min_ingredients": 4,
-      "max_ingredients": 4,
-      "family_pattern": "all_different",
-      "flavor_pattern": "mixed",
-      "multiplier": 2.38,
-      "tier": "Uncommon",
-      "chance": 0.358135,
-      "description": "Four distinct families coming together with varied tastes for a rich special."
-    },
-    {
-      "id": 5,
-      "name": "Fusion Quartet",
-      "min_ingredients": 4,
-      "max_ingredients": 4,
-      "family_pattern": "mixed",
-      "flavor_pattern": "all_different",
-      "multiplier": 3.25,
-      "tier": "Uncommon",
-      "chance": 0.25441,
-      "description": "A fusion of two core families and distinct flavors blending cultures and ideas."
-    },
-    {
-      "id": 6,
-      "name": "Symphony",
-      "min_ingredients": 4,
-      "max_ingredients": 4,
-      "family_pattern": "all_same",
-      "flavor_pattern": "all_different",
-      "multiplier": 8.5,
-      "tier": "Legendary",
-      "chance": 0.007745,
-      "description": "A perfect flavor ensemble from one family, balanced across all taste tones."
-    },
-    {
-      "id": 11,
-      "name": "Plain Quartet",
-      "min_ingredients": 4,
-      "max_ingredients": 4,
-      "family_pattern": "all_same",
-      "flavor_pattern": "all_same",
-      "multiplier": 10.25,
-      "tier": "Legendary",
-      "chance": 0.003635,
-      "description": "Four matching ingredients that play it safe, resulting in a muted experience."
-    },
-    {
-      "id": 13,
-      "name": "Mosaic Feast",
-      "min_ingredients": 5,
-      "max_ingredients": 5,
-      "family_pattern": "mixed",
-      "flavor_pattern": "all_different",
-      "multiplier": 7.62,
-      "tier": "Legendary",
-      "chance": 0.017695,
-      "description": "Five distinct tastes woven through a patchwork of culinary families."
-    },
-    {
-      "id": 7,
-      "name": "Grand Feast",
-      "min_ingredients": 5,
-      "max_ingredients": 5,
-      "family_pattern": "all_different",
-      "flavor_pattern": "all_different",
-      "multiplier": 11.12,
-      "tier": "Legendary",
-      "chance": 0.000985,
-      "description": "A grand abundance of diverse ingredients and flavors from all families."
-    },
-    {
-      "id": 8,
-      "name": "Grand Course",
-      "min_ingredients": 5,
-      "max_ingredients": 5,
-      "family_pattern": "all_same",
-      "flavor_pattern": "mixed",
-      "multiplier": 9.38,
-      "tier": "Legendary",
-      "chance": 0.004985,
-      "description": "A refined centerpiece dish, unified in family but layered in taste."
-    },
-    {
-      "id": 9,
-      "name": "Masterpiece",
-      "min_ingredients": 5,
-      "max_ingredients": 5,
-      "family_pattern": "all_same",
-      "flavor_pattern": "all_different",
-      "multiplier": 12.0,
-      "tier": "Legendary",
-      "chance": 0.000095,
-      "description": "The ultimate creation \u2014 one family, every flavor, pure culinary art."
-    }
-  ]
+    "dish_matrix": [
+        {
+            "id": 1,
+            "name": "Harmony Dish",
+            "min_ingredients": 3,
+            "max_ingredients": 5,
+            "family_pattern": "all_same",
+            "flavor_pattern": "mixed",
+            "multiplier": 2.0,
+            "description": "All ingredients share the same family. Unified in texture, diverse in flavor.",
+            "chance": 75,
+            "tier": "Common"
+        },
+        {
+            "id": 2,
+            "name": "Tasteful Dish",
+            "min_ingredients": 3,
+            "max_ingredients": 5,
+            "family_pattern": "mixed",
+            "flavor_pattern": "all_same",
+            "multiplier": 2.0,
+            "description": "All ingredients share the same taste. A pure expression of flavor harmony.",
+            "chance": 75,
+            "tier": "Common"
+        },
+        {
+            "id": 3,
+            "name": "Fusion Dish",
+            "min_ingredients": 3,
+            "max_ingredients": 5,
+            "family_pattern": "all_same",
+            "flavor_pattern": "all_same",
+            "multiplier": 6.0,
+            "description": "All ingredients belong to one family and one taste. A rare, perfect unity.",
+            "chance": 7.5,
+            "tier": "Rare"
+        },
+        {
+            "id": 4,
+            "name": "Rich Dish",
+            "min_ingredients": 3,
+            "max_ingredients": 5,
+            "family_pattern": "all_different",
+            "flavor_pattern": "all_different",
+            "multiplier": 3.0,
+            "description": "All ingredients differ in both family and taste. A balanced, creative composition.",
+            "chance": 98,
+            "tier": "Common"
+        }
+    ]
 }

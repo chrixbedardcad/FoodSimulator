@@ -14,7 +14,7 @@ import random
 import re
 import sys
 import tkinter as tk
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -1229,6 +1229,29 @@ class GameSession:
             self.deck.clear()
         return carryover
 
+    def _rebalance_deck(self, cards: Sequence[IngredientCard]) -> List[IngredientCard]:
+        if not cards:
+            return []
+
+        grouped: Dict[str, List[IngredientCard]] = defaultdict(list)
+        for card in cards:
+            grouped[card.ingredient.name].append(card)
+
+        for stack in grouped.values():
+            self.rng.shuffle(stack)
+
+        ordered: List[IngredientCard] = []
+        counts = {name: len(stack) for name, stack in grouped.items()}
+        while counts:
+            choice = self.rng.choice(list(counts.keys()))
+            stack = grouped[choice]
+            ordered.append(stack.pop())
+            counts[choice] -= 1
+            if counts[choice] <= 0:
+                del counts[choice]
+                del grouped[choice]
+        return ordered
+
     def _build_market_deck(
         self,
         *,
@@ -1263,8 +1286,7 @@ class GameSession:
                 IngredientCard(ingredient=ingredient)
                 for ingredient in self._permanent_bonus_ingredients
             )
-        self.rng.shuffle(cards)
-        return cards
+        return self._rebalance_deck(cards)
 
     def _choose_bonus_ingredients(self, count: int = 3) -> List[Ingredient]:
         pool: List[Ingredient] = []
@@ -1388,7 +1410,7 @@ class GameSession:
 
         self.deck.extend(selected_cards)
         if self.deck:
-            self.rng.shuffle(self.deck)
+            self.deck = self._rebalance_deck(self.deck)
 
         self._push_event(
             f"{combo_text} didn't form a dish and returned to the pantry to be reshuffled."
@@ -1517,7 +1539,7 @@ class GameSession:
             replacement.freshen()
             self.deck.append(replacement)
             if self.deck:
-                self.rng.shuffle(self.deck)
+                self.deck = self._rebalance_deck(self.deck)
         else:
             self.hand.append(bonus_card)
             inserted_into_empty_hand = True
@@ -1819,7 +1841,7 @@ class GameSession:
 
         self.deck.extend(returned_cards)
         if self.deck:
-            self.rng.shuffle(self.deck)
+            self.deck = self._rebalance_deck(self.deck)
 
         deck_refreshed = self._refill_hand()
 

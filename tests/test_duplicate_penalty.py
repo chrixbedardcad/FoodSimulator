@@ -57,7 +57,7 @@ def test_unique_ingredients_have_no_penalty():
     assert int(round(outcome.dish_value)) == 50
 
 
-def test_three_unique_families_same_taste_match_harmony_roll():
+def test_three_unique_families_same_taste_match_tasteful():
     data = _load_data()
     cards = _sample_cards()
     ingredients = [cards["Basil"], cards["Mozzarella"], cards["Onion"]]
@@ -65,7 +65,7 @@ def test_three_unique_families_same_taste_match_harmony_roll():
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Harmony Roll"
+    assert outcome.entry.name == "Tasteful"
     assert outcome.flavor_pattern == "all_same"
 
 

@@ -2,37 +2,25 @@
     "dish_matrix": [
         {
             "id": 1,
-            "name": "Harmony Dish",
-            "min_ingredients": 3,
-            "max_ingredients": 5,
-            "family_pattern": "all_same",
-            "flavor_pattern": "mixed",
-            "multiplier": 2.0,
-            "description": "All ingredients share the same family. Unified in texture, diverse in flavor.",
-            "chance": 75,
-            "tier": "Common"
-        },
-        {
-            "id": 2,
-            "name": "Tasteful Dish",
+            "name": "Tasteful",
             "min_ingredients": 3,
             "max_ingredients": 5,
             "family_pattern": "mixed",
             "flavor_pattern": "all_same",
             "multiplier": 2.0,
-            "description": "All ingredients share the same taste. A pure expression of flavor harmony.",
+            "description": "All ingredients share the same taste while the families may repeat or all differ.",
             "chance": 75,
             "tier": "Common"
         },
         {
-            "id": 3,
-            "name": "Fusion Dish",
+            "id": 2,
+            "name": "Fusion",
             "min_ingredients": 3,
             "max_ingredients": 5,
             "family_pattern": "all_same",
             "flavor_pattern": "all_same",
             "multiplier": 6.0,
-            "description": "All ingredients belong to one family and one taste. A rare, perfect unity.",
+            "description": "All ingredients belong to one family and one taste for perfect unity.",
             "chance": 7.5,
             "tier": "Rare"
         },
@@ -44,7 +32,7 @@
             "family_pattern": "all_different",
             "flavor_pattern": "all_different",
             "multiplier": 3.0,
-            "description": "All ingredients differ in both family and taste. A balanced, creative composition.",
+            "description": "All ingredients differ in both family and taste for a vibrant spread.",
             "chance": 98,
             "tier": "Common"
         },

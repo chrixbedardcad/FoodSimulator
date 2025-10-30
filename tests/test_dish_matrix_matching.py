@@ -19,14 +19,14 @@ def _find_unique_family_and_taste_quad(data: GameData):
     raise AssertionError("Could not find a 4-card combo with unique families and tastes")
 
 
-def test_family_quartet_matches_all_different_tastes():
+def test_rich_matches_all_different_tastes():
     data = GameData.from_json()
     combo = _find_unique_family_and_taste_quad(data)
 
     outcome = data.evaluate_dish(combo)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Family Quartet"
+    assert outcome.entry.name == "Rich"
     expected_multiplier = outcome.entry.multiplier
     assert outcome.dish_multiplier == pytest.approx(expected_multiplier)
 

@@ -5,20 +5,21 @@ def _load_data() -> GameData:
     return GameData.from_json()
 
 
-def test_same_taste_mixed_families_matches_matrix():
+def test_all_same_taste_all_different_families_scores_tasteful():
     data = _load_data()
     ingredients = [
-        data.ingredients["Tomato"],
-        data.ingredients["Yogurt"],
-        data.ingredients["PickledCucumber"],
+        data.ingredients["Truffle"],
+        data.ingredients["Pasta"],
+        data.ingredients["Beef"],
     ]
 
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Harmony Roll"
+    assert outcome.entry.name == "Tasteful"
+    assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "all_same"
-    assert round(outcome.dish_multiplier, 2) == 4.0
+    assert round(outcome.dish_multiplier, 2) == 2.0
 
 
 def test_all_different_families_same_taste_counts_as_mixed():
@@ -54,20 +55,35 @@ def test_same_taste_mixed_families_still_score_base_value():
     assert round(outcome.dish_multiplier, 2) == 2.0
 
 
-def test_mixed_five_all_different_unlocks_mosaic_feast():
+def test_all_same_family_all_same_taste_scores_fusion():
     data = _load_data()
     ingredients = [
-        data.ingredients["Onion"],
-        data.ingredients["Bacon"],
-        data.ingredients["Tomato"],
-        data.ingredients["Fish"],
-        data.ingredients["Garlic"],
+        data.ingredients["Truffle"],
+        data.ingredients["Mushroom"],
+        data.ingredients["Seaweed"],
     ]
 
     outcome = data.evaluate_dish(ingredients)
 
     assert outcome.entry is not None
-    assert outcome.entry.name == "Mosaic Feast"
+    assert outcome.entry.name == "Fusion"
+    assert outcome.family_pattern == "all_same"
+    assert outcome.flavor_pattern == "all_same"
+    assert round(outcome.dish_multiplier, 2) == 6.0
+
+
+def test_all_different_family_and_flavor_scores_rich():
+    data = _load_data()
+    ingredients = [
+        data.ingredients["Truffle"],
+        data.ingredients["Egg"],
+        data.ingredients["Tomato"],
+    ]
+
+    outcome = data.evaluate_dish(ingredients)
+
+    assert outcome.entry is not None
+    assert outcome.entry.name == "Rich"
     assert outcome.family_pattern == "mixed"
     assert outcome.flavor_pattern == "mixed"
     assert round(outcome.dish_multiplier, 2) == 7.5

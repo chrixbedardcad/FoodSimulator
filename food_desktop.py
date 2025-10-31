@@ -65,6 +65,12 @@ from food_api import (
 )
 from rotting_round import IngredientCard, rot_circles
 from seed_utils import resolve_seed
+
+
+def _format_percent(value: int) -> str:
+    if value < 0:
+        return f"{value}%"
+    return f"+{value}%"
 ASSET_DIR = Path(__file__).resolve().parent
 ICON_ASSET_DIR = ASSET_DIR / "icons"
 INGREDIENT_ASSET_DIR = ASSET_DIR / "Ingredients"
@@ -2121,7 +2127,7 @@ class GameSession:
         if seasoning_calc.usage:
             boost_pct = seasoning_calc.total_boost_pct
             penalty_value = seasoning_calc.total_penalty
-            boost_text = f"+{int(round(boost_pct * 100))}%" if boost_pct else "+0%"
+            boost_text = _format_percent(int(round(boost_pct * 100)))
             penalty_text = f"-{int(round(penalty_value))}" if penalty_value else "0"
             self._push_event(
                 f"Seasonings applied: {boost_text} to base score, penalty {penalty_text}."
@@ -5371,7 +5377,7 @@ class FoodGameApp:
             percent = int(round(float(boost) * 100))
             if percent == 0:
                 continue
-            parts.append(f"{taste}: +{percent}%")
+            parts.append(f"{taste}: {_format_percent(percent)}")
         return ", ".join(parts) if parts else "No boosts"
 
     def _can_apply_seasoning(self, seasoning: Seasoning) -> bool:
@@ -5778,7 +5784,7 @@ class FoodGameApp:
         extras: List[str] = []
         boost_pct = int(round(seasoning_calc.total_boost_pct * 100))
         if boost_pct:
-            extras.append(f"+{boost_pct}%")
+            extras.append(_format_percent(boost_pct))
         penalty_value = int(round(seasoning_calc.total_penalty))
         if penalty_value:
             extras.append(f"-{penalty_value}")
@@ -6391,7 +6397,7 @@ class FoodGameApp:
                 f"seasonings {outcome.base_score}->{outcome.seasoned_score}"
             ]
             if boost_pct:
-                seasoning_parts.append(f"+{boost_pct}%")
+                seasoning_parts.append(_format_percent(boost_pct))
             if penalty_value:
                 seasoning_parts.append(f"-{penalty_value}")
             if self.session:

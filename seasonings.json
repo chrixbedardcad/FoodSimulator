@@ -41,7 +41,7 @@
     "seasoning_id": "seasoning.pepper",
     "taste": "Bitter",
     "perk": "Sharpens bitter flavors, canceling any penalty from matching bitters.",
-    "boosts": { "Bitter": 0.20, "Umami": 0.05 },
+    "boosts": { "Bitter": 0.20, "Umami": 0.05, "Sweet": -0.05 },
     "conflicts": ["Fruit"],
     "conflict_penalty": 3,
     "stack_limit": 1,

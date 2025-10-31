@@ -5332,20 +5332,25 @@ class FoodGameApp:
     def _update_seasoning_button(self, seasoning: Optional[Seasoning] = None) -> None:
         if not self.seasoning_button:
             return
-        if seasoning is None and self.session:
-            seasonings = self.session.get_seasonings()
+
+        session = self.session
+        seasonings: Sequence[Seasoning] = ()
+        if session:
+            seasonings = session.get_seasonings()
+
+        text: str
+        if seasoning is None:
             if len(seasonings) == 1:
                 seasoning = seasonings[0]
             elif seasonings:
-                seasoning = None
                 text = "Seasonings\nMultiple"
             else:
-                seasoning = None
                 text = "Seasonings\nNone"
+
         if seasoning is not None:
             display_name = seasoning.display_name or seasoning.name
             text = f"Seasonings\n{display_name}"
-        elif self.session and self.session.get_seasonings():
+        elif seasonings:
             text = "Seasonings\nMultiple"
         else:
             text = "Seasonings\nNone"
@@ -5357,7 +5362,8 @@ class FoodGameApp:
             )
             self._resource_button_images["seasoning"] = icon
 
-        self.seasoning_button.configure(image=icon, text=text)
+        state = "normal" if session and not session.is_finished() else "disabled"
+        self.seasoning_button.configure(image=icon, text=text, state=state)
 
     def _seasoning_boost_summary(self, seasoning: Seasoning) -> str:
         parts = []

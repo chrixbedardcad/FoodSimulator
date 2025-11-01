@@ -6192,15 +6192,20 @@ class FoodGameApp:
             self._pending_round_summary = summary
 
         if not summary:
+            if (
+                self.session
+                and not self.session.awaiting_new_round()
+                and not self.session.is_finished()
+            ):
+                self._set_action_buttons_enabled(True)
             return
 
         run_finished = bool(summary.get("run_finished", False))
 
         if not run_finished and not self.session.awaiting_new_round():
+            if not self.session.is_finished():
+                self._set_action_buttons_enabled(True)
             return
-
-        if not run_finished:
-            self._set_action_buttons_enabled(False)
 
         if not self._round_summary_shown:
             if self.active_popup and self.active_popup.winfo_exists():
@@ -6213,6 +6218,8 @@ class FoodGameApp:
                     return
                 self.active_popup.destroy()
                 self.active_popup = None
+            if not run_finished:
+                self._set_action_buttons_enabled(False)
             self._pending_round_summary = summary
             self._show_round_summary_popup(summary)
             return
@@ -6220,6 +6227,8 @@ class FoodGameApp:
         if run_finished:
             self._handle_run_finished()
             return
+
+        self._set_action_buttons_enabled(False)
 
         choices = list(self.session.get_basket_bonus_choices())
         if not choices:
@@ -6795,7 +6804,18 @@ class FoodGameApp:
             if self.active_popup is popup:
                 self.active_popup = None
             if self._pending_round_summary:
+                # Prevent the player from queuing another action while the
+                # round summary and reward dialogs are preparing to display.
+                self._set_action_buttons_enabled(False)
                 popup.after(50, self._show_basket_clear_popup)
+            elif (
+                self.session
+                and not self.session.awaiting_new_round()
+                and not self.session.is_finished()
+            ):
+                # No additional dialogs will appear, so restore the cook button
+                # immediately.
+                self._set_action_buttons_enabled(True)
 
         popup.protocol("WM_DELETE_WINDOW", close_popup)
         popup.bind("<Escape>", lambda _e: close_popup())

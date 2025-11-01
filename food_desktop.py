@@ -3519,6 +3519,7 @@ class FoodGameApp:
         self.chef_popup: Optional["ChefTeamPopup"] = None
         self._pending_round_summary: Optional[Dict[str, object]] = None
         self._round_summary_shown = False
+        self._round_reward_claimed = False
         self._deferring_round_summary = False
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
@@ -5022,6 +5023,7 @@ class FoodGameApp:
         self.seasoning_popup = None
         self._pending_round_summary = None
         self._round_summary_shown = False
+        self._round_reward_claimed = False
         self._deferring_round_summary = False
         self._run_completion_notified = False
         self._close_recruit_dialog()
@@ -5919,8 +5921,11 @@ class FoodGameApp:
             if self._pending_round_summary is None:
                 self._pending_round_summary = summary
                 self._round_summary_shown = False
+                self._round_reward_claimed = False
             else:
                 self._pending_round_summary = summary or self._pending_round_summary
+                if summary:
+                    self._round_reward_claimed = False
             self._show_basket_clear_popup()
             return
         if not self.session.is_finished():
@@ -6186,10 +6191,15 @@ class FoodGameApp:
         if not self.session:
             return
 
+        if self.active_popup and self.active_popup.winfo_exists():
+            popup_kind = getattr(self.active_popup, "_popup_kind", None)
+            if popup_kind == "turn_summary":
+                return
+
         summary = self._pending_round_summary or {}
         if not summary:
             summary = self.session.peek_basket_clear_summary() or {}
-            self._pending_round_summary = summary
+            self._pending_round_summary = summary or self._pending_round_summary
 
         if not summary:
             if (
@@ -6200,53 +6210,91 @@ class FoodGameApp:
                 self._set_action_buttons_enabled(True)
             return
 
+        self._pending_round_summary = summary
         run_finished = bool(summary.get("run_finished", False))
 
-        if not run_finished and not self.session.awaiting_new_round():
-            if not self.session.is_finished():
-                self._set_action_buttons_enabled(True)
-            return
-
-        if not self._round_summary_shown:
-            if self.active_popup and self.active_popup.winfo_exists():
-                popup_kind = getattr(self.active_popup, "_popup_kind", None)
-                if popup_kind == "turn_summary":
-                    return
-                if popup_kind == "round_summary":
-                    self.active_popup.lift()
-                    self.active_popup.focus_force()
-                    return
-                self.active_popup.destroy()
-                self.active_popup = None
-            if not run_finished:
-                self._set_action_buttons_enabled(False)
-            self._pending_round_summary = summary
-            self._show_round_summary_popup(summary)
-            return
-
         if run_finished:
-            self._handle_run_finished()
+            if not self._round_summary_shown:
+                self._set_action_buttons_enabled(False)
+                if (
+                    self.active_popup
+                    and self.active_popup.winfo_exists()
+                    and getattr(self.active_popup, "_popup_kind", None) not in {"round_summary", "turn_summary"}
+                ):
+                    self.active_popup.destroy()
+                    self.active_popup = None
+                self._show_round_summary_popup(summary)
+            else:
+                self._pending_round_summary = None
+                self._round_summary_shown = False
+                self._round_reward_claimed = False
+                self._handle_run_finished()
             return
 
-        self._set_action_buttons_enabled(False)
-
-        choices = list(self.session.get_basket_bonus_choices())
-        if not choices:
-            ingredients = list(self.session.data.ingredients.values())
-            if ingredients:
-                sample_count = min(3, len(ingredients))
-                choices = random.sample(ingredients, sample_count)
-
-        if self.active_popup and self.active_popup.winfo_exists():
-            if getattr(self.active_popup, "_popup_kind", None) == "basket_clear":
+        if not self._round_reward_claimed:
+            self._set_action_buttons_enabled(False)
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) == "basket_clear"
+            ):
                 self.active_popup.lift()
                 self.active_popup.focus_force()
                 return
-            self.active_popup.destroy()
-            self.active_popup = None
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+            ):
+                self.active_popup.destroy()
+                self.active_popup = None
+            self._show_round_reward_popup(summary)
+            return
+
+        if not self._round_summary_shown:
+            self._set_action_buttons_enabled(False)
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) == "round_summary"
+            ):
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+            ):
+                self.active_popup.destroy()
+                self.active_popup = None
+            self._show_round_summary_popup(summary)
+            return
+
+        self._pending_round_summary = None
+        self._round_summary_shown = False
+        self._round_reward_claimed = False
+        if not self.session.is_finished():
+            self._set_action_buttons_enabled(True)
+        else:
+            self._handle_run_finished()
+
+    def _show_round_reward_popup(self, summary: Mapping[str, object]) -> None:
+        if not self.session:
+            return
+
+        if self.active_popup and self.active_popup.winfo_exists():
+            popup_kind = getattr(self.active_popup, "_popup_kind", None)
+            if popup_kind == "basket_clear":
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            if popup_kind != "turn_summary":
+                self.active_popup.destroy()
+                self.active_popup = None
 
         popup = tk.Toplevel(self.root)
-        popup.title("Basket Cleared!")
+        popup.title("Round Reward")
         popup.transient(self.root)
         popup.resizable(False, False)
         popup._popup_kind = "basket_clear"  # type: ignore[attr-defined]
@@ -6263,24 +6311,16 @@ class FoodGameApp:
         recipes_completed = int(summary.get("recipes_completed", 0))
         unique_recipes = int(summary.get("unique_recipes", recipes_completed))
 
-        if not self._round_summary_shown:
-            header_text = (
-                "Round complete! Review your progress and claim an ingredient bonus."
-            )
-            stats_lines = [
-                f"Round {round_index} summary:",
-                f"  • Dishes cooked: {dishes_cooked}",
-                f"  • Recipes completed: {recipes_completed} (unique {unique_recipes})",
-                f"  • Rotten ingredients used: {rotten_used}",
-                f"  • Points earned this round: {round_points}",
-                f"Total score so far: {total_score}",
-            ]
-            summary_text = "\n".join(stats_lines)
-        else:
-            header_text = "Claim your round reward"
-            summary_text = (
-                "You already reviewed this round. Choose your bonus ingredient to begin the next round."
-            )
+        header_text = "Round complete! Claim your reward."
+        stats_lines = [
+            f"Round {round_index} highlights:",
+            f"  • Dishes cooked: {dishes_cooked}",
+            f"  • Recipes completed: {recipes_completed} (unique {unique_recipes})",
+            f"  • Rotten ingredients used: {rotten_used}",
+            f"  • Points earned this round: {round_points}",
+            f"Total score so far: {total_score}",
+        ]
+        summary_text = "\n".join(stats_lines)
 
         ttk.Label(
             frame,
@@ -6296,6 +6336,13 @@ class FoodGameApp:
             justify="center",
             anchor="center",
         ).grid(row=1, column=0, sticky="ew", pady=(8, 12))
+
+        choices = list(self.session.get_basket_bonus_choices())
+        if not choices:
+            ingredients = list(self.session.data.ingredients.values())
+            if ingredients:
+                sample_count = min(3, len(ingredients))
+                choices = random.sample(ingredients, sample_count)
 
         instruction_text = (
             "Pick an ingredient to jump-start the next round:"
@@ -6330,10 +6377,7 @@ class FoodGameApp:
             if self.active_popup is popup:
                 self.active_popup = None
 
-            self._pending_round_summary = None
-            self._round_summary_shown = False
-
-            self._set_action_buttons_enabled(True)
+            self._round_reward_claimed = True
 
             self.render_hand()
             self.update_status()
@@ -6347,6 +6391,9 @@ class FoodGameApp:
                 )
             self._update_chef_button()
             self.append_events(self.session.consume_events())
+            self._set_action_buttons_enabled(False)
+
+            popup.after(50, self._show_basket_clear_popup)
 
         def handle_ingredient_choice(ingredient: Ingredient) -> None:
             if not self.session:
@@ -6379,13 +6426,20 @@ class FoodGameApp:
                 button.grid(row=0, column=column, padx=6, pady=4)
 
         if not choices:
+            def continue_without_reward() -> None:
+                if not self.session:
+                    return
+                try:
+                    self.session.begin_next_round_after_reward()
+                except Exception as exc:  # pragma: no cover - user feedback path
+                    messagebox.showerror("Unable to start new round", str(exc))
+                    return
+                finalize_reward()
+
             ttk.Button(
                 reward_frame,
                 text="Continue",
-                command=lambda: (
-                    self.session.begin_next_round_after_reward(),
-                    finalize_reward(),
-                ),
+                command=continue_without_reward,
             ).grid(row=0, column=0, pady=6)
 
         popup.protocol("WM_DELETE_WINDOW", lambda: None)
@@ -6394,6 +6448,7 @@ class FoodGameApp:
         popup._image_refs = image_refs  # type: ignore[attr-defined]
         self.active_popup = popup
         self._center_popup(popup)
+        popup.focus_force()
 
     def clear_events(self) -> None:
         if self.log_text is None:
@@ -6803,9 +6858,16 @@ class FoodGameApp:
                 popup.destroy()
             if self.active_popup is popup:
                 self.active_popup = None
-            if self._pending_round_summary:
-                # Prevent the player from queuing another action while the
-                # round summary and reward dialogs are preparing to display.
+            pending_followups = bool(
+                self._pending_round_summary
+                or (
+                    self.session
+                    and self.session.awaiting_new_round()
+                )
+            )
+            if pending_followups:
+                # Prevent the player from queuing another action while follow-up
+                # dialogs prepare to display.
                 self._set_action_buttons_enabled(False)
                 popup.after(50, self._show_basket_clear_popup)
             elif (

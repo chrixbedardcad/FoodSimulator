@@ -1126,6 +1126,7 @@ class GameSession:
         self.total_score = 0
         self.finished = False
         self.pending_new_chef_offer = False
+        self._post_run_reward_pending = False
         self._round_score = 0
         self._round_stats = RoundStats()
         self._awaiting_basket_reset = False
@@ -1276,6 +1277,7 @@ class GameSession:
         self._basket_bonus_choices = []
         self._basket_clear_summary = None
         self.finished = False
+        self._post_run_reward_pending = False
         carryover_cards: List[IngredientCard] = []
         if not initial:
             carryover_cards = self._collect_pantry_carryover()
@@ -1399,6 +1401,7 @@ class GameSession:
             self._awaiting_basket_reset = False
             self._basket_bonus_choices = []
             self.pending_new_chef_offer = False
+            self._post_run_reward_pending = True
             summary["run_finished"] = True
             summary["bonus_choices_available"] = False
             self._push_event("Round complete! Basket target score reached.")
@@ -1665,7 +1668,7 @@ class GameSession:
     def add_chef(self, chef: Chef) -> None:
         if any(existing.name == chef.name for existing in self.chefs):
             raise ValueError(f"{chef.name} is already on your team.")
-        if self.finished:
+        if self.finished and not self._post_run_reward_pending:
             raise RuntimeError("Cannot add chefs after the run has finished.")
         if len(self.chefs) >= self.max_chefs:
             raise ValueError("Your chef roster is already at the maximum size.")
@@ -1682,7 +1685,7 @@ class GameSession:
     def add_seasoning(self, seasoning: Seasoning) -> None:
         if any(existing.name == seasoning.name for existing in self.seasonings):
             raise ValueError(f"{seasoning.display_name or seasoning.name} is already in your pantry.")
-        if self.finished:
+        if self.finished and not self._post_run_reward_pending:
             raise RuntimeError("Cannot add seasonings after the run has finished.")
         self.seasonings.append(seasoning)
         self._seasoning_charges[seasoning.seasoning_id] = seasoning.charges
@@ -4707,6 +4710,7 @@ class FoodGameApp:
             return
 
         self.session.challenge_reward_claimed = True
+        self.session._post_run_reward_pending = True
 
         challenge = self.session.challenge
         reward = dict(getattr(self.session, "challenge_reward", {}) or {})
@@ -4776,11 +4780,49 @@ class FoodGameApp:
             justify="left",
         ).grid(row=3, column=1, sticky="w", pady=(12, 0))
 
+        summary_var = tk.StringVar(value="")
+        summary_label = ttk.Label(
+            frame,
+            textvariable=summary_var,
+            style="Info.TLabel",
+            wraplength=420,
+            justify="left",
+            anchor="w",
+        )
+        summary_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(18, 0))
+        summary_label.grid_remove()
+
         button_frame = ttk.Frame(frame)
-        button_frame.grid(row=4, column=0, columnspan=2, sticky="e", pady=(18, 0))
+        button_frame.grid(row=5, column=0, columnspan=2, sticky="e", pady=(18, 0))
+
+        reward_finalized = False
+
+        def close_popup() -> None:
+            if not popup.winfo_exists():
+                return
+            try:
+                popup.grab_release()
+            except tk.TclError:
+                pass
+            popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
 
         def finalize_reward() -> None:
+            nonlocal reward_finalized
+            if reward_finalized:
+                close_popup()
+                return
+            reward_finalized = True
+
             if not self.session:
+                summary_var.set(
+                    "Basket summary unavailable because the session has already closed."
+                )
+                summary_label.grid()
+                continue_button.configure(text="Close", command=close_popup)
+                popup.protocol("WM_DELETE_WINDOW", close_popup)
+                popup.bind("<Escape>", lambda _e: close_popup())
                 return
 
             error_message: Optional[str] = None
@@ -4800,38 +4842,27 @@ class FoodGameApp:
                 else:
                     self._store_persistent_chef(reward_obj)
 
-            if error_message:
-                messagebox.showwarning("Reward not applied", error_message)
+            summary_lines: List[str] = []
 
-            if popup.winfo_exists():
-                try:
-                    popup.grab_release()
-                except tk.TclError:
-                    pass
-                popup.destroy()
-            if self.active_popup is popup:
-                self.active_popup = None
+            if self.session:
+                self.session.challenge_reward = reward
+                self.session.challenge_reward_claimed = True
+                self.session._post_run_reward_pending = False
+                self.session.finished = True
 
-            if not self.session:
-                return
+                self.append_events(self.session.consume_events())
+                if self.team_tile:
+                    self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
+                if self.seasoning_tile:
+                    self.seasoning_tile.set_seasonings(
+                        self.session.get_seasonings(),
+                        len(self.session.available_seasonings()),
+                    )
+                self._update_chef_button()
+                self._update_seasoning_button(None)
+                self._update_seasoning_panels()
 
-            self.session.challenge_reward = reward
-            self.session.challenge_reward_claimed = True
-            self.session.finished = True
-
-            self.append_events(self.session.consume_events())
-            if self.team_tile:
-                self.team_tile.set_team(self.session.chefs, self.session.max_chefs)
-            if self.seasoning_tile:
-                self.seasoning_tile.set_seasonings(
-                    self.session.get_seasonings(),
-                    len(self.session.available_seasonings()),
-                )
-            self._update_chef_button()
-            self._update_seasoning_button(None)
-            self._update_seasoning_panels()
-
-            summary_lines = [
+            summary_lines[:0] = [
                 f"You reached {total_score} points and cleared the {challenge.basket_name} basket!",
                 "",
                 f"Reward earned: {display_name}.",
@@ -4839,31 +4870,41 @@ class FoodGameApp:
             if description:
                 summary_lines.append("")
                 summary_lines.append(description)
+
             if error_message:
                 summary_lines.append("")
-                summary_lines.append(f"Reward could not be applied: {error_message}")
+                summary_lines.append(f"⚠️ Reward could not be applied: {error_message}")
 
             message_text = "\n".join(summary_lines)
 
-            self._log_action(
-                f"Basket challenge completed at {total_score} points. Reward granted: {display_name}."
-            )
-            log_lines = [
-                f"Challenge complete! Reward earned: {display_name}.",
-                f"Total score: {total_score}",
-            ]
-            if description:
-                log_lines.append(description)
-            if error_message:
-                log_lines.append(f"Reward could not be applied: {error_message}")
-            self.write_result("\n".join(log_lines))
+            if self.session:
+                self._log_action(
+                    f"Basket challenge completed at {total_score} points. Reward granted: {display_name}."
+                )
+                log_lines = [
+                    f"Challenge complete! Reward earned: {display_name}.",
+                    f"Total score: {total_score}",
+                ]
+                if description:
+                    log_lines.append(description)
+                if error_message:
+                    log_lines.append(f"Reward could not be applied: {error_message}")
+                self.write_result("\n".join(log_lines))
 
-            self._handle_run_finished(custom_message=("Basket Cleared!", message_text))
-            self.challenge_summary_var.set("Basket cleared! Select your next challenge.")
+                self._handle_run_finished(show_dialog=False)
+                self.challenge_summary_var.set(
+                    "Basket cleared! Select your next challenge."
+                )
 
-            next_config = self._last_run_config or self._snapshot_run_config()
-            self.pending_run_config = dict(next_config)
-            self._prompt_basket_selection()
+                next_config = self._last_run_config or self._snapshot_run_config()
+                self.pending_run_config = dict(next_config)
+                self._prompt_basket_selection()
+
+            summary_var.set(message_text)
+            summary_label.grid()
+            continue_button.configure(text="Close", command=close_popup)
+            popup.protocol("WM_DELETE_WINDOW", close_popup)
+            popup.bind("<Escape>", lambda _e: close_popup())
 
         continue_button = ttk.Button(
             button_frame,
@@ -4875,6 +4916,7 @@ class FoodGameApp:
 
         popup.protocol("WM_DELETE_WINDOW", lambda: finalize_reward())
         popup.bind("<Escape>", lambda _e: finalize_reward())
+
         popup.grab_set()
         popup._image_refs = [reward_image]  # type: ignore[attr-defined]
         self.active_popup = popup
@@ -6346,7 +6388,10 @@ class FoodGameApp:
         self.log_text.configure(state="disabled")
 
     def _handle_run_finished(
-        self, *, custom_message: Optional[Tuple[str, str]] = None
+        self,
+        *,
+        custom_message: Optional[Tuple[str, str]] = None,
+        show_dialog: bool = True,
     ) -> None:
         if not self.session:
             return
@@ -6367,7 +6412,7 @@ class FoodGameApp:
         self._set_controls_active(True)
         self._close_recruit_dialog()
 
-        if custom_message is None and self._run_completion_notified:
+        if custom_message is None and self._run_completion_notified and show_dialog:
             return
 
         title: str
@@ -6379,7 +6424,7 @@ class FoodGameApp:
             message = f"Final score: {self.session.get_total_score()}"
 
         self._run_completion_notified = True
-        if custom_message is not None:
+        if show_dialog and custom_message is not None:
             messagebox.showinfo(title, message)
         summary_text = self._final_summary_text()
         if summary_text:

@@ -954,7 +954,6 @@ class TurnOutcome:
     base_score: int
     chef_hits: int
     round_index: int
-    total_rounds: int
     turn_number: int
     deck_refreshed: bool
     discovered_recipe: bool
@@ -1071,9 +1070,9 @@ class GameSession:
         data: GameData,
         basket_name: str,
         chefs: Sequence[Chef],
-        rounds: int,
         hand_size: int,
         pick_size: int,
+        rounds: Optional[int] = None,
         deck_size: int = DEFAULT_DECK_SIZE,
         bias: float = DEFAULT_BIAS,
         max_chefs: int = DEFAULT_MAX_CHEFS,
@@ -1084,8 +1083,8 @@ class GameSession:
         starting_cookbook: Optional[Mapping[str, "CookbookEntry"]] = None,
         starting_seasonings: Optional[Sequence[Seasoning]] = None,
     ) -> None:
-        if rounds <= 0:
-            raise ValueError("rounds must be positive")
+        if rounds is not None and rounds <= 0:
+            raise ValueError("rounds must be positive when specified")
         if hand_size <= 0:
             raise ValueError("hand_size must be positive")
         if pick_size <= 0:
@@ -1100,7 +1099,7 @@ class GameSession:
         self.data = data
         self.basket_name = basket_name
         self.chefs = list(chefs)
-        self.rounds = rounds
+        self.rounds = rounds if rounds is not None else 0
         self.hand_size = hand_size
         self.pick_size = pick_size
         self.deck_size = deck_size
@@ -1266,25 +1265,17 @@ class GameSession:
 
     # ----------------- Round & hand management -----------------
     def _start_next_round(self, initial: bool = False) -> None:
-        if self.round_index >= self.rounds and not initial:
-            self.finished = True
-            self._push_event("Run complete! No more rounds remaining.")
-            return
-
         if initial:
             self.round_index = 1
         else:
             self.round_index += 1
-            if self.round_index > self.rounds:
-                self.finished = True
-                self._push_event("Run complete! No more rounds remaining.")
-                return
 
         self._round_score = 0
         self._round_stats = RoundStats()
         self._awaiting_basket_reset = False
         self._basket_bonus_choices = []
         self._basket_clear_summary = None
+        self.finished = False
         carryover_cards: List[IngredientCard] = []
         if not initial:
             carryover_cards = self._collect_pantry_carryover()
@@ -1296,7 +1287,7 @@ class GameSession:
         self.hand.clear()
         self.pending_new_chef_offer = False
         self._push_event(
-            f"Round {self.round_index}/{self.rounds} begins. Pantry shuffled for the team."
+            f"Round {self.round_index} begins. Pantry shuffled for the team."
         )
         self._refill_hand(log_new_cards=not initial)
         if initial:
@@ -1388,28 +1379,36 @@ class GameSession:
             self._log_hand_snapshot("Update Hand", new_cards=new_cards)
         return deck_refreshed
 
-    def _enter_round_summary(self) -> None:
-        if self._awaiting_basket_reset or self.finished:
+    def _enter_round_summary(self, *, reason: str = "pantry_empty") -> None:
+        if self._awaiting_basket_reset and reason != "target_reached":
+            return
+        if self.finished and reason != "target_reached":
             return
 
         summary = {
             "round_index": self.round_index,
-            "total_rounds": self.rounds,
+            "total_rounds": self.rounds or self.round_index,
             "round_score": self._round_score,
             "total_score": self.total_score,
+            "round_end_reason": reason,
         }
         summary.update(self._round_stats.summary_payload())
         self._basket_clear_summary = summary
-
-        remaining_rounds = self.rounds - self.round_index
-        if remaining_rounds <= 0:
+        if reason == "target_reached":
             self.finished = True
-            self._push_event("Round complete! All scheduled rounds finished.")
+            self._awaiting_basket_reset = False
+            self._basket_bonus_choices = []
+            self.pending_new_chef_offer = False
+            summary["run_finished"] = True
+            summary["bonus_choices_available"] = False
+            self._push_event("Round complete! Basket target score reached.")
             return
 
         self._awaiting_basket_reset = True
         self._basket_bonus_choices = self._choose_bonus_ingredients()
         self.pending_new_chef_offer = False
+        summary["run_finished"] = False
+        summary["bonus_choices_available"] = bool(self._basket_bonus_choices)
         if self._basket_bonus_choices:
             self._push_event(
                 "Round complete! Choose an ingredient to prepare for the next round."
@@ -1567,7 +1566,7 @@ class GameSession:
         return len(self.deck), self._current_deck_total
 
     def awaiting_new_round(self) -> bool:
-        return self._awaiting_basket_reset
+        return self._awaiting_basket_reset and not self.finished
 
     def get_basket_bonus_choices(self) -> Sequence[Ingredient]:
         return list(self._basket_bonus_choices)
@@ -2150,6 +2149,13 @@ class GameSession:
 
         deck_refreshed = False
 
+        if (
+            not self.finished
+            and self.challenge_target is not None
+            and self.total_score >= self.challenge_target
+        ):
+            self._enter_round_summary(reason="target_reached")
+
         if not self.finished:
             self._apply_end_turn_decay()
         if not self.finished:
@@ -2182,7 +2188,6 @@ class GameSession:
             ),
             chef_hits=chef_hits,
             round_index=current_round,
-            total_rounds=self.rounds,
             turn_number=current_turn,
             deck_refreshed=deck_refreshed,
             discovered_recipe=discovered,
@@ -2440,7 +2445,7 @@ class SeasoningTile(ttk.Frame):
         self.header_var.set(f"🧂 Seasonings ({count})")
         if count == 0:
             if remaining > 0:
-                self.subtitle_var.set("No seasonings collected yet. Finish rounds to claim one.")
+                self.subtitle_var.set("No seasonings collected yet. Finish a round to claim one.")
             else:
                 self.subtitle_var.set("All available seasonings have been collected.")
         else:
@@ -3836,13 +3841,11 @@ class FoodGameApp:
         config_frame = ttk.Frame(self.control_frame)
         config_frame.pack(anchor="w", pady=(8, 0))
 
-        self.round_var = tk.IntVar(value=DEFAULT_CONFIG.rounds)
         self.cooks_var = tk.IntVar(value=DEFAULT_CONFIG.cooks)
         self.hand_var = tk.IntVar(value=DEFAULT_HAND_SIZE)
         self.pick_var = tk.IntVar(value=DEFAULT_PICK_SIZE)
         self.max_chefs_var = tk.IntVar(value=DEFAULT_MAX_CHEFS)
 
-        self._add_spinbox(config_frame, "Rounds", self.round_var, 1, 10)
         self._add_spinbox(config_frame, "Cooks / Round", self.cooks_var, 1, 12)
         self._add_spinbox(config_frame, "Hand Size", self.hand_var, 3, 10)
         self._add_spinbox(config_frame, "Pick Size", self.pick_var, 1, 5)
@@ -3887,7 +3890,6 @@ class FoodGameApp:
 
     def _snapshot_run_config(self) -> Dict[str, int]:
         return {
-            "rounds": int(self.round_var.get()),
             "cooks": int(self.cooks_var.get()),
             "hand_size": int(self.hand_var.get()),
             "pick_size": int(self.pick_var.get()),
@@ -4566,7 +4568,6 @@ class FoodGameApp:
         self._close_challenge_dialog()
 
         try:
-            rounds = int(self.round_var.get())
             cooks = int(self.cooks_var.get())
             hand_size = int(self.hand_var.get())
             pick_size = int(self.pick_var.get())
@@ -4582,7 +4583,6 @@ class FoodGameApp:
             return
 
         self.pending_run_config = {
-            "rounds": rounds,
             "cooks": cooks,
             "hand_size": hand_size,
             "pick_size": pick_size,
@@ -4616,7 +4616,6 @@ class FoodGameApp:
                 DATA,
                 basket_name=challenge.basket_name,
                 chefs=starting_chefs,
-                rounds=config["rounds"],
                 hand_size=config["hand_size"],
                 pick_size=config["pick_size"],
                 max_chefs=max_chefs,
@@ -5801,9 +5800,7 @@ class FoodGameApp:
         if not self.session:
             self._refresh_score_details()
             return
-        round_text = (
-            f"Round {self.session.round_index} / {self.session.rounds}"
-        )
+        round_text = f"Round {self.session.round_index}"
         if self.session.is_finished():
             turn_text = f"Turns completed: {self.session.turn_number}"
         else:
@@ -5859,7 +5856,6 @@ class FoodGameApp:
         summary = (
             "Run settings — "
             f"Basket: {self.session.basket_name}; "
-            f"Rounds: {self.session.rounds}; "
             f"Hand size: {self.session.hand_size}; "
             f"Pick size: {self.session.pick_size}; "
             f"Max chefs: {self.session.max_chefs}; "
@@ -5868,7 +5864,7 @@ class FoodGameApp:
         )
         position = (
             "Starting position — "
-            f"Round {self.session.round_index}/{self.session.rounds}; "
+            f"Round {self.session.round_index}; "
             f"Next turn: {self.session.turn_number + 1}"
         )
         self._append_log_lines([summary, position])
@@ -5914,17 +5910,23 @@ class FoodGameApp:
         frame.columnconfigure(0, weight=1)
 
         round_index = int(summary.get("round_index", self.session.round_index))
-        total_rounds = int(summary.get("total_rounds", self.session.rounds))
         round_points = int(summary.get("round_points", summary.get("round_score", 0)))
         total_score = int(summary.get("total_score", self.session.get_total_score()))
         dishes_cooked = int(summary.get("dishes_cooked", 0))
         recipes_completed = int(summary.get("recipes_completed", 0))
         unique_recipes = int(summary.get("unique_recipes", recipes_completed))
         rotten_used = int(summary.get("rotten_ingredients", 0))
+        run_finished = bool(summary.get("run_finished", False))
+        reason = str(summary.get("round_end_reason", "pantry_empty"))
+
+        if run_finished:
+            header_text = f"Round {round_index} complete"
+        else:
+            header_text = f"Round {round_index} ready"
 
         ttk.Label(
             frame,
-            text=f"Round {round_index} / {total_rounds}",
+            text=header_text,
             style="Header.TLabel",
             anchor="center",
             justify="center",
@@ -5957,9 +5959,20 @@ class FoodGameApp:
             anchor="center",
         ).grid(row=2, column=0, sticky="ew")
 
+        bonus_text: Optional[str]
+        if run_finished:
+            if reason == "target_reached":
+                bonus_text = "Basket target reached! The run is complete."
+            else:
+                bonus_text = "Run complete."
+        elif summary.get("bonus_choices_available", False):
+            bonus_text = "Prize unlocked: Choose a bonus ingredient to start the next round."
+        else:
+            bonus_text = "Pantry will refill automatically for the next round."
+
         ttk.Label(
             frame,
-            text="Prize unlocked: Choose a bonus ingredient to start the next round.",
+            text=bonus_text,
             style="Info.TLabel",
             wraplength=420,
             justify="center",
@@ -6127,13 +6140,21 @@ class FoodGameApp:
     def _show_basket_clear_popup(self) -> None:
         if self._deferring_round_summary:
             return
-        if not self.session or not self.session.awaiting_new_round():
+        if not self.session:
             return
 
         summary = self._pending_round_summary or {}
         if not summary:
             summary = self.session.peek_basket_clear_summary() or {}
             self._pending_round_summary = summary
+
+        if not summary:
+            return
+
+        run_finished = bool(summary.get("run_finished", False))
+
+        if not run_finished and not self.session.awaiting_new_round():
+            return
 
         if not self._round_summary_shown:
             if self.active_popup and self.active_popup.winfo_exists():
@@ -6148,6 +6169,10 @@ class FoodGameApp:
                 self.active_popup = None
             self._pending_round_summary = summary
             self._show_round_summary_popup(summary)
+            return
+
+        if run_finished:
+            self._handle_run_finished()
             return
 
         choices = list(self.session.get_basket_bonus_choices())
@@ -6176,7 +6201,6 @@ class FoodGameApp:
         frame.columnconfigure(0, weight=1)
 
         round_index = int(summary.get("round_index", self.session.round_index))
-        total_rounds = int(summary.get("total_rounds", self.session.rounds))
         round_points = int(summary.get("round_points", summary.get("round_score", 0)))
         total_score = int(summary.get("total_score", self.session.get_total_score()))
         dishes_cooked = int(summary.get("dishes_cooked", 0))
@@ -6189,7 +6213,7 @@ class FoodGameApp:
                 "Round complete! Review your progress and claim an ingredient bonus."
             )
             stats_lines = [
-                f"Round {round_index}/{total_rounds} summary:",
+                f"Round {round_index} summary:",
                 f"  • Dishes cooked: {dishes_cooked}",
                 f"  • Recipes completed: {recipes_completed} (unique {unique_recipes})",
                 f"  • Rotten ingredients used: {rotten_used}",
@@ -6744,7 +6768,7 @@ class FoodGameApp:
             content,
             text=(
                 f"Turn {outcome.turn_number}"
-                f"  •  Round {outcome.round_index}/{outcome.total_rounds}"
+                f"  •  Round {outcome.round_index}"
             ),
             font=("Helvetica", 15, "bold"),
             fg="#15202b",
@@ -7366,7 +7390,7 @@ class FoodGameApp:
     def _format_outcome(self, outcome: TurnOutcome) -> str:
         parts = [
             f"Turn {outcome.turn_number} — "
-            f"Round {outcome.round_index}/{outcome.total_rounds}",
+            f"Round {outcome.round_index}",
             "",
         ]
         parts.append("Cooked selection:")

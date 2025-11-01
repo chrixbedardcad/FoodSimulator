@@ -5923,6 +5923,8 @@ class FoodGameApp:
                 self._pending_round_summary = summary or self._pending_round_summary
             self._show_basket_clear_popup()
             return
+        if not self.session.is_finished():
+            self._set_action_buttons_enabled(True)
         if self.session.is_finished():
             self._handle_run_finished()
 

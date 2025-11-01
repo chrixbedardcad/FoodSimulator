@@ -6192,11 +6192,19 @@ class FoodGameApp:
             self._pending_round_summary = summary
 
         if not summary:
+            if (
+                self.session
+                and not self.session.awaiting_new_round()
+                and not self.session.is_finished()
+            ):
+                self._set_action_buttons_enabled(True)
             return
 
         run_finished = bool(summary.get("run_finished", False))
 
         if not run_finished and not self.session.awaiting_new_round():
+            if not self.session.is_finished():
+                self._set_action_buttons_enabled(True)
             return
 
         if not self._round_summary_shown:
@@ -6796,7 +6804,18 @@ class FoodGameApp:
             if self.active_popup is popup:
                 self.active_popup = None
             if self._pending_round_summary:
+                # Prevent the player from queuing another action while the
+                # round summary and reward dialogs are preparing to display.
+                self._set_action_buttons_enabled(False)
                 popup.after(50, self._show_basket_clear_popup)
+            elif (
+                self.session
+                and not self.session.awaiting_new_round()
+                and not self.session.is_finished()
+            ):
+                # No additional dialogs will appear, so restore the cook button
+                # immediately.
+                self._set_action_buttons_enabled(True)
 
         popup.protocol("WM_DELETE_WINDOW", close_popup)
         popup.bind("<Escape>", lambda _e: close_popup())

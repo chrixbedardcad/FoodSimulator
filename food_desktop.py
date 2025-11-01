@@ -4655,16 +4655,7 @@ class FoodGameApp:
         self._refresh_challenge_summary()
 
         self._set_controls_active(False)
-        if self.cook_button is not None:
-            self.cook_button.configure(state="normal")
-        if self.return_button is not None:
-            self.return_button.configure(state="normal")
-        if self.basket_button is not None:
-            self.basket_button.configure(state="normal")
-        if self.seasoning_button is not None:
-            self.seasoning_button.configure(state="normal")
-        if self.chef_button is not None:
-            self.chef_button.configure(state="normal")
+        self._set_action_buttons_enabled(True)
         self.reset_button.configure(state="normal")
         self.applied_seasonings.clear()
         self.estimated_score_var.set("Estimated Score: —")
@@ -5050,16 +5041,7 @@ class FoodGameApp:
         )
         self.applied_seasonings.clear()
         self.estimated_score_var.set("Estimated Score: —")
-        if self.cook_button is not None:
-            self.cook_button.configure(state="disabled")
-        if self.return_button is not None:
-            self.return_button.configure(state="disabled")
-        if self.basket_button is not None:
-            self.basket_button.configure(state="disabled")
-        if self.seasoning_button is not None:
-            self.seasoning_button.configure(state="disabled")
-        if self.chef_button is not None:
-            self.chef_button.configure(state="disabled")
+        self._set_action_buttons_enabled(False)
         self.reset_button.configure(state="disabled")
         self._set_controls_active(True)
         self.clear_hand()
@@ -5082,6 +5064,18 @@ class FoodGameApp:
         for spin in self.spinboxes:
             spin.configure(state=state)
         self.start_button.configure(state="normal" if active else "disabled")
+
+    def _set_action_buttons_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        for button in (
+            self.cook_button,
+            self.return_button,
+            self.basket_button,
+            self.seasoning_button,
+            self.chef_button,
+        ):
+            if button is not None:
+                button.configure(state=state)
 
     # ----------------- UI updates -----------------
     def _refresh_deck_popup(self) -> None:
@@ -6198,6 +6192,9 @@ class FoodGameApp:
         if not run_finished and not self.session.awaiting_new_round():
             return
 
+        if not run_finished:
+            self._set_action_buttons_enabled(False)
+
         if not self._round_summary_shown:
             if self.active_popup and self.active_popup.winfo_exists():
                 popup_kind = getattr(self.active_popup, "_popup_kind", None)
@@ -6320,6 +6317,8 @@ class FoodGameApp:
             self._pending_round_summary = None
             self._round_summary_shown = False
 
+            self._set_action_buttons_enabled(True)
+
             self.render_hand()
             self.update_status()
             self._update_seasoning_panels()
@@ -6399,16 +6398,7 @@ class FoodGameApp:
         self.pantry_card_ids = self.session.get_pantry_card_ids()
         self._persistent_cookbook = self.session.get_cookbook()
 
-        if self.cook_button is not None:
-            self.cook_button.configure(state="disabled")
-        if self.return_button is not None:
-            self.return_button.configure(state="disabled")
-        if self.basket_button is not None:
-            self.basket_button.configure(state="disabled")
-        if self.seasoning_button is not None:
-            self.seasoning_button.configure(state="disabled")
-        if self.chef_button is not None:
-            self.chef_button.configure(state="disabled")
+        self._set_action_buttons_enabled(False)
         self._set_controls_active(True)
         self._close_recruit_dialog()
 

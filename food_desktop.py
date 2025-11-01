@@ -1073,6 +1073,7 @@ class GameSession:
         rounds: Optional[int] = None,
         hand_size: int,
         pick_size: int,
+        rounds: Optional[int] = None,
         deck_size: int = DEFAULT_DECK_SIZE,
         bias: float = DEFAULT_BIAS,
         max_chefs: int = DEFAULT_MAX_CHEFS,

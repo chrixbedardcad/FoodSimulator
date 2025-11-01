@@ -6199,9 +6199,6 @@ class FoodGameApp:
         if not run_finished and not self.session.awaiting_new_round():
             return
 
-        if not run_finished:
-            self._set_action_buttons_enabled(False)
-
         if not self._round_summary_shown:
             if self.active_popup and self.active_popup.winfo_exists():
                 popup_kind = getattr(self.active_popup, "_popup_kind", None)
@@ -6213,6 +6210,8 @@ class FoodGameApp:
                     return
                 self.active_popup.destroy()
                 self.active_popup = None
+            if not run_finished:
+                self._set_action_buttons_enabled(False)
             self._pending_round_summary = summary
             self._show_round_summary_popup(summary)
             return
@@ -6220,6 +6219,8 @@ class FoodGameApp:
         if run_finished:
             self._handle_run_finished()
             return
+
+        self._set_action_buttons_enabled(False)
 
         choices = list(self.session.get_basket_bonus_choices())
         if not choices:

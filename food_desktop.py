@@ -5112,6 +5112,11 @@ class FoodGameApp:
             return
 
         self._refresh_seasoning_popup()
+        if (
+            not self.session.awaiting_new_round()
+            and not self.session.is_finished()
+        ):
+            self._set_action_buttons_enabled(True)
         hand_cards = list(self.session.get_hand())
         self.selected_indices = {
             index for index in self.selected_indices if index < len(hand_cards)

@@ -1070,7 +1070,6 @@ class GameSession:
         data: GameData,
         basket_name: str,
         chefs: Sequence[Chef],
-        rounds: Optional[int] = None,
         hand_size: int,
         pick_size: int,
         rounds: Optional[int] = None,

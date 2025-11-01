@@ -3541,7 +3541,7 @@ class FoodGameApp:
         self._resource_button_images: Dict[str, tk.PhotoImage] = {}
         self._action_button_images: Dict[str, tk.PhotoImage] = {}
         self._seasoning_hand_icons: List[tk.PhotoImage] = []
-        self.log_collapsed = False
+        self.log_collapsed = True
         self._run_completion_notified = False
         self._app_launch_time = datetime.now()
         self._log_start_time: Optional[datetime] = None
@@ -6379,7 +6379,8 @@ class FoodGameApp:
             message = f"Final score: {self.session.get_total_score()}"
 
         self._run_completion_notified = True
-        messagebox.showinfo(title, message)
+        if custom_message is not None:
+            messagebox.showinfo(title, message)
         summary_text = self._final_summary_text()
         if summary_text:
             self.write_result(summary_text)

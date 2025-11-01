@@ -192,6 +192,17 @@
     "delta_multiplier": 0.9
   },
   {
+    "name": "FishSushi",
+    "display_name": "Fish Sushi",
+    "trio": [
+      "Seaweed",
+      "Fish",
+      "Rice"
+    ],
+    "base_multiplier": 3.6,
+    "delta_multiplier": 0.9
+  },
+  {
     "name": "HoneyYogurtCup",
     "display_name": "Honey Yogurt Cup",
     "trio": [

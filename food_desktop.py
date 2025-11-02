@@ -3520,6 +3520,7 @@ class FoodGameApp:
         self._pending_round_summary: Optional[Dict[str, object]] = None
         self._round_summary_shown = False
         self._round_reward_claimed = False
+        self._pending_challenge_reward_score: Optional[int] = None
         self._deferring_round_summary = False
         self.recruit_dialog: Optional[tk.Toplevel] = None
         self.deck_popup: Optional["DeckPopup"] = None
@@ -4664,6 +4665,7 @@ class FoodGameApp:
         self.render_hand()
         self.update_status()
         self.clear_events()
+        self._pending_challenge_reward_score = None
         self._log_start_time = datetime.now()
         self._log_run_settings()
         self._log_action(
@@ -4691,6 +4693,20 @@ class FoodGameApp:
 
         total_score = self.session.get_total_score()
         if total_score < target:
+            return
+
+        if self._pending_challenge_reward_score is not None:
+            self._pending_challenge_reward_score = max(
+                self._pending_challenge_reward_score, total_score
+            )
+            return
+
+        if (
+            self.active_popup
+            and self.active_popup.winfo_exists()
+            and getattr(self.active_popup, "_popup_kind", None) == "turn_summary"
+        ):
+            self._pending_challenge_reward_score = total_score
             return
 
         self._present_challenge_reward(total_score)
@@ -4728,6 +4744,7 @@ class FoodGameApp:
         popup.title("Basket Reward Earned")
         popup.transient(self.root)
         popup.resizable(False, False)
+        popup._popup_kind = "challenge_reward"  # type: ignore[attr-defined]
 
         frame = ttk.Frame(popup, padding=18)
         frame.grid(row=0, column=0, sticky="nsew")
@@ -4797,6 +4814,7 @@ class FoodGameApp:
             popup.destroy()
             if self.active_popup is popup:
                 self.active_popup = None
+            self.root.after(50, self._show_basket_clear_popup)
 
         def finalize_reward() -> None:
             nonlocal reward_finalized
@@ -6190,6 +6208,19 @@ class FoodGameApp:
             popup_kind = getattr(self.active_popup, "_popup_kind", None)
             if popup_kind == "turn_summary":
                 return
+            if (
+                self._pending_challenge_reward_score is not None
+                and popup_kind == "challenge_reward"
+            ):
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+
+        if self._pending_challenge_reward_score is not None:
+            score = self._pending_challenge_reward_score
+            self._pending_challenge_reward_score = None
+            self._present_challenge_reward(score)
+            return
 
         summary = self._pending_round_summary or {}
         if not summary:
@@ -6864,7 +6895,8 @@ class FoodGameApp:
             if self.active_popup is popup:
                 self.active_popup = None
             pending_followups = bool(
-                self._pending_round_summary
+                self._pending_challenge_reward_score is not None
+                or self._pending_round_summary
                 or (
                     self.session
                     and self.session.awaiting_new_round()

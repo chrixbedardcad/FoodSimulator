@@ -4562,9 +4562,7 @@ class FoodGameApp:
         dialog._image_refs = challenge_images  # type: ignore[attr-defined]
 
     def start_run(self) -> None:
-        if self.active_popup and self.active_popup.winfo_exists():
-            self.active_popup.destroy()
-        self.active_popup = None
+        self._destroy_active_popup()
         if self.deck_popup and self.deck_popup.winfo_exists():
             self.deck_popup.destroy()
         self.deck_popup = None
@@ -5009,9 +5007,7 @@ class FoodGameApp:
             self._persistent_seasonings.append(seasoning)
 
     def reset_session(self) -> None:
-        if self.active_popup and self.active_popup.winfo_exists():
-            self.active_popup.destroy()
-        self.active_popup = None
+        self._destroy_active_popup()
         if self.deck_popup and self.deck_popup.winfo_exists():
             self.deck_popup.destroy()
         self.deck_popup = None
@@ -5944,8 +5940,7 @@ class FoodGameApp:
                 self.active_popup.lift()
                 self.active_popup.focus_force()
                 return
-            self.active_popup.destroy()
-            self.active_popup = None
+            self._destroy_active_popup()
 
         popup = tk.Toplevel(self.root)
         popup.title("Round Summary")
@@ -6221,8 +6216,7 @@ class FoodGameApp:
                     and self.active_popup.winfo_exists()
                     and getattr(self.active_popup, "_popup_kind", None) not in {"round_summary", "turn_summary"}
                 ):
-                    self.active_popup.destroy()
-                    self.active_popup = None
+                    self._destroy_active_popup()
                 self._show_round_summary_popup(summary)
             else:
                 self._pending_round_summary = None
@@ -6246,8 +6240,7 @@ class FoodGameApp:
                 and self.active_popup.winfo_exists()
                 and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
             ):
-                self.active_popup.destroy()
-                self.active_popup = None
+                self._destroy_active_popup()
             self._show_round_reward_popup(summary)
             return
 
@@ -6266,8 +6259,7 @@ class FoodGameApp:
                 and self.active_popup.winfo_exists()
                 and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
             ):
-                self.active_popup.destroy()
-                self.active_popup = None
+                self._destroy_active_popup()
             self._show_round_summary_popup(summary)
             return
 
@@ -6290,8 +6282,7 @@ class FoodGameApp:
                 self.active_popup.focus_force()
                 return
             if popup_kind != "turn_summary":
-                self.active_popup.destroy()
-                self.active_popup = None
+                self._destroy_active_popup()
 
         popup = tk.Toplevel(self.root)
         popup.title("Round Reward")
@@ -6496,6 +6487,15 @@ class FoodGameApp:
             self.recruit_dialog.destroy()
         self.recruit_dialog = None
 
+    def _destroy_active_popup(self) -> None:
+        if self.active_popup and self.active_popup.winfo_exists():
+            try:
+                self.active_popup.grab_release()
+            except tk.TclError:
+                pass
+            self.active_popup.destroy()
+        self.active_popup = None
+
     def log_turn_points(self, outcome: TurnOutcome) -> None:
         notes: List[str] = []
         if outcome.dish_name:
@@ -6677,7 +6677,6 @@ class FoodGameApp:
         self.append_events(self.session.consume_events())
         self._deferring_round_summary = False
         self.show_turn_summary_popup(outcome)
-        self._show_basket_clear_popup()
         self.maybe_prompt_new_chef()
         self._lifetime_total_score += outcome.final_score
         self._refresh_score_details()
@@ -6843,18 +6842,24 @@ class FoodGameApp:
             self._handle_run_finished()
 
     def show_turn_summary_popup(self, outcome: TurnOutcome) -> None:
-        if self.active_popup and self.active_popup.winfo_exists():
-            self.active_popup.destroy()
-        self.active_popup = None
+        self._destroy_active_popup()
+
+        # Prevent additional turn actions until the summary is acknowledged.
+        self._set_action_buttons_enabled(False)
 
         popup = tk.Toplevel(self.root)
         popup.title("Turn Summary")
         popup.transient(self.root)
         popup.resizable(False, False)
         popup.configure(bg="#10151a")
+        popup._popup_kind = "turn_summary"  # type: ignore[attr-defined]
 
         def close_popup() -> None:
             if popup.winfo_exists():
+                try:
+                    popup.grab_release()
+                except tk.TclError:
+                    pass
                 popup.destroy()
             if self.active_popup is popup:
                 self.active_popup = None
@@ -7232,6 +7237,10 @@ class FoodGameApp:
 
         popup.update_idletasks()
         self._center_popup(popup)
+        try:
+            popup.grab_set()
+        except tk.TclError:
+            pass
 
         if outcome.recipe_name and outcome.discovered_recipe:
             glow_colors = ["#ffe8a8", "#ffd56f", "#fff3c4", "#ffdba0"]

@@ -63,18 +63,6 @@ class RottingRound:
     def is_round_over(self) -> bool:
         return not self.basket
 
-    def refresh_for_next_round(self) -> None:
-        """Clear rotten states in preparation for a new round."""
-
-        for card in self.hand:
-            if card is not None:
-                card.freshen()
-        for card in self.basket:
-            card.freshen()
-        self.lost = False
-        self.prep_used_this_turn = False
-        self.compost_cd = 0
-
     # ------------------------------ Turn resolution -----------------------------
     def play_attempt(self, indices: Sequence[int]) -> bool:
         """Attempt to cook with the selected hand indices."""

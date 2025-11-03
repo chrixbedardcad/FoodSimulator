@@ -1142,6 +1142,9 @@ class GameSession:
         self.seasonings: List[Seasoning] = []
         self._seasoning_charges: Dict[str, Optional[int]] = {}
         self._events: List[str] = []
+        self._carryover_cards: List[IngredientCard] = []
+        self._cleanup_rotten_cards: List[IngredientCard] = []
+        self._cleanup_acknowledged = True
 
         if self.challenge:
             reward_text = format_challenge_reward_text(self.challenge.reward)
@@ -1280,7 +1283,19 @@ class GameSession:
         self._post_run_reward_pending = False
         carryover_cards: List[IngredientCard] = []
         if not initial:
-            carryover_cards = self._collect_pantry_carryover()
+            if self.needs_cleanup_confirmation():
+                raise RuntimeError(
+                    "Cannot start the next round before cleaning rotten ingredients."
+                )
+            if self._carryover_cards:
+                carryover_cards = list(self._carryover_cards)
+            else:
+                carryover_cards = self._collect_pantry_carryover()
+            self._carryover_cards.clear()
+        else:
+            self._carryover_cards.clear()
+            self._cleanup_rotten_cards.clear()
+            self._cleanup_acknowledged = True
         self.deck = self._build_market_deck(
             carryover_cards=carryover_cards,
             use_starting_pantry=initial,
@@ -1406,6 +1421,16 @@ class GameSession:
             summary["bonus_choices_available"] = False
             self._push_event("Round complete! Basket target score reached.")
             return
+
+        collected_cards = self._collect_pantry_carryover()
+        if collected_cards:
+            rotten_cards = [card for card in collected_cards if card.is_rotten]
+            self._carryover_cards = [card for card in collected_cards if not card.is_rotten]
+        else:
+            rotten_cards = []
+            self._carryover_cards = []
+        self._cleanup_rotten_cards = rotten_cards
+        self._cleanup_acknowledged = not bool(rotten_cards)
 
         self._awaiting_basket_reset = True
         self._basket_bonus_choices = self._choose_bonus_ingredients()
@@ -1579,9 +1604,40 @@ class GameSession:
             return None
         return dict(self._basket_clear_summary)
 
+    def pending_cleanup_ingredients(self) -> Sequence[Ingredient]:
+        return [card.ingredient for card in self._cleanup_rotten_cards]
+
+    def needs_cleanup_confirmation(self) -> bool:
+        return bool(self._cleanup_rotten_cards) and not self._cleanup_acknowledged
+
+    def acknowledge_cleanup(self) -> Sequence[Ingredient]:
+        if not self._awaiting_basket_reset:
+            raise RuntimeError("No pantry cleanup is pending.")
+        if not self._cleanup_rotten_cards:
+            self._cleanup_acknowledged = True
+            self._push_event("Pantry cleanup confirmed: no rotten ingredients to remove.")
+            return ()
+
+        removed_cards = tuple(card.ingredient for card in self._cleanup_rotten_cards)
+        names = ", ".join(
+            getattr(ingredient, "display_name", None) or ingredient.name
+            for ingredient in removed_cards
+        )
+        plural = "ingredients" if len(removed_cards) != 1 else "ingredient"
+        self._push_event(
+            f"Removed rotten {plural} from the pantry: {names}."
+        )
+        self._cleanup_rotten_cards.clear()
+        self._cleanup_acknowledged = True
+        return removed_cards
+
     def begin_next_round_from_empty_basket(self, ingredient: Ingredient) -> None:
         if not self._awaiting_basket_reset:
             raise RuntimeError("No pantry refill is pending.")
+        if not self._cleanup_acknowledged:
+            raise RuntimeError(
+                "Cannot start the next round until the pantry cleanup is confirmed."
+            )
 
         self._awaiting_basket_reset = False
         self._basket_bonus_choices = []
@@ -1628,6 +1684,10 @@ class GameSession:
     def begin_next_round_after_reward(self) -> None:
         if not self._awaiting_basket_reset:
             raise RuntimeError("No new round is pending.")
+        if not self._cleanup_acknowledged:
+            raise RuntimeError(
+                "Cannot start the next round until the pantry cleanup is confirmed."
+            )
 
         self._awaiting_basket_reset = False
         self._basket_bonus_choices = []
@@ -6249,11 +6309,31 @@ class FoodGameApp:
                 ):
                     self._destroy_active_popup()
                 self._show_round_summary_popup(summary)
-            else:
-                self._pending_round_summary = None
-                self._round_summary_shown = False
-                self._round_reward_claimed = False
-                self._handle_run_finished()
+                return
+
+            if self.session.needs_cleanup_confirmation():
+                self._set_action_buttons_enabled(False)
+                if (
+                    self.active_popup
+                    and self.active_popup.winfo_exists()
+                    and getattr(self.active_popup, "_popup_kind", None) == "cleanup"
+                ):
+                    self.active_popup.lift()
+                    self.active_popup.focus_force()
+                    return
+                if (
+                    self.active_popup
+                    and self.active_popup.winfo_exists()
+                    and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+                ):
+                    self._destroy_active_popup()
+                self._show_cleanup_popup()
+                return
+
+            self._pending_round_summary = None
+            self._round_summary_shown = False
+            self._round_reward_claimed = False
+            self._handle_run_finished()
             return
 
         if not self._round_reward_claimed:
@@ -6294,6 +6374,25 @@ class FoodGameApp:
             self._show_round_summary_popup(summary)
             return
 
+        if self.session.needs_cleanup_confirmation():
+            self._set_action_buttons_enabled(False)
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) == "cleanup"
+            ):
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+            ):
+                self._destroy_active_popup()
+            self._show_cleanup_popup()
+            return
+
         self._pending_round_summary = None
         self._round_summary_shown = False
         self._round_reward_claimed = False
@@ -6301,6 +6400,115 @@ class FoodGameApp:
             self._set_action_buttons_enabled(True)
         else:
             self._handle_run_finished()
+
+    def _show_cleanup_popup(self) -> None:
+        if not self.session:
+            return
+
+        cards = list(self.session.pending_cleanup_ingredients())
+        if not cards:
+            try:
+                self.session.acknowledge_cleanup()
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Unable to confirm cleanup", str(exc))
+                return
+            self.append_events(self.session.consume_events())
+            self._set_action_buttons_enabled(False)
+            self.root.after(50, self._show_basket_clear_popup)
+            return
+
+        if (
+            self.active_popup
+            and self.active_popup.winfo_exists()
+            and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+        ):
+            self._destroy_active_popup()
+
+        popup = tk.Toplevel(self.root)
+        popup.title("Clean Up Pantry")
+        popup.transient(self.root)
+        popup.resizable(False, False)
+        popup._popup_kind = "cleanup"  # type: ignore[attr-defined]
+
+        frame = ttk.Frame(popup, padding=16)
+        frame.grid(row=0, column=0, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            frame,
+            text="Clean up pantry from rotten ingredients.",
+            style="Header.TLabel",
+            justify="center",
+            anchor="center",
+        ).grid(row=0, column=0, sticky="ew")
+
+        counts = Counter(
+            getattr(ingredient, "display_name", None) or ingredient.name
+            for ingredient in cards
+        )
+        lines = []
+        for name, count in sorted(counts.items(), key=lambda item: item[0].lower()):
+            if count > 1:
+                lines.append(f"• {name} ×{count}")
+            else:
+                lines.append(f"• {name}")
+        list_text = "\n".join(lines)
+
+        ttk.Label(
+            frame,
+            text=list_text,
+            justify="left",
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", pady=(12, 8))
+
+        def confirm_cleanup() -> None:
+            if not self.session:
+                return
+            try:
+                removed = self.session.acknowledge_cleanup()
+            except Exception as exc:  # pragma: no cover - user feedback path
+                messagebox.showerror("Unable to confirm cleanup", str(exc))
+                return
+
+            if popup.winfo_exists():
+                try:
+                    popup.grab_release()
+                except tk.TclError:
+                    pass
+                popup.destroy()
+            if self.active_popup is popup:
+                self.active_popup = None
+
+            removed_names = [
+                getattr(ingredient, "display_name", None) or ingredient.name
+                for ingredient in removed
+            ]
+            if removed_names:
+                message = (
+                    "Removed rotten ingredients from the pantry: "
+                    + ", ".join(removed_names)
+                    + "."
+                )
+            else:
+                message = "Pantry contained no rotten ingredients to remove."
+            self.write_result(message)
+            self.append_events(self.session.consume_events())
+            self._set_action_buttons_enabled(False)
+            self.root.after(50, self._show_basket_clear_popup)
+
+        button = ttk.Button(frame, text="OK", command=confirm_cleanup)
+        button.grid(row=2, column=0, sticky="e", pady=(8, 0))
+
+        popup.protocol("WM_DELETE_WINDOW", confirm_cleanup)
+        popup.bind("<Return>", lambda _e: confirm_cleanup())
+        popup.bind("<Escape>", lambda _e: confirm_cleanup())
+
+        popup.update_idletasks()
+        self._center_popup(popup)
+        popup.grab_set()
+        popup.focus_force()
+        button.focus_set()
+        self.active_popup = popup
 
     def _show_round_reward_popup(self, summary: Mapping[str, object]) -> None:
         if not self.session:

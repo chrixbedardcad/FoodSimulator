@@ -152,3 +152,51 @@ def test_basket_cards_preserve_decay_state(game_data: GameData) -> None:
     assert removed[0].name == "Basil"
     assert basil_card.turns_in_hand == 2
     assert not basil_card.is_rotten
+
+
+def test_cleanup_must_be_confirmed_before_next_round(game_data: GameData) -> None:
+    basket_name = next(iter(game_data.baskets))
+    session = GameSession(
+        game_data,
+        basket_name=basket_name,
+        chefs=[],
+        rounds=2,
+        hand_size=2,
+        pick_size=2,
+        deck_size=0,
+        bias=0.0,
+    )
+
+    session.consume_events()
+
+    fresh_card = IngredientCard(ingredient=game_data.ingredients["Tomato"])
+    rotten_hand = IngredientCard(ingredient=game_data.ingredients["Basil"])
+    rotten_hand.is_rotten = True
+    rotten_hand.turns_in_hand = max(rotten_hand.ingredient.rotten_turns, 0)
+    rotten_deck = IngredientCard(ingredient=game_data.ingredients["Egg"])
+    rotten_deck.is_rotten = True
+    rotten_deck.turns_in_hand = max(rotten_deck.ingredient.rotten_turns, 0)
+
+    session.hand = [fresh_card, rotten_hand]
+    session.deck = [rotten_deck]
+
+    session._enter_round_summary()
+
+    assert session.needs_cleanup_confirmation()
+    pending = {ingredient.name for ingredient in session.pending_cleanup_ingredients()}
+    assert pending == {"Basil", "Egg"}
+
+    with pytest.raises(RuntimeError):
+        session.begin_next_round_after_reward()
+
+    removed = session.acknowledge_cleanup()
+    assert {ingredient.name for ingredient in removed} == {"Basil", "Egg"}
+    assert not session.needs_cleanup_confirmation()
+
+    events = session.consume_events()
+    assert any("Removed rotten" in message for message in events)
+
+    session.begin_next_round_after_reward()
+
+    assert all(not card.is_rotten for card in session.hand)
+    assert all(not card.is_rotten for card in session.deck)

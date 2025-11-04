@@ -6309,11 +6309,31 @@ class FoodGameApp:
                 ):
                     self._destroy_active_popup()
                 self._show_round_summary_popup(summary)
-            else:
-                self._pending_round_summary = None
-                self._round_summary_shown = False
-                self._round_reward_claimed = False
-                self._handle_run_finished()
+                return
+
+            if self.session.needs_cleanup_confirmation():
+                self._set_action_buttons_enabled(False)
+                if (
+                    self.active_popup
+                    and self.active_popup.winfo_exists()
+                    and getattr(self.active_popup, "_popup_kind", None) == "cleanup"
+                ):
+                    self.active_popup.lift()
+                    self.active_popup.focus_force()
+                    return
+                if (
+                    self.active_popup
+                    and self.active_popup.winfo_exists()
+                    and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+                ):
+                    self._destroy_active_popup()
+                self._show_cleanup_popup()
+                return
+
+            self._pending_round_summary = None
+            self._round_summary_shown = False
+            self._round_reward_claimed = False
+            self._handle_run_finished()
             return
 
         if self.session.needs_cleanup_confirmation():
@@ -6371,6 +6391,25 @@ class FoodGameApp:
             ):
                 self._destroy_active_popup()
             self._show_round_summary_popup(summary)
+            return
+
+        if self.session.needs_cleanup_confirmation():
+            self._set_action_buttons_enabled(False)
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) == "cleanup"
+            ):
+                self.active_popup.lift()
+                self.active_popup.focus_force()
+                return
+            if (
+                self.active_popup
+                and self.active_popup.winfo_exists()
+                and getattr(self.active_popup, "_popup_kind", None) not in {"turn_summary"}
+            ):
+                self._destroy_active_popup()
+            self._show_cleanup_popup()
             return
 
         self._pending_round_summary = None

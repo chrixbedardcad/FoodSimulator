@@ -11,7 +11,7 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import tkinter as tk
 
@@ -81,7 +81,7 @@ class SecretRecipeGame:
         self.current_recipe: Optional[Recipe] = None
         self.current_trio: set[str] = set()
         self.current_hand: List[str] = []
-        self.selected_index: Optional[int] = None
+        self.selected_indices: Set[int] = set()
         self.attempts = 0
         self.start_time = time.perf_counter()
 
@@ -92,7 +92,7 @@ class SecretRecipeGame:
         self.blank_card_image = self._build_placeholder_image(size=128)
         self.placeholder_recipe_image = self._load_photo(PLACEHOLDER_RECIPE_IMAGE)
 
-        self.status_var = tk.StringVar(value="Select an ingredient and press Cook!")
+        self.status_var = tk.StringVar(value="Select ingredients and press Cook!")
         self._build_layout()
         self._start_next_round()
 
@@ -117,6 +117,10 @@ class SecretRecipeGame:
         cards_frame.grid(row=2, column=0, columnspan=4)
         self.card_buttons: List[tk.Button] = []
         self.card_tooltips: List[Tooltip] = []
+        self.default_highlight = "#bcbcbc"
+        self.selected_highlight = "#4caf50"
+        self.disabled_highlight = "#c8c8c8"
+
         for idx in range(HAND_SIZE):
             button = tk.Button(
                 cards_frame,
@@ -125,6 +129,9 @@ class SecretRecipeGame:
                 height=140,
                 relief=tk.RAISED,
                 borderwidth=2,
+                highlightthickness=1,
+                highlightbackground=self.default_highlight,
+                highlightcolor=self.default_highlight,
                 command=lambda index=idx: self._select_card(index),
             )
             button.image = self.blank_card_image
@@ -204,16 +211,28 @@ class SecretRecipeGame:
         self.current_recipe = self.pending_recipes.pop(0)
         self.current_trio = set(self.current_recipe.trio)
         self.current_hand = self._build_hand(self.current_recipe)
-        self.selected_index = None
+        self.selected_indices.clear()
         self.cook_button.config(state=tk.DISABLED)
         for idx, name in enumerate(self.current_hand):
             button = self.card_buttons[idx]
             image = self._ingredient_image(name)
-            button.config(image=image, state=tk.NORMAL, relief=tk.RAISED)
+            button.config(
+                image=image,
+                state=tk.NORMAL,
+                relief=tk.RAISED,
+                borderwidth=2,
+                highlightbackground=self.default_highlight,
+                highlightcolor=self.default_highlight,
+                highlightthickness=1,
+            )
             button.image = image
             ingredient = self.data.ingredients.get(name)
             display = ingredient.display_name if isinstance(ingredient, Ingredient) else name
             self.card_tooltips[idx].set_text(display)
+        for idx in range(len(self.card_buttons)):
+            if idx >= len(self.current_hand):
+                continue
+            self._update_card_visual(idx)
         self.status_var.set("A new secret recipe awaits. Choose wisely!")
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
@@ -231,34 +250,69 @@ class SecretRecipeGame:
     def _select_card(self, index: int) -> None:
         if index >= len(self.current_hand):
             return
-        self.selected_index = index
-        for idx, button in enumerate(self.card_buttons):
-            button.config(relief=tk.SUNKEN if idx == index else tk.RAISED)
-        ingredient_name = self.current_hand[index]
-        ingredient = self.data.ingredients.get(ingredient_name)
-        display = ingredient.display_name if isinstance(ingredient, Ingredient) else ingredient_name
-        self.status_var.set(f"Selected {display}. Press Cook to test it.")
-        self.cook_button.config(state=tk.NORMAL)
+        button = self.card_buttons[index]
+        if str(button["state"]) == tk.DISABLED:
+            return
+        if index in self.selected_indices:
+            self.selected_indices.remove(index)
+        else:
+            self.selected_indices.add(index)
+        self._update_card_visual(index)
+        self._update_status_message()
+        self.cook_button.config(state=tk.NORMAL if self.selected_indices else tk.DISABLED)
 
     def _cook_selected(self) -> None:
-        if self.selected_index is None or not self.current_recipe:
-            self.status_var.set("Pick an ingredient before cooking.")
+        if not self.selected_indices or not self.current_recipe:
+            self.status_var.set("Pick at least one ingredient before cooking.")
             return
-        choice = self.current_hand[self.selected_index]
+        selected_names = {self.current_hand[idx] for idx in self.selected_indices}
         self.attempts += 1
-        ingredient = self.data.ingredients.get(choice)
-        display = ingredient.display_name if isinstance(ingredient, Ingredient) else choice
-        if choice in self.current_trio:
+        extras = selected_names - self.current_trio
+        missing = self.current_trio - selected_names
+        if not extras and not missing:
+            joined = self._format_display_list(
+                [self._display_name(name) for name in sorted(selected_names)]
+            )
             self.status_var.set(
-                f"Correct! {display} belongs to {self.current_recipe.display_name}."
+                f"Perfect! {joined} complete {self.current_recipe.display_name}."
             )
             self._record_success()
-        else:
-            self.status_var.set(f"{display} is not in this recipe. Try another ingredient.")
-            wrong_button = self.card_buttons[self.selected_index]
-            wrong_button.config(state=tk.DISABLED, relief=tk.RAISED)
-            self.selected_index = None
-            self.cook_button.config(state=tk.DISABLED)
+            return
+
+        messages: List[str] = []
+        if extras:
+            extras_display = self._format_display_list(
+                [self._display_name(name) for name in sorted(extras)]
+            )
+            messages.append(
+                f"{extras_display} do not belong to {self.current_recipe.display_name}."
+            )
+        if missing:
+            missing_display = self._format_display_list(
+                [self._display_name(name) for name in sorted(missing)]
+            )
+            prefix = "You still need" if extras else "You're missing"
+            messages.append(f"{prefix} {missing_display}.")
+
+        for idx in list(self.selected_indices):
+            name = self.current_hand[idx]
+            if name in extras:
+                button = self.card_buttons[idx]
+                button.config(
+                    state=tk.DISABLED,
+                    relief=tk.RAISED,
+                    borderwidth=2,
+                    highlightbackground=self.disabled_highlight,
+                    highlightcolor=self.disabled_highlight,
+                    highlightthickness=1,
+                )
+                self.selected_indices.remove(idx)
+                self._update_card_visual(idx)
+
+        self.cook_button.config(state=tk.NORMAL if self.selected_indices else tk.DISABLED)
+        for idx in self.selected_indices:
+            self._update_card_visual(idx)
+        self.status_var.set(" ".join(messages))
 
     def _record_success(self) -> None:
         if not self.current_recipe:
@@ -270,8 +324,17 @@ class SecretRecipeGame:
             slot.config(image=image)
             slot.image = image
             setattr(slot, "found", True)
-        for button in self.card_buttons:
-            button.config(state=tk.DISABLED, relief=tk.RAISED)
+        self.selected_indices.clear()
+        for idx, button in enumerate(self.card_buttons):
+            button.config(
+                state=tk.DISABLED,
+                relief=tk.RAISED,
+                borderwidth=2,
+                highlightbackground=self.disabled_highlight,
+                highlightcolor=self.disabled_highlight,
+                highlightthickness=1,
+            )
+            self._update_card_visual(idx)
         self.cook_button.config(state=tk.DISABLED)
         if slot_index + 1 >= RECIPES_TO_FIND:
             self._finish_game()
@@ -282,8 +345,17 @@ class SecretRecipeGame:
         elapsed = time.perf_counter() - self.start_time
         self.status_var.set("All recipes discovered! Great job.")
         self.cook_button.config(state=tk.DISABLED)
-        for button in self.card_buttons:
-            button.config(state=tk.DISABLED, relief=tk.RAISED)
+        self.selected_indices.clear()
+        for idx, button in enumerate(self.card_buttons):
+            button.config(
+                state=tk.DISABLED,
+                relief=tk.RAISED,
+                borderwidth=2,
+                highlightbackground=self.disabled_highlight,
+                highlightcolor=self.disabled_highlight,
+                highlightthickness=1,
+            )
+            self._update_card_visual(idx)
         self._show_summary(elapsed)
 
     def _show_summary(self, elapsed_seconds: float) -> None:
@@ -301,6 +373,64 @@ class SecretRecipeGame:
         tk.Label(wrapper, text=f"Total attempts: {self.attempts}", font=("Segoe UI", 12)).pack()
         tk.Label(wrapper, text=f"Time: {minutes:02d}:{seconds:02d}", font=("Segoe UI", 12)).pack(pady=(0, 12))
         tk.Button(wrapper, text="Close", command=summary.destroy, width=12).pack()
+
+    def _update_card_visual(self, index: int) -> None:
+        if index >= len(self.card_buttons):
+            return
+        button = self.card_buttons[index]
+        if str(button["state"]) == tk.DISABLED and index not in self.selected_indices:
+            button.config(
+                relief=tk.RAISED,
+                borderwidth=2,
+                highlightbackground=self.disabled_highlight,
+                highlightcolor=self.disabled_highlight,
+                highlightthickness=1,
+            )
+            return
+        if index in self.selected_indices:
+            button.config(
+                relief=tk.SUNKEN,
+                borderwidth=3,
+                highlightbackground=self.selected_highlight,
+                highlightcolor=self.selected_highlight,
+                highlightthickness=3,
+            )
+        else:
+            button.config(
+                relief=tk.RAISED,
+                borderwidth=2,
+                highlightbackground=self.default_highlight,
+                highlightcolor=self.default_highlight,
+                highlightthickness=1,
+            )
+
+    def _update_status_message(self) -> None:
+        if not self.selected_indices:
+            self.status_var.set("Select ingredients and press Cook!")
+            return
+        names = [
+            self._display_name(self.current_hand[idx]) for idx in sorted(self.selected_indices)
+        ]
+        formatted = self._format_display_list(names)
+        if len(names) == 1:
+            self.status_var.set(f"Selected {formatted}. Choose more or press Cook.")
+        else:
+            self.status_var.set(f"Selected {formatted}. Press Cook when ready.")
+
+    def _display_name(self, ingredient_name: str) -> str:
+        ingredient = self.data.ingredients.get(ingredient_name)
+        if isinstance(ingredient, Ingredient):
+            return ingredient.display_name
+        return ingredient_name
+
+    def _format_display_list(self, items: List[str]) -> str:
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        if len(items) == 2:
+            return " and ".join(items)
+        return ", ".join(items[:-1]) + f", and {items[-1]}"
 
 
 def main() -> None:

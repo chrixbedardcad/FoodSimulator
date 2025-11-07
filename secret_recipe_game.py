@@ -119,6 +119,7 @@ class SecretRecipeGame:
         self.placeholder_recipe_image = self._load_photo(PLACEHOLDER_RECIPE_IMAGE)
 
         self.status_var = tk.StringVar(value="Select ingredients and press Cook!")
+        self.target_recipe_var = tk.StringVar(value="Secret recipe: ???")
         self._build_layout()
         self._start_next_round()
 
@@ -167,8 +168,17 @@ class SecretRecipeGame:
             self.card_buttons.append(button)
             self.card_tooltips.append(tooltip)
 
+        target_frame = tk.Frame(wrapper)
+        target_frame.grid(row=3, column=0, columnspan=4, pady=(0, 8))
+        target_label = tk.Label(
+            target_frame,
+            textvariable=self.target_recipe_var,
+            font=("Segoe UI", 12, "bold"),
+        )
+        target_label.grid(row=0, column=0)
+
         controls = tk.Frame(wrapper)
-        controls.grid(row=3, column=0, columnspan=4, pady=(12, 0))
+        controls.grid(row=4, column=0, columnspan=4, pady=(4, 0))
 
         self.cook_button = tk.Button(
             controls,
@@ -242,6 +252,9 @@ class SecretRecipeGame:
         self.current_trio = set(self.current_recipe.trio)
         self._deal_hand(self._build_hand(self.current_recipe))
         self.status_var.set("A new secret recipe awaits. Choose wisely!")
+        self.target_recipe_var.set(
+            f"Secret recipe: {self.current_recipe.display_name}"
+        )
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
         required = list(recipe.trio)
@@ -384,6 +397,7 @@ class SecretRecipeGame:
     def _finish_game(self) -> None:
         elapsed = time.perf_counter() - self.start_time
         self.status_var.set("All recipes discovered! Great job.")
+        self.target_recipe_var.set("Secret recipe: All found!")
         self.cook_button.config(state=tk.DISABLED)
         self.selected_indices.clear()
         for idx, button in enumerate(self.card_buttons):

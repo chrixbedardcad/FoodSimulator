@@ -120,6 +120,8 @@ class SecretRecipeGame:
 
         self.status_var = tk.StringVar(value="Select ingredients and press Cook!")
         self.target_recipe_var = tk.StringVar(value="Secret recipe: ???")
+        self.recipe_name_vars: List[tk.StringVar] = []
+        self.found_recipes: List[Optional[Recipe]] = [None] * RECIPES_TO_FIND
         self._build_layout()
         self._start_next_round()
 
@@ -135,10 +137,28 @@ class SecretRecipeGame:
         summary_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 12))
         self.recipe_slots: List[tk.Label] = []
         for index in range(RECIPES_TO_FIND):
-            slot = tk.Label(summary_frame, image=self.placeholder_recipe_image, width=140, height=140)
+            slot_container = tk.Frame(summary_frame)
+            slot_container.grid(row=0, column=index, padx=6)
+            slot = tk.Label(
+                slot_container,
+                image=self.placeholder_recipe_image,
+                width=140,
+                height=140,
+            )
             slot.image = self.placeholder_recipe_image
-            slot.grid(row=0, column=index, padx=6)
+            slot.grid(row=0, column=0)
+            slot.bind("<Button-1>", lambda event, idx=index: self._show_recipe_details(idx))
+            name_var = tk.StringVar(value="???")
+            name_label = tk.Label(
+                slot_container,
+                textvariable=name_var,
+                font=("Segoe UI", 11, "bold"),
+                wraplength=140,
+                justify="center",
+            )
+            name_label.grid(row=1, column=0, pady=(6, 0))
             self.recipe_slots.append(slot)
+            self.recipe_name_vars.append(name_var)
 
         cards_frame = tk.Frame(wrapper)
         cards_frame.grid(row=2, column=0, columnspan=4)
@@ -173,7 +193,8 @@ class SecretRecipeGame:
         target_label = tk.Label(
             target_frame,
             textvariable=self.target_recipe_var,
-            font=("Segoe UI", 12, "bold"),
+            font=("Segoe UI", 16, "bold"),
+            wraplength=520,
         )
         target_label.grid(row=0, column=0)
 
@@ -190,7 +211,13 @@ class SecretRecipeGame:
         )
         self.cook_button.grid(row=0, column=0, padx=6)
 
-        self.status_label = tk.Label(controls, textvariable=self.status_var, anchor="w", width=40)
+        self.status_label = tk.Label(
+            controls,
+            textvariable=self.status_var,
+            anchor="w",
+            width=48,
+            justify="left",
+        )
         self.status_label.grid(row=0, column=1, padx=6)
 
     # --- Asset helpers -------------------------------------------------------
@@ -355,15 +382,14 @@ class SecretRecipeGame:
             extras_display = self._format_display_list(
                 [self._display_name(name) for name in sorted(extras)]
             )
-            messages.append(
-                f"{extras_display} do not belong to {self.current_recipe.display_name}."
-            )
+            plural = "s" if len(extras) > 1 else ""
+            messages.append(f"Extra ingredient{plural}: {extras_display}.")
         if missing:
             missing_display = self._format_display_list(
                 [self._display_name(name) for name in sorted(missing)]
             )
-            prefix = "You still need" if extras else "You're missing"
-            messages.append(f"{prefix} {missing_display}.")
+            plural = "s" if len(missing) > 1 else ""
+            messages.append(f"Missing ingredient{plural}: {missing_display}.")
         failure_message = " ".join(messages)
         self._reshuffle_current_hand(failure_message)
 
@@ -374,9 +400,12 @@ class SecretRecipeGame:
         if slot_index < len(self.recipe_slots):
             slot = self.recipe_slots[slot_index]
             image = self._recipe_image(self.current_recipe.name)
-            slot.config(image=image)
+            slot.config(image=image, cursor="hand2")
             slot.image = image
             setattr(slot, "found", True)
+            self.found_recipes[slot_index] = self.current_recipe
+            display_name = self.current_recipe.display_name or self.current_recipe.name
+            self.recipe_name_vars[slot_index].set(display_name)
         self.selected_indices.clear()
         for idx, button in enumerate(self.card_buttons):
             button.config(
@@ -470,6 +499,66 @@ class SecretRecipeGame:
             self.status_var.set(f"Selected {formatted}. Choose more or press Cook.")
         else:
             self.status_var.set(f"Selected {formatted}. Press Cook when ready.")
+
+    def _show_recipe_details(self, index: int) -> None:
+        if index >= len(self.found_recipes):
+            return
+        recipe = self.found_recipes[index]
+        if not recipe:
+            return
+
+        detail = tk.Toplevel(self.root)
+        detail.title(recipe.display_name or recipe.name)
+        detail.resizable(False, False)
+        detail.transient(self.root)
+
+        wrapper = tk.Frame(detail, padx=16, pady=16)
+        wrapper.pack()
+
+        tk.Label(
+            wrapper,
+            text=recipe.display_name or recipe.name,
+            font=("Segoe UI", 16, "bold"),
+        ).pack(pady=(0, 12))
+
+        tk.Label(
+            wrapper,
+            text="Key Ingredients",
+            font=("Segoe UI", 12, "bold"),
+            anchor="w",
+            justify="left",
+        ).pack(anchor="w")
+
+        for ingredient_name in recipe.trio:
+            ingredient = self.data.ingredients.get(ingredient_name)
+            if isinstance(ingredient, Ingredient):
+                display_name = ingredient.display_name or ingredient.name
+                description = (
+                    f"Taste: {ingredient.taste} | Family: {ingredient.family} | Value: {ingredient.Value}"
+                )
+            else:
+                display_name = ingredient_name
+                description = "No additional details available."
+
+            entry_frame = tk.Frame(wrapper, pady=4)
+            entry_frame.pack(anchor="w", fill="x")
+            tk.Label(
+                entry_frame,
+                text=display_name,
+                font=("Segoe UI", 11, "bold"),
+                anchor="w",
+                justify="left",
+            ).pack(anchor="w")
+            tk.Label(
+                entry_frame,
+                text=description,
+                font=("Segoe UI", 10),
+                anchor="w",
+                justify="left",
+                wraplength=320,
+            ).pack(anchor="w")
+
+        tk.Button(wrapper, text="Close", command=detail.destroy, width=12).pack(pady=(12, 0))
 
     def _display_name(self, ingredient_name: str) -> str:
         ingredient = self.data.ingredients.get(ingredient_name)

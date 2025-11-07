@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import random
 import time
+import importlib
+import importlib.util
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
@@ -23,6 +25,30 @@ ASSETS_ROOT = Path(__file__).resolve().parent
 INGREDIENT_ICON_DIR = ASSETS_ROOT / "Ingredients"
 RECIPE_ICON_DIR = ASSETS_ROOT / "recipes"
 PLACEHOLDER_RECIPE_IMAGE = RECIPE_ICON_DIR / "emptydish.png"
+IMAGE_TARGET_SIZE = 140
+
+
+def _load_pil_modules() -> tuple[Optional[object], Optional[object]]:
+    """Load Pillow modules if available without raising import errors."""
+
+    image_spec = importlib.util.find_spec("PIL.Image")
+    imagetk_spec = importlib.util.find_spec("PIL.ImageTk")
+    if image_spec is None or imagetk_spec is None:
+        return None, None
+    image_module = importlib.import_module("PIL.Image")
+    imagetk_module = importlib.import_module("PIL.ImageTk")
+    return image_module, imagetk_module
+
+
+PIL_Image, PIL_ImageTk = _load_pil_modules()
+if PIL_Image:
+    resampling_attr = getattr(PIL_Image, "Resampling", None)
+    if resampling_attr is not None:
+        PIL_RESAMPLE = getattr(resampling_attr, "LANCZOS", getattr(resampling_attr, "BICUBIC", None))
+    else:
+        PIL_RESAMPLE = getattr(PIL_Image, "LANCZOS", getattr(PIL_Image, "BICUBIC", None))
+else:
+    PIL_RESAMPLE = None
 
 
 def _normalize_key(name: str) -> str:
@@ -167,7 +193,7 @@ class SecretRecipeGame:
             paths[key] = image_path
         return paths
 
-    def _build_placeholder_image(self, size: int = 120) -> tk.PhotoImage:
+    def _build_placeholder_image(self, size: int = IMAGE_TARGET_SIZE) -> tk.PhotoImage:
         image = tk.PhotoImage(master=self.root, width=size, height=size)
         image.put("#d9d9d9", to=(0, 0, size, size))
         return image
@@ -175,10 +201,14 @@ class SecretRecipeGame:
     def _load_photo(self, path: Path) -> tk.PhotoImage:
         if not path or not path.exists():
             return self.blank_card_image
+        if PIL_Image and PIL_ImageTk:
+            pil_image = PIL_Image.open(path).convert("RGBA")
+            resample = PIL_RESAMPLE if PIL_RESAMPLE is not None else 1
+            pil_image.thumbnail((IMAGE_TARGET_SIZE, IMAGE_TARGET_SIZE), resample)
+            return PIL_ImageTk.PhotoImage(pil_image, master=self.root)
         image = tk.PhotoImage(master=self.root, file=str(path))
         width, height = image.width(), image.height()
-        target = 128
-        scale = max(width // target, height // target, 1)
+        scale = max(width // IMAGE_TARGET_SIZE, height // IMAGE_TARGET_SIZE, 1)
         if scale > 1:
             image = image.subsample(scale, scale)
         return image
@@ -210,29 +240,7 @@ class SecretRecipeGame:
             return
         self.current_recipe = self.pending_recipes.pop(0)
         self.current_trio = set(self.current_recipe.trio)
-        self.current_hand = self._build_hand(self.current_recipe)
-        self.selected_indices.clear()
-        self.cook_button.config(state=tk.DISABLED)
-        for idx, name in enumerate(self.current_hand):
-            button = self.card_buttons[idx]
-            image = self._ingredient_image(name)
-            button.config(
-                image=image,
-                state=tk.NORMAL,
-                relief=tk.RAISED,
-                borderwidth=2,
-                highlightbackground=self.default_highlight,
-                highlightcolor=self.default_highlight,
-                highlightthickness=1,
-            )
-            button.image = image
-            ingredient = self.data.ingredients.get(name)
-            display = ingredient.display_name if isinstance(ingredient, Ingredient) else name
-            self.card_tooltips[idx].set_text(display)
-        for idx in range(len(self.card_buttons)):
-            if idx >= len(self.current_hand):
-                continue
-            self._update_card_visual(idx)
+        self._deal_hand(self._build_hand(self.current_recipe))
         self.status_var.set("A new secret recipe awaits. Choose wisely!")
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
@@ -246,6 +254,56 @@ class SecretRecipeGame:
         full_hand = required + selected_extras
         self.rng.shuffle(full_hand)
         return full_hand
+
+    def _deal_hand(self, hand: List[str]) -> None:
+        self.current_hand = hand
+        self.selected_indices.clear()
+        self.cook_button.config(state=tk.DISABLED)
+        for idx, button in enumerate(self.card_buttons):
+            if idx < len(hand):
+                name = hand[idx]
+                image = self._ingredient_image(name)
+                button.config(
+                    image=image,
+                    state=tk.NORMAL,
+                    relief=tk.RAISED,
+                    borderwidth=2,
+                    highlightbackground=self.default_highlight,
+                    highlightcolor=self.default_highlight,
+                    highlightthickness=1,
+                )
+                button.image = image
+                ingredient = self.data.ingredients.get(name)
+                display = (
+                    ingredient.display_name if isinstance(ingredient, Ingredient) else name
+                )
+                self.card_tooltips[idx].set_text(display)
+            else:
+                button.config(
+                    image=self.blank_card_image,
+                    state=tk.DISABLED,
+                    relief=tk.RAISED,
+                    borderwidth=2,
+                    highlightbackground=self.disabled_highlight,
+                    highlightcolor=self.disabled_highlight,
+                    highlightthickness=1,
+                )
+                button.image = self.blank_card_image
+                self.card_tooltips[idx].set_text("")
+            self._update_card_visual(idx)
+
+    def _reshuffle_current_hand(self, failure_message: Optional[str] = None) -> None:
+        if not self.current_recipe:
+            return
+        new_hand = self._build_hand(self.current_recipe)
+        self._deal_hand(new_hand)
+        follow_up = (
+            f"Fresh ingredients drawn for {self.current_recipe.display_name}. Try again!"
+        )
+        if failure_message:
+            self.status_var.set(f"{failure_message} {follow_up}")
+        else:
+            self.status_var.set(follow_up)
 
     def _select_card(self, index: int) -> None:
         if index >= len(self.current_hand):
@@ -293,26 +351,8 @@ class SecretRecipeGame:
             )
             prefix = "You still need" if extras else "You're missing"
             messages.append(f"{prefix} {missing_display}.")
-
-        for idx in list(self.selected_indices):
-            name = self.current_hand[idx]
-            if name in extras:
-                button = self.card_buttons[idx]
-                button.config(
-                    state=tk.DISABLED,
-                    relief=tk.RAISED,
-                    borderwidth=2,
-                    highlightbackground=self.disabled_highlight,
-                    highlightcolor=self.disabled_highlight,
-                    highlightthickness=1,
-                )
-                self.selected_indices.remove(idx)
-                self._update_card_visual(idx)
-
-        self.cook_button.config(state=tk.NORMAL if self.selected_indices else tk.DISABLED)
-        for idx in self.selected_indices:
-            self._update_card_visual(idx)
-        self.status_var.set(" ".join(messages))
+        failure_message = " ".join(messages)
+        self._reshuffle_current_hand(failure_message)
 
     def _record_success(self) -> None:
         if not self.current_recipe:

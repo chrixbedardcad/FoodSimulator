@@ -278,9 +278,13 @@ class SecretRecipeGame:
         self.current_recipe = self.pending_recipes.pop(0)
         self.current_trio = set(self.current_recipe.trio)
         self._deal_hand(self._build_hand(self.current_recipe))
-        self.status_var.set("A new secret recipe awaits. Choose wisely!")
+        ingredient_total = len(self.current_recipe.trio)
+        self.status_var.set(
+            f"A new secret recipe awaits. Gather the {ingredient_total} key ingredients."
+        )
         self.target_recipe_var.set(
             f"Secret recipe: {self.current_recipe.display_name}"
+            f" ({ingredient_total} ingredients)"
         )
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
@@ -489,16 +493,28 @@ class SecretRecipeGame:
 
     def _update_status_message(self) -> None:
         if not self.selected_indices:
-            self.status_var.set("Select ingredients and press Cook!")
+            if self.current_recipe:
+                needed = len(self.current_recipe.trio)
+                self.status_var.set(
+                    f"Select up to {needed} ingredients, then press Cook!"
+                )
+            else:
+                self.status_var.set("Select ingredients and press Cook!")
             return
         names = [
             self._display_name(self.current_hand[idx]) for idx in sorted(self.selected_indices)
         ]
         formatted = self._format_display_list(names)
-        if len(names) == 1:
-            self.status_var.set(f"Selected {formatted}. Choose more or press Cook.")
+        required = len(self.current_recipe.trio) if self.current_recipe else 0
+        selected_count = len(names)
+        plural = "s" if required != 1 else ""
+        prefix = f"Selected {selected_count}/{required} ingredient{plural}: "
+        if selected_count == 1:
+            self.status_var.set(
+                f"{prefix}{formatted}. Choose more or press Cook."
+            )
         else:
-            self.status_var.set(f"Selected {formatted}. Press Cook when ready.")
+            self.status_var.set(f"{prefix}{formatted}. Press Cook when ready.")
 
     def _show_recipe_details(self, index: int) -> None:
         if index >= len(self.found_recipes):

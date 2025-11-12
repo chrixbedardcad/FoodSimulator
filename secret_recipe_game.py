@@ -199,7 +199,8 @@ class SecretRecipeGame:
         target_label.grid(row=0, column=0)
 
         controls = tk.Frame(wrapper)
-        controls.grid(row=4, column=0, columnspan=4, pady=(4, 0))
+        controls.grid(row=4, column=0, columnspan=4, pady=(4, 0), sticky="ew")
+        controls.grid_columnconfigure(0, weight=1)
 
         self.cook_button = tk.Button(
             controls,
@@ -209,16 +210,16 @@ class SecretRecipeGame:
             state=tk.DISABLED,
             width=12,
         )
-        self.cook_button.grid(row=0, column=0, padx=6)
+        self.cook_button.grid(row=0, column=0, padx=6, pady=(0, 6), sticky="w")
 
         self.status_label = tk.Label(
             controls,
             textvariable=self.status_var,
             anchor="w",
-            width=48,
             justify="left",
+            wraplength=520,
         )
-        self.status_label.grid(row=0, column=1, padx=6)
+        self.status_label.grid(row=1, column=0, padx=6, sticky="ew")
 
     # --- Asset helpers -------------------------------------------------------
     def _scan_asset_directory(self, directory: Path) -> Dict[str, Path]:

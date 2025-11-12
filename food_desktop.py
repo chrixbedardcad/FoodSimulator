@@ -1382,14 +1382,25 @@ class GameSession:
         needed = self.hand_size - len(self.hand)
         deck_refreshed = False
         new_cards: List[IngredientCard] = []
+        skipped_duplicates: List[IngredientCard] = []
+        seen_names = {card.ingredient.name for card in self.hand}
         while needed > 0 and not self.finished:
             if not self.deck:
                 break
             drawn = self.deck.pop()
+            ingredient_name = drawn.ingredient.name
+            if ingredient_name in seen_names:
+                skipped_duplicates.append(drawn)
+                continue
             self.hand.append(drawn)
+            seen_names.add(ingredient_name)
             if log_new_cards:
                 new_cards.append(drawn)
             needed -= 1
+        if skipped_duplicates:
+            # Reinsert skipped cards at the bottom of the pantry so they remain
+            # available for future turns once the hand composition changes.
+            self.deck[0:0] = list(reversed(skipped_duplicates))
         if len(self.hand) == 0 and not self.deck and not self._awaiting_basket_reset:
             self._enter_round_summary()
         if log_new_cards and new_cards:

@@ -8,6 +8,7 @@ A toolkit for experimenting with the Food Card Deck video game concept. The repo
 * `food_simulator.py` — a Monte Carlo batch simulator that stress tests balance across hundreds of automated runs and exports CSV/TXT reports.
 * `food_game.py` — an interactive terminal mini-game that lets designers play short sessions using the exact same rules, decks, and scoring logic.
 * `food_desktop.py` — a Tkinter-powered desktop client with clickable ingredient cards, live score tracking, and instant trio breakdowns.
+* `fusion_secret_showdown.py` — a Pygame loop that alternates between a secret recipe hunt and a pantry cook-off challenge.
 * `Food_Stat.py` — a focused odds calculator that estimates the chance of producing every dish under configurable basket and chef scenarios.
 
 Both scripts draw from a shared, JSON-driven content set (ingredients, recipes, chefs, and baskets) so that data tweaks are immediately reflected everywhere.
@@ -31,6 +32,7 @@ FoodSimulator/
 ├── food_simulator.py       ← Monte Carlo simulator with CLI & report writer
 ├── food_game.py            ← Interactive terminal harness for manual playtests
 ├── food_desktop.py         ← Desktop GUI built with Tkinter for visual playtests
+├── fusion_secret_showdown.py ← Pygame experience that fuses the secret hunt with desktop cooking
 ├── ingredients.json        ← Ingredient cards (taste tags + chip values)
 ├── recipes.json            ← Recipe trios that can be discovered and mastered
 ├── chefs.json              ← Chef definitions, signature recipes, and perks
@@ -110,6 +112,35 @@ After each batch completes the script prints a console summary including:
 - Ingredient Herfindahl–Hirschman Index (HHI) to gauge draw diversity.
 
 Report files land in the requested output directory using the pattern `report_<basket>_plays<nbplay>_runs<runs>_seed<seed>_<timestamp>.*`.
+
+---
+
+## 🕹️ Playing the Secret Recipe Showdown
+
+The new `fusion_secret_showdown.py` entry point uses Pygame to blend together the
+ingredient-guessing flow from `secret_recipe_game.py` with the scoring depth of
+`food_desktop.py`.
+
+```bash
+python fusion_secret_showdown.py
+```
+
+Gameplay tips:
+
+- **Secret Hunt** — Press <kbd>space</kbd> to reveal the next hidden recipe
+  clue, then click or press the hotkeys (`1-4` on the number row and `QWER`)
+  to guess which ingredient belongs to the trio. Discovering three recipes
+  adds all of their ingredients to your shared pantry and records them in the
+  in-game cookbook.
+- **Pantry Cook-Off** — Use the arrow keys (or <kbd>W</kbd>/<kbd>S</kbd>) to
+  browse your growing pantry, press <kbd>space</kbd> to mark ingredients, and
+  <kbd>Enter</kbd> to cook the selection. The underlying Food Deck scoring rules
+  award points based on dish patterns and multipliers. Hit the target score (or
+  cook three dishes) to earn a reward before looping back to search for new
+  secret recipes.
+
+Because the window relies on hardware acceleration, running the showdown may
+require a desktop environment with an available display.
 
 ---
 

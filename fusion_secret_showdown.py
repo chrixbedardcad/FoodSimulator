@@ -159,10 +159,19 @@ class SearchPhase:
             self.feedback = (f"{choice.name} doesn't match the secret recipe.", ALERT_COLOR, family)
 
     def draw(self, surface: pygame.Surface) -> None:
-        title = self.game.font_title.render("Secret Recipe Hunt", True, TEXT_COLOR)
+        if self.current_recipe:
+            recipe_name = self.current_recipe.display_name or self.current_recipe.name
+            title_text = f"Find this recipe: {recipe_name}"
+            subtitle = (
+                f"Gather the {len(self.current_recipe.trio)} key ingredients to reveal it"
+            )
+        else:
+            title_text = "Ready for the next secret recipe?"
+            subtitle = "Press space to draw your next clue and continue the hunt"
+
+        title = self.game.font_title.render(title_text, True, TEXT_COLOR)
         surface.blit(title, (50, 40))
 
-        subtitle = "Find the ingredient that belongs to the hidden recipe"
         details = self.game.font_small.render(subtitle, True, MUTED_TEXT_COLOR)
         surface.blit(details, (50, 90))
 

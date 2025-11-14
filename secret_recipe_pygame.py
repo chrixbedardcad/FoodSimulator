@@ -70,7 +70,7 @@ class PygameSecretRecipeGame:
         self.start_time = time.perf_counter()
         self.finish_time: Optional[float] = None
         self.status_message = "Select ingredients and press Cook!"
-        self.target_message = "Secret recipe: ???"
+        self.target_message = "Find this recipe: ???"
         self.waiting_for_next_round = False
 
         self.found_recipes: List[Optional[Recipe]] = [None] * RECIPES_TO_FIND
@@ -130,8 +130,9 @@ class PygameSecretRecipeGame:
         self.current_trio = set(self.current_recipe.trio)
         self._deal_hand(self._build_hand(self.current_recipe))
         ingredient_total = len(self.current_recipe.trio)
+        display_name = self.current_recipe.display_name or self.current_recipe.name
         self.target_message = (
-            f"Secret recipe: {self.current_recipe.display_name}"
+            f"Find this recipe: {display_name}"
             f" ({ingredient_total} ingredients)"
         )
         self.status_message = (
@@ -143,7 +144,7 @@ class PygameSecretRecipeGame:
             self.finish_time = time.perf_counter()
         self.hand_active = False
         self.status_message = "All recipes discovered! Great job."
-        self.target_message = "Secret recipe: All found!"
+        self.target_message = "All recipes discovered!"
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
         required = list(recipe.trio)
@@ -393,10 +394,8 @@ class PygameSecretRecipeGame:
             self._draw_summary_overlay()
 
     def _draw_header(self) -> None:
-        header_surface = self.font_title.render("Secret Recipe Hunt", True, TEXT_COLOR)
+        header_surface = self.font_title.render(self.target_message, True, TEXT_COLOR)
         self.screen.blit(header_surface, (60, 40))
-        target_surface = self.font_medium.render(self.target_message, True, ACCENT_COLOR)
-        self.screen.blit(target_surface, (60, 110))
 
     def _draw_cards(self) -> None:
         for index, rect in enumerate(self.card_rects):

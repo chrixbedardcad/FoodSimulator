@@ -21,11 +21,20 @@ from food_api import GameData, Ingredient, Recipe
 
 HAND_SIZE = 8
 RECIPES_TO_FIND = 3
+APP_VERSION = "V0.02"
+APP_WIDTH = 960
+APP_HEIGHT = 780
+TARGET_WRAP_LENGTH = 760
+STATUS_WRAP_LENGTH = 760
+SUMMARY_NAME_WRAP = 200
+DETAIL_WRAP_LENGTH = 440
+DETAIL_WINDOW_WIDTH = 560
+DETAIL_WINDOW_HEIGHT = 520
 ASSETS_ROOT = Path(__file__).resolve().parent
 INGREDIENT_ICON_DIR = ASSETS_ROOT / "Ingredients"
 RECIPE_ICON_DIR = ASSETS_ROOT / "recipes"
 PLACEHOLDER_RECIPE_IMAGE = RECIPE_ICON_DIR / "emptydish.png"
-IMAGE_TARGET_SIZE = 140
+IMAGE_TARGET_SIZE = 180
 
 
 def _load_pil_modules() -> tuple[Optional[object], Optional[object]]:
@@ -99,8 +108,11 @@ class SecretRecipeGame:
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Secret Recipe Hunt")
+        self.root.title(f"Secret Recipe Hunt {APP_VERSION}")
+        self.root.geometry(f"{APP_WIDTH}x{APP_HEIGHT}")
         self.root.resizable(False, False)
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
         self.data = GameData.from_json()
         self.rng = random.Random()
         self.pending_recipes: List[Recipe] = self._pick_recipes()
@@ -115,7 +127,7 @@ class SecretRecipeGame:
         self.recipe_images: Dict[str, tk.PhotoImage] = {}
         self.ingredient_image_paths = self._scan_asset_directory(INGREDIENT_ICON_DIR)
         self.recipe_image_paths = self._scan_asset_directory(RECIPE_ICON_DIR)
-        self.blank_card_image = self._build_placeholder_image(size=128)
+        self.blank_card_image = self._build_placeholder_image(size=IMAGE_TARGET_SIZE)
         self.placeholder_recipe_image = self._load_photo(PLACEHOLDER_RECIPE_IMAGE)
 
         self.status_var = tk.StringVar(value="Select ingredients and press Cook!")
@@ -127,14 +139,17 @@ class SecretRecipeGame:
 
     # --- UI assembly helpers -------------------------------------------------
     def _build_layout(self) -> None:
-        wrapper = tk.Frame(self.root, padx=12, pady=12)
-        wrapper.grid(row=0, column=0)
+        wrapper = tk.Frame(self.root, padx=16, pady=16)
+        wrapper.grid(row=0, column=0, sticky="nsew")
+        wrapper.grid_columnconfigure(0, weight=1)
 
-        header = tk.Label(wrapper, text="Secret Recipe Hunt", font=("Segoe UI", 18, "bold"))
-        header.grid(row=0, column=0, columnspan=4, pady=(0, 12))
+        header = tk.Label(
+            wrapper, text=f"Secret Recipe Hunt {APP_VERSION}", font=("Segoe UI", 20, "bold")
+        )
+        header.grid(row=0, column=0, columnspan=4, pady=(0, 16))
 
         cards_frame = tk.Frame(wrapper)
-        cards_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 12))
+        cards_frame.grid(row=1, column=0, columnspan=4, sticky="nsew", pady=(0, 16))
 
         summary_header = tk.Label(
             cards_frame,
@@ -144,16 +159,16 @@ class SecretRecipeGame:
         summary_header.grid(row=0, column=0, columnspan=4, pady=(0, 6))
 
         summary_frame = tk.Frame(cards_frame)
-        summary_frame.grid(row=1, column=0, columnspan=4)
+        summary_frame.grid(row=1, column=0, columnspan=4, pady=(0, 8))
         self.recipe_slots: List[tk.Label] = []
         for index in range(RECIPES_TO_FIND):
             slot_container = tk.Frame(summary_frame)
-            slot_container.grid(row=0, column=index, padx=6)
+            slot_container.grid(row=0, column=index, padx=8)
             slot = tk.Label(
                 slot_container,
                 image=self.placeholder_recipe_image,
-                width=140,
-                height=140,
+                width=IMAGE_TARGET_SIZE,
+                height=IMAGE_TARGET_SIZE,
             )
             slot.image = self.placeholder_recipe_image
             slot.grid(row=0, column=0)
@@ -163,7 +178,7 @@ class SecretRecipeGame:
                 slot_container,
                 textvariable=name_var,
                 font=("Segoe UI", 11, "bold"),
-                wraplength=140,
+                wraplength=SUMMARY_NAME_WRAP,
                 justify="center",
             )
             name_label.grid(row=1, column=0, pady=(6, 0))
@@ -182,8 +197,8 @@ class SecretRecipeGame:
             button = tk.Button(
                 card_grid,
                 image=self.blank_card_image,
-                width=140,
-                height=140,
+                width=IMAGE_TARGET_SIZE,
+                height=IMAGE_TARGET_SIZE,
                 relief=tk.RAISED,
                 borderwidth=2,
                 highlightthickness=1,
@@ -204,7 +219,7 @@ class SecretRecipeGame:
             target_frame,
             textvariable=self.target_recipe_var,
             font=("Segoe UI", 16, "bold"),
-            wraplength=520,
+            wraplength=TARGET_WRAP_LENGTH,
         )
         target_label.grid(row=0, column=0)
 
@@ -227,7 +242,7 @@ class SecretRecipeGame:
             textvariable=self.status_var,
             anchor="w",
             justify="left",
-            wraplength=520,
+            wraplength=STATUS_WRAP_LENGTH,
         )
         self.status_label.grid(row=1, column=0, padx=6, sticky="ew")
 
@@ -536,11 +551,12 @@ class SecretRecipeGame:
 
         detail = tk.Toplevel(self.root)
         detail.title(recipe.display_name or recipe.name)
+        detail.geometry(f"{DETAIL_WINDOW_WIDTH}x{DETAIL_WINDOW_HEIGHT}")
         detail.resizable(False, False)
         detail.transient(self.root)
 
-        wrapper = tk.Frame(detail, padx=16, pady=16)
-        wrapper.pack()
+        wrapper = tk.Frame(detail, padx=20, pady=20)
+        wrapper.pack(fill="both", expand=True)
 
         tk.Label(
             wrapper,
@@ -554,7 +570,8 @@ class SecretRecipeGame:
             font=("Segoe UI", 12, "bold"),
             anchor="w",
             justify="left",
-        ).pack(anchor="w")
+            wraplength=DETAIL_WRAP_LENGTH,
+        ).pack(anchor="w", fill="x")
 
         for ingredient_name in recipe.trio:
             ingredient = self.data.ingredients.get(ingredient_name)
@@ -582,10 +599,12 @@ class SecretRecipeGame:
                 font=("Segoe UI", 10),
                 anchor="w",
                 justify="left",
-                wraplength=320,
+                wraplength=DETAIL_WRAP_LENGTH,
             ).pack(anchor="w")
 
-        tk.Button(wrapper, text="Close", command=detail.destroy, width=12).pack(pady=(12, 0))
+        tk.Button(wrapper, text="Close", command=detail.destroy, width=14).pack(
+            pady=(16, 0)
+        )
 
     def _display_name(self, ingredient_name: str) -> str:
         ingredient = self.data.ingredients.get(ingredient_name)

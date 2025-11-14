@@ -131,7 +131,7 @@ class SecretRecipeGame:
         self.placeholder_recipe_image = self._load_photo(PLACEHOLDER_RECIPE_IMAGE)
 
         self.status_var = tk.StringVar(value="Select ingredients and press Cook!")
-        self.target_recipe_var = tk.StringVar(value="Secret recipe: ???")
+        self.target_recipe_var = tk.StringVar(value="Find this recipe: ???")
         self.recipe_name_vars: List[tk.StringVar] = []
         self.found_recipes: List[Optional[Recipe]] = [None] * RECIPES_TO_FIND
         self._build_layout()
@@ -142,11 +142,6 @@ class SecretRecipeGame:
         wrapper = tk.Frame(self.root, padx=16, pady=16)
         wrapper.grid(row=0, column=0, sticky="nsew")
         wrapper.grid_columnconfigure(0, weight=1)
-
-        header = tk.Label(
-            wrapper, text=f"Secret Recipe Hunt {APP_VERSION}", font=("Segoe UI", 20, "bold")
-        )
-        header.grid(row=0, column=0, columnspan=4, pady=(0, 16))
 
         cards_frame = tk.Frame(wrapper)
         cards_frame.grid(row=1, column=0, columnspan=4, sticky="nsew", pady=(0, 16))
@@ -214,17 +209,17 @@ class SecretRecipeGame:
             self.card_tooltips.append(tooltip)
 
         target_frame = tk.Frame(wrapper)
-        target_frame.grid(row=2, column=0, columnspan=4, pady=(0, 8))
+        target_frame.grid(row=0, column=0, columnspan=4, pady=(0, 16))
         target_label = tk.Label(
             target_frame,
             textvariable=self.target_recipe_var,
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 20, "bold"),
             wraplength=TARGET_WRAP_LENGTH,
         )
         target_label.grid(row=0, column=0)
 
         controls = tk.Frame(wrapper)
-        controls.grid(row=3, column=0, columnspan=4, pady=(4, 0), sticky="ew")
+        controls.grid(row=2, column=0, columnspan=4, pady=(4, 0), sticky="ew")
         controls.grid_columnconfigure(0, weight=1)
 
         self.cook_button = tk.Button(
@@ -308,8 +303,9 @@ class SecretRecipeGame:
         self.status_var.set(
             f"A new secret recipe awaits. Gather the {ingredient_total} key ingredients."
         )
+        display_name = self.current_recipe.display_name or self.current_recipe.name
         self.target_recipe_var.set(
-            f"Secret recipe: {self.current_recipe.display_name}"
+            f"Find this recipe: {display_name}"
             f" ({ingredient_total} ingredients)"
         )
 
@@ -456,7 +452,7 @@ class SecretRecipeGame:
     def _finish_game(self) -> None:
         elapsed = time.perf_counter() - self.start_time
         self.status_var.set("All recipes discovered! Great job.")
-        self.target_recipe_var.set("Secret recipe: All found!")
+        self.target_recipe_var.set("All recipes discovered!")
         self.cook_button.config(state=tk.DISABLED)
         self.selected_indices.clear()
         for idx, button in enumerate(self.card_buttons):

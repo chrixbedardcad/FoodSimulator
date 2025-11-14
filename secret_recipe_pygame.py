@@ -484,7 +484,8 @@ class PygameSecretRecipeGame:
 
         panel_margin = 40
         panel_height = 200
-        panel_top = max(self.card_rects[0].y - panel_height - 30, 80)
+        header_bottom = 40 + self.font_title.get_linesize() + 30
+        panel_top = max(self.card_rects[0].y - panel_height - 30, header_bottom)
         panel_rect = pygame.Rect(
             panel_margin,
             panel_top,

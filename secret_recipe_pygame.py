@@ -36,7 +36,7 @@ SUMMARY_ENTRY_PENDING_COLOR = (52, 59, 74)
 SUMMARY_ENTRY_FOUND_COLOR = (62, 86, 70)
 SUMMARY_ENTRY_BORDER_COLOR = (94, 106, 128)
 
-VERSION = "v. 0.01"
+VERSION = "v. 0.02"
 CARD_IMAGE_MAX_SIZE = (120, 72)
 RECIPE_IMAGE_MAX_SIZE = (96, 96)
 INGREDIENT_ICON_DIR = Path(__file__).resolve().parent / "Ingredients"
@@ -458,14 +458,13 @@ class PygameSecretRecipeGame:
         if not self.card_rects:
             return
 
-        grid_left = min(rect.x for rect in self.card_rects)
-        grid_right = max(rect.right for rect in self.card_rects)
-        panel_height = 160
-        panel_y = max(self.card_rects[0].y - panel_height - 20, 140)
+        panel_margin = 40
+        panel_height = 200
+        panel_top = max(self.card_rects[0].y - panel_height - 30, 80)
         panel_rect = pygame.Rect(
-            grid_left,
-            panel_y,
-            grid_right - grid_left,
+            panel_margin,
+            panel_top,
+            SCREEN_WIDTH - panel_margin * 2,
             panel_height,
         )
 
@@ -486,8 +485,8 @@ class PygameSecretRecipeGame:
             return
         available_width = panel_rect.width - spacing * (slots + 1)
         entry_width = max(80, available_width // slots)
-        entry_height = panel_rect.height - 64
-        entry_top = panel_rect.y + 56
+        entry_height = panel_rect.height - 80
+        entry_top = panel_rect.y + 64
         current_x = panel_rect.x + spacing
 
         for idx, recipe in enumerate(self.found_recipes):

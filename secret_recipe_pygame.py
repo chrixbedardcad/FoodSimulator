@@ -604,7 +604,17 @@ class PygameSecretRecipeGame:
         padding_x = 20
         padding_y = 20
         start_x = 60
-        start_y = 310
+        # The hand of ingredient cards previously started at a fixed y-position
+        # that sat fairly close to the "Recipes Found" summary panel rendered
+        # near the top of the screen. When the summary panel expands (for
+        # example right after discovering a recipe) it visually overlaps the top
+        # row of ingredient tiles, making it harder to see or click them.
+        #
+        # Give the ingredient grid a little more breathing room by nudging the
+        # starting y-position downward. This keeps the summary panel from
+        # encroaching on the cards while preserving the existing spacing between
+        # rows.
+        start_y = 360
         rects: List[pygame.Rect] = []
         for row in range(CARD_ROWS):
             for column in range(CARD_COLUMNS):

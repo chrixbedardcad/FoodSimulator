@@ -20,8 +20,8 @@ HAND_SIZE = 8
 RECIPES_TO_FIND = 3
 CARD_COLUMNS = 4
 CARD_ROWS = HAND_SIZE // CARD_COLUMNS
-SCREEN_WIDTH = 1120
-SCREEN_HEIGHT = 760
+SCREEN_WIDTH = 1360
+SCREEN_HEIGHT = 900
 BACKGROUND_COLOR = (26, 30, 41)
 PANEL_COLOR = (38, 45, 60)
 CARD_COLOR = (233, 233, 240)
@@ -75,7 +75,19 @@ class PygameSecretRecipeGame:
 
         self.found_recipes: List[Optional[Recipe]] = [None] * RECIPES_TO_FIND
         self.card_rects = self._build_card_layout()
-        self.cook_button = pygame.Rect(80, 660, 160, 48)
+        controls_height = 140
+        controls_top = SCREEN_HEIGHT - controls_height - 40
+        controls_width = 640
+        self.controls_rect = pygame.Rect(60, controls_top, controls_width, controls_height)
+        cook_button_height = 52
+        cook_button_width = 180
+        cook_button_y = self.controls_rect.y + (self.controls_rect.height - cook_button_height) // 2
+        self.cook_button = pygame.Rect(
+            self.controls_rect.x + 20,
+            cook_button_y,
+            cook_button_width,
+            cook_button_height,
+        )
 
         self._ingredient_display: Dict[str, str] = {
             name: (ingredient.display_name if isinstance(ingredient, Ingredient) else name)
@@ -436,22 +448,35 @@ class PygameSecretRecipeGame:
                 self.screen.blit(surface, line_rect)
 
     def _draw_controls(self) -> None:
-        controls_rect = pygame.Rect(60, 640, 560, 120)
+        controls_rect = self.controls_rect
         pygame.draw.rect(self.screen, PANEL_COLOR, controls_rect, border_radius=16)
         cook_color = ACCENT_COLOR if self.hand_active and self.selected_indices else CARD_DISABLED_COLOR
         pygame.draw.rect(self.screen, cook_color, self.cook_button, border_radius=10)
         label = self.font_medium.render("Cook", True, (20, 20, 20))
         self.screen.blit(label, label.get_rect(center=self.cook_button.center))
 
-        status_rect = pygame.Rect(260, controls_rect.y + 20, 340, controls_rect.height - 40)
+        status_left = self.cook_button.right + 20
+        status_width = controls_rect.right - status_left - 20
+        status_rect = pygame.Rect(
+            status_left,
+            controls_rect.y + 20,
+            max(200, status_width),
+            controls_rect.height - 40,
+        )
         self._blit_wrapped_text(self.status_message, self.font_small, TEXT_COLOR, status_rect)
 
         attempts_surface = self.font_small.render(f"Attempts: {self.attempts}", True, TEXT_COLOR)
-        self.screen.blit(attempts_surface, (80, controls_rect.bottom - 44))
+        self.screen.blit(
+            attempts_surface,
+            (controls_rect.x + 20, controls_rect.bottom - 44),
+        )
         elapsed = (self.finish_time or time.perf_counter()) - self.start_time
         minutes, seconds = divmod(int(elapsed), 60)
         timer_surface = self.font_small.render(f"Time: {minutes:02d}:{seconds:02d}", True, TEXT_COLOR)
-        self.screen.blit(timer_surface, (80, controls_rect.bottom - 24))
+        self.screen.blit(
+            timer_surface,
+            (controls_rect.x + 20, controls_rect.bottom - 24),
+        )
 
     def _draw_summary(self) -> None:
         if not self.card_rects:

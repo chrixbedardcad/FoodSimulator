@@ -133,8 +133,18 @@ class SecretRecipeGame:
         header = tk.Label(wrapper, text="Secret Recipe Hunt", font=("Segoe UI", 18, "bold"))
         header.grid(row=0, column=0, columnspan=4, pady=(0, 12))
 
-        summary_frame = tk.LabelFrame(wrapper, text="Recipes Found", padx=8, pady=8)
-        summary_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 12))
+        cards_frame = tk.Frame(wrapper)
+        cards_frame.grid(row=1, column=0, columnspan=4, sticky="ew", pady=(0, 12))
+
+        summary_header = tk.Label(
+            cards_frame,
+            text="Recipes Found",
+            font=("Segoe UI", 14, "bold"),
+        )
+        summary_header.grid(row=0, column=0, columnspan=4, pady=(0, 6))
+
+        summary_frame = tk.Frame(cards_frame)
+        summary_frame.grid(row=1, column=0, columnspan=4)
         self.recipe_slots: List[tk.Label] = []
         for index in range(RECIPES_TO_FIND):
             slot_container = tk.Frame(summary_frame)
@@ -160,8 +170,8 @@ class SecretRecipeGame:
             self.recipe_slots.append(slot)
             self.recipe_name_vars.append(name_var)
 
-        cards_frame = tk.Frame(wrapper)
-        cards_frame.grid(row=2, column=0, columnspan=4)
+        card_grid = tk.Frame(cards_frame)
+        card_grid.grid(row=2, column=0, columnspan=4, pady=(12, 0))
         self.card_buttons: List[tk.Button] = []
         self.card_tooltips: List[Tooltip] = []
         self.default_highlight = "#bcbcbc"
@@ -170,7 +180,7 @@ class SecretRecipeGame:
 
         for idx in range(HAND_SIZE):
             button = tk.Button(
-                cards_frame,
+                card_grid,
                 image=self.blank_card_image,
                 width=140,
                 height=140,
@@ -189,7 +199,7 @@ class SecretRecipeGame:
             self.card_tooltips.append(tooltip)
 
         target_frame = tk.Frame(wrapper)
-        target_frame.grid(row=3, column=0, columnspan=4, pady=(0, 8))
+        target_frame.grid(row=2, column=0, columnspan=4, pady=(0, 8))
         target_label = tk.Label(
             target_frame,
             textvariable=self.target_recipe_var,
@@ -199,7 +209,7 @@ class SecretRecipeGame:
         target_label.grid(row=0, column=0)
 
         controls = tk.Frame(wrapper)
-        controls.grid(row=4, column=0, columnspan=4, pady=(4, 0), sticky="ew")
+        controls.grid(row=3, column=0, columnspan=4, pady=(4, 0), sticky="ew")
         controls.grid_columnconfigure(0, weight=1)
 
         self.cook_button = tk.Button(

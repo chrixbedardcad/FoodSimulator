@@ -665,7 +665,21 @@ class PygameSecretRecipeGame:
 
     def _draw_header(self) -> None:
         header_surface = self.font_title.render(self.target_message, True, TEXT_COLOR)
-        self.screen.blit(header_surface, (60, 40))
+        recipe_surface = self._recipe_image_surface(self.current_recipe)
+
+        header_y = 40
+        text_rect = header_surface.get_rect()
+        image_rect = recipe_surface.get_rect()
+
+        image_rect.left = 60
+        image_rect.top = header_y + (text_rect.height - image_rect.height) // 2
+        # Ensure the recipe preview does not overlap the top edge of the screen.
+        image_rect.top = max(20, image_rect.top)
+        self.screen.blit(recipe_surface, image_rect)
+
+        text_rect.left = image_rect.right + 30
+        text_rect.top = header_y
+        self.screen.blit(header_surface, text_rect)
 
     def _draw_cards(self) -> None:
         for index, rect in enumerate(self.card_rects):

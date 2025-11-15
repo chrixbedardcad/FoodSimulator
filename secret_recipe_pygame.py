@@ -19,7 +19,19 @@ from food_api import GameData, Ingredient, Recipe
 
 HAND_SIZE = 8
 RECIPES_TO_FIND = 3
-CARD_COLUMNS = 4
+CARD_COLUMNS = 6
+CARD_ROWS = 4
+MAX_HAND_SIZE = CARD_COLUMNS * CARD_ROWS
+CARD_WIDTH = 150
+CARD_HEIGHT = 112
+CARD_PADDING_X = 18
+CARD_PADDING_Y = 18
+CARD_LEFT_MARGIN = 60
+SUMMARY_PANEL_HEIGHT = 240
+SUMMARY_PANEL_HEADER_GAP = 20
+SUMMARY_TO_CARDS_GAP = 36
+CONTROLS_GAP = 40
+CONTROLS_RIGHT_MARGIN = 40
 SCREEN_WIDTH = 1360
 SCREEN_HEIGHT = 900
 BACKGROUND_COLOR = (26, 30, 41)
@@ -70,6 +82,28 @@ class PygameSecretRecipeGame:
         self.current_trio: Set[str] = set()
         self.current_hand: List[str] = []
         self.hand_size = HAND_SIZE
+        self.max_hand_size = MAX_HAND_SIZE
+        self.card_columns = CARD_COLUMNS
+        self.card_rows = CARD_ROWS
+        self.card_width = CARD_WIDTH
+        self.card_height = CARD_HEIGHT
+        self.card_padding_x = CARD_PADDING_X
+        self.card_padding_y = CARD_PADDING_Y
+        self.card_left_margin = CARD_LEFT_MARGIN
+        self.summary_panel_height = SUMMARY_PANEL_HEIGHT
+        self.summary_panel_header_gap = SUMMARY_PANEL_HEADER_GAP
+        self.summary_to_cards_gap = SUMMARY_TO_CARDS_GAP
+        self.controls_gap = CONTROLS_GAP
+        self.controls_right_margin = CONTROLS_RIGHT_MARGIN
+        self.card_grid_width = (
+            self.card_columns * self.card_width
+            + (self.card_columns - 1) * self.card_padding_x
+        )
+        self.card_grid_max_height = (
+            self.card_rows * self.card_height
+            + (self.card_rows - 1) * self.card_padding_y
+        )
+        self.summary_rect = pygame.Rect(0, 0, 0, 0)
         self.hand_active = False
         self.selected_indices: Set[int] = set()
         self.attempts = 0
@@ -80,20 +114,9 @@ class PygameSecretRecipeGame:
         self.waiting_for_next_round = False
 
         self.found_recipes: List[Optional[Recipe]] = [None] * self.recipes_per_round
-        self.card_rects = self._build_card_layout(self.hand_size)
-        controls_height = 140
-        controls_top = SCREEN_HEIGHT - controls_height - 40
-        controls_width = 640
-        self.controls_rect = pygame.Rect(60, controls_top, controls_width, controls_height)
-        cook_button_height = 52
-        cook_button_width = 180
-        cook_button_y = self.controls_rect.y + (self.controls_rect.height - cook_button_height) // 2
-        self.cook_button = pygame.Rect(
-            self.controls_rect.x + 20,
-            cook_button_y,
-            cook_button_width,
-            cook_button_height,
-        )
+        self.card_rects: List[pygame.Rect] = []
+        self.controls_rect = pygame.Rect(0, 0, 0, 0)
+        self.cook_button = pygame.Rect(0, 0, 0, 0)
 
         self._ingredient_display: Dict[str, str] = {
             name: (ingredient.display_name if isinstance(ingredient, Ingredient) else name)
@@ -112,7 +135,9 @@ class PygameSecretRecipeGame:
         )
 
         self.cookbook_button_rect: Optional[pygame.Rect] = None
+        self.active_card_rows = 0
 
+        self._recompute_layout()
         self._prepare_new_round()
         self._start_next_round()
 
@@ -229,11 +254,52 @@ class PygameSecretRecipeGame:
         self.selected_indices.clear()
 
         self.round += 1
-        self.hand_size += 1
-        self.card_rects = self._build_card_layout(self.hand_size)
+        self.hand_size = min(self.hand_size + 1, self.max_hand_size)
+        self._recompute_layout()
         self._prepare_new_round()
         self.waiting_for_next_round = True
         pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
+
+    # --- Layout helpers -----------------------------------------------------
+    def _summary_panel_rect(self) -> pygame.Rect:
+        header_bottom = 40 + self.font_title.get_linesize()
+        top = header_bottom + self.summary_panel_header_gap
+        return pygame.Rect(
+            self.card_left_margin,
+            top,
+            self.card_grid_width,
+            self.summary_panel_height,
+        )
+
+    def _build_controls_rect(self) -> pygame.Rect:
+        controls_left = self.card_left_margin + self.card_grid_width + self.controls_gap
+        controls_top = self.summary_rect.top
+        available_width = SCREEN_WIDTH - controls_left - self.controls_right_margin
+        controls_width = max(220, available_width)
+        max_height = (
+            self.summary_panel_height
+            + self.summary_to_cards_gap
+            + self.card_grid_max_height
+        )
+        available_height = SCREEN_HEIGHT - controls_top - 40
+        controls_height = min(max_height, available_height)
+        return pygame.Rect(controls_left, controls_top, controls_width, controls_height)
+
+    def _position_cook_button(self) -> None:
+        if self.controls_rect.width <= 0 or self.controls_rect.height <= 0:
+            self.cook_button = pygame.Rect(0, 0, 0, 0)
+            return
+        button_width = max(160, self.controls_rect.width - 40)
+        button_height = 56
+        button_x = self.controls_rect.x + (self.controls_rect.width - button_width) // 2
+        button_y = self.controls_rect.y + 24
+        self.cook_button = pygame.Rect(button_x, button_y, button_width, button_height)
+
+    def _recompute_layout(self) -> None:
+        self.summary_rect = self._summary_panel_rect()
+        self.card_rects = self._build_card_layout(self.hand_size)
+        self.controls_rect = self._build_controls_rect()
+        self._position_cook_button()
 
     def _build_hand(self, recipe: Recipe) -> List[str]:
         required = list(recipe.trio)
@@ -250,7 +316,8 @@ class PygameSecretRecipeGame:
     def _deal_hand(self, hand: Sequence[str]) -> None:
         self.current_hand = list(hand)
         if len(self.current_hand) > len(self.card_rects):
-            self.card_rects = self._build_card_layout(len(self.current_hand))
+            self.hand_size = min(len(self.current_hand), self.max_hand_size)
+            self._recompute_layout()
         self.hand_active = True
         self.selected_indices.clear()
 
@@ -508,7 +575,16 @@ class PygameSecretRecipeGame:
     def _draw_cards(self) -> None:
         for index, rect in enumerate(self.card_rects):
             if index >= len(self.current_hand):
+                placeholder_border = pygame.Rect(rect)
+                pygame.draw.rect(
+                    self.screen,
+                    (52, 58, 76),
+                    placeholder_border,
+                    width=2,
+                    border_radius=12,
+                )
                 continue
+
             name = self.current_hand[index]
             display_name = self._display_name(name)
             if not self.hand_active:
@@ -545,63 +621,71 @@ class PygameSecretRecipeGame:
 
     def _draw_controls(self) -> None:
         controls_rect = self.controls_rect
+        if controls_rect.width <= 0 or controls_rect.height <= 0:
+            return
+
         pygame.draw.rect(self.screen, PANEL_COLOR, controls_rect, border_radius=16)
+        pygame.draw.rect(
+            self.screen,
+            SUMMARY_ENTRY_BORDER_COLOR,
+            controls_rect,
+            width=2,
+            border_radius=16,
+        )
+
         cook_color = ACCENT_COLOR if self.hand_active and self.selected_indices else CARD_DISABLED_COLOR
         pygame.draw.rect(self.screen, cook_color, self.cook_button, border_radius=10)
         label = self.font_medium.render("Cook", True, (20, 20, 20))
         self.screen.blit(label, label.get_rect(center=self.cook_button.center))
 
-        status_left = self.cook_button.right + 20
-        status_width = controls_rect.right - status_left - 20
+        status_top = self.cook_button.bottom + 24
         status_rect = pygame.Rect(
-            status_left,
-            controls_rect.y + 20,
-            max(200, status_width),
-            controls_rect.height - 40,
+            controls_rect.x + 20,
+            status_top,
+            controls_rect.width - 40,
+            max(0, controls_rect.bottom - status_top - 120),
         )
-        self._blit_wrapped_text(self.status_message, self.font_small, TEXT_COLOR, status_rect)
+        if status_rect.height > 0:
+            self._blit_wrapped_text(self.status_message, self.font_small, TEXT_COLOR, status_rect)
+
+        stats_x = controls_rect.x + 20
+        stats_y = max(status_rect.bottom + 12, controls_rect.bottom - 100)
+        slots_surface = self.font_small.render(
+            f"Ingredients: {len(self.current_hand)}/{self.max_hand_size}",
+            True,
+            TEXT_COLOR,
+        )
+        self.screen.blit(slots_surface, (stats_x, stats_y))
+        stats_y += self.font_small.get_linesize() + 4
 
         attempts_surface = self.font_small.render(f"Attempts: {self.attempts}", True, TEXT_COLOR)
-        self.screen.blit(
-            attempts_surface,
-            (controls_rect.x + 20, controls_rect.bottom - 44),
-        )
+        self.screen.blit(attempts_surface, (stats_x, stats_y))
+        stats_y += self.font_small.get_linesize() + 4
+
         elapsed = (self.finish_time or time.perf_counter()) - self.start_time
         minutes, seconds = divmod(int(elapsed), 60)
         timer_surface = self.font_small.render(f"Time: {minutes:02d}:{seconds:02d}", True, TEXT_COLOR)
-        self.screen.blit(
-            timer_surface,
-            (controls_rect.x + 20, controls_rect.bottom - 24),
-        )
+        self.screen.blit(timer_surface, (stats_x, stats_y))
 
     def _draw_summary(self) -> None:
-        if not self.card_rects:
+        panel_rect = self.summary_rect
+        if panel_rect.width <= 0 or panel_rect.height <= 0:
             return
 
-        panel_margin = 40
-        panel_height = 200
-        header_bottom = 40 + self.font_title.get_linesize() + 30
-        panel_top = max(self.card_rects[0].y - panel_height - 30, header_bottom)
-        panel_rect = pygame.Rect(
-            panel_margin,
-            panel_top,
-            SCREEN_WIDTH - panel_margin * 2,
-            panel_height,
-        )
-
-        pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=16)
+        pygame.draw.rect(self.screen, PANEL_COLOR, panel_rect, border_radius=18)
         pygame.draw.rect(
             self.screen,
             SUMMARY_ENTRY_BORDER_COLOR,
             panel_rect,
             width=2,
-            border_radius=16,
+            border_radius=18,
         )
-        title = self.font_medium.render("Recipes Found", True, TEXT_COLOR)
-        self.screen.blit(title, (panel_rect.x + 20, panel_rect.y + 16))
 
-        button_width = 160
-        button_height = 44
+        title_surface = self.font_medium.render("Recipes Found", True, TEXT_COLOR)
+        self.screen.blit(title_surface, (panel_rect.x + 20, panel_rect.y + 16))
+
+        button_width = 180
+        button_height = 48
         button_rect = pygame.Rect(
             panel_rect.right - button_width - 20,
             panel_rect.y + 12,
@@ -611,40 +695,55 @@ class PygameSecretRecipeGame:
         self.cookbook_button_rect = button_rect
         has_cookbook = bool(self.round_summaries)
         button_color = ACCENT_COLOR if has_cookbook else CARD_DISABLED_COLOR
-        pygame.draw.rect(self.screen, button_color, button_rect, border_radius=10)
-        button_label = self.font_small.render("Cookbook", True, (20, 20, 20))
-        self.screen.blit(button_label, button_label.get_rect(center=button_rect.center))
+        pygame.draw.rect(self.screen, button_color, button_rect, border_radius=12)
+        cookbook_label = self.font_small.render("Cookbook", True, (20, 20, 20))
+        self.screen.blit(cookbook_label, cookbook_label.get_rect(center=button_rect.center))
 
-        points_text = self.font_small.render(
+        info_y = panel_rect.y + title_surface.get_height() + 24
+        points_surface = self.font_small.render(
             f"Total Points: {self.total_points}", True, TEXT_COLOR
         )
-        self.screen.blit(points_text, (panel_rect.x + 20, panel_rect.y + 52))
+        self.screen.blit(points_surface, (panel_rect.x + 20, info_y))
 
-        spacing = 12
+        if self.round > 1:
+            round_surface = self.font_xsmall.render(
+                f"Round {self.round - 1} complete. Preparing round {self.round}...",
+                True,
+                TEXT_MUTED_COLOR,
+            )
+            self.screen.blit(round_surface, (panel_rect.x + 20, info_y + 28))
+
         slots = len(self.found_recipes)
         if slots == 0:
             return
+
+        entry_area_top = panel_rect.y + 88
+        entry_area_height = panel_rect.bottom - entry_area_top - 24
+        spacing = 16
         available_width = panel_rect.width - spacing * (slots + 1)
-        entry_width = max(80, available_width // slots)
-        entry_height = panel_rect.height - 80
-        entry_top = panel_rect.y + 64
+        entry_width = max(140, available_width // slots)
+        entry_height = max(80, entry_area_height)
         current_x = panel_rect.x + spacing
 
         for idx, recipe in enumerate(self.found_recipes):
-            entry_rect = pygame.Rect(current_x, entry_top, entry_width, entry_height)
+            entry_rect = pygame.Rect(current_x, entry_area_top, entry_width, entry_height)
             fill_color = SUMMARY_ENTRY_FOUND_COLOR if recipe else SUMMARY_ENTRY_PENDING_COLOR
-            pygame.draw.rect(self.screen, fill_color, entry_rect, border_radius=12)
+            pygame.draw.rect(self.screen, fill_color, entry_rect, border_radius=14)
             pygame.draw.rect(
                 self.screen,
                 SUMMARY_ENTRY_BORDER_COLOR,
                 entry_rect,
                 width=1,
-                border_radius=12,
+                border_radius=14,
             )
 
             icon_surface = self._recipe_image_surface(recipe)
             icon_surface = self._scale_surface(
-                icon_surface, (entry_rect.height - 24, entry_rect.height - 24)
+                icon_surface,
+                (
+                    min(96, entry_rect.width // 3),
+                    min(entry_rect.height - 24, 96),
+                ),
             )
             icon_rect = icon_surface.get_rect()
             icon_rect.left = entry_rect.x + 16
@@ -654,17 +753,17 @@ class PygameSecretRecipeGame:
             text_x = icon_rect.right + 16
             text_width = entry_rect.right - text_x - 16
             if text_width <= 0:
-                text_x = icon_rect.right + 4
-                text_width = entry_rect.right - text_x - 4
+                text_x = icon_rect.right + 8
+                text_width = entry_rect.right - text_x - 8
 
             primary_label = f"{idx + 1}. {recipe.display_name if recipe else '???'}"
             primary_surface = self.font_small.render(primary_label, True, TEXT_COLOR)
             primary_rect = primary_surface.get_rect()
-            primary_rect.topleft = (text_x, entry_rect.y + 6)
+            primary_rect.topleft = (text_x, entry_rect.y + 12)
             if primary_rect.width > text_width:
                 primary_surface = self.font_xsmall.render(primary_label, True, TEXT_COLOR)
                 primary_rect = primary_surface.get_rect()
-                primary_rect.topleft = (text_x, entry_rect.y + 6)
+                primary_rect.topleft = (text_x, entry_rect.y + 12)
             self.screen.blit(primary_surface, primary_rect)
 
             if recipe:
@@ -674,7 +773,7 @@ class PygameSecretRecipeGame:
                 detail_text = "Find the right trio to reveal this recipe."
 
             detail_lines = self._wrap_text(detail_text, self.font_xsmall, text_width)
-            detail_y = primary_rect.bottom + 6
+            detail_y = primary_rect.bottom + 8
             for line in detail_lines:
                 detail_surface = self.font_xsmall.render(line, True, TEXT_MUTED_COLOR)
                 self.screen.blit(detail_surface, (text_x, detail_y))
@@ -784,32 +883,22 @@ class PygameSecretRecipeGame:
 
     # --- Utility helpers -----------------------------------------------------
     def _build_card_layout(self, hand_size: int) -> List[pygame.Rect]:
-        card_width = 180
-        card_height = 140
-        padding_x = 20
-        padding_y = 20
-        start_x = 60
-        # The hand of ingredient cards previously started at a fixed y-position
-        # that sat fairly close to the "Recipes Found" summary panel rendered
-        # near the top of the screen. When the summary panel expands (for
-        # example right after discovering a recipe) it visually overlaps the top
-        # row of ingredient tiles, making it harder to see or click them.
-        #
-        # Give the ingredient grid a little more breathing room by nudging the
-        # starting y-position downward. This keeps the summary panel from
-        # encroaching on the cards while preserving the existing spacing between
-        # rows.
-        start_y = 360
+        max_tiles = min(hand_size, self.max_hand_size)
+        start_y = self.summary_rect.bottom + self.summary_to_cards_gap
         rects: List[pygame.Rect] = []
-        rows = max(1, math.ceil(hand_size / CARD_COLUMNS))
-        for row in range(rows):
-            for column in range(CARD_COLUMNS):
-                index = row * CARD_COLUMNS + column
-                if index >= hand_size:
-                    break
-                x = start_x + column * (card_width + padding_x)
-                y = start_y + row * (card_height + padding_y)
-                rects.append(pygame.Rect(x, y, card_width, card_height))
+        total_slots = self.max_hand_size
+
+        for index in range(total_slots):
+            row = index // self.card_columns
+            column = index % self.card_columns
+            x = self.card_left_margin + column * (self.card_width + self.card_padding_x)
+            y = start_y + row * (self.card_height + self.card_padding_y)
+            rects.append(pygame.Rect(x, y, self.card_width, self.card_height))
+
+        if max_tiles <= 0:
+            self.active_card_rows = 0
+        else:
+            self.active_card_rows = max(1, math.ceil(max_tiles / self.card_columns))
         return rects
 
     def _display_name(self, ingredient_name: str) -> str:

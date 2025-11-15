@@ -279,9 +279,16 @@ class PygameSecretRecipeGame:
         )
         self.hand_active = False
         self.selected_indices.clear()
+        self.current_recipe = None
         if all(recipe is not None for recipe in self.found_recipes):
             self.waiting_for_next_round = True
             pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
+            return
+
+        # Queue up the next recipe with a short pause so the success message
+        # has time to display before the new hand appears.
+        self.waiting_for_next_round = True
+        pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
 
     def _cook_selected(self) -> None:
         if not self.current_recipe:

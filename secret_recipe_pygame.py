@@ -10,7 +10,8 @@ from __future__ import annotations
 import random
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+import math
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import pygame
 
@@ -19,7 +20,6 @@ from food_api import GameData, Ingredient, Recipe
 HAND_SIZE = 8
 RECIPES_TO_FIND = 3
 CARD_COLUMNS = 4
-CARD_ROWS = HAND_SIZE // CARD_COLUMNS
 SCREEN_WIDTH = 1360
 SCREEN_HEIGHT = 900
 BACKGROUND_COLOR = (26, 30, 41)
@@ -60,10 +60,16 @@ class PygameSecretRecipeGame:
 
         self.data = GameData.from_json()
         self.rng = random.Random()
-        self.pending_recipes: List[Recipe] = self._pick_recipes()
+        self.recipes_per_round = RECIPES_TO_FIND
+        self.round = 1
+        self.total_points = 0
+        self.round_summaries: List[Dict[str, Any]] = []
+        self.cookbook_visible = False
+        self.pending_recipes: List[Recipe] = []
         self.current_recipe: Optional[Recipe] = None
         self.current_trio: Set[str] = set()
         self.current_hand: List[str] = []
+        self.hand_size = HAND_SIZE
         self.hand_active = False
         self.selected_indices: Set[int] = set()
         self.attempts = 0
@@ -73,8 +79,8 @@ class PygameSecretRecipeGame:
         self.target_message = "Find this recipe: ???"
         self.waiting_for_next_round = False
 
-        self.found_recipes: List[Optional[Recipe]] = [None] * RECIPES_TO_FIND
-        self.card_rects = self._build_card_layout()
+        self.found_recipes: List[Optional[Recipe]] = [None] * self.recipes_per_round
+        self.card_rects = self._build_card_layout(self.hand_size)
         controls_height = 140
         controls_top = SCREEN_HEIGHT - controls_height - 40
         controls_width = 640
@@ -105,6 +111,9 @@ class PygameSecretRecipeGame:
             RECIPE_IMAGE_MAX_SIZE, border_radius=18
         )
 
+        self.cookbook_button_rect: Optional[pygame.Rect] = None
+
+        self._prepare_new_round()
         self._start_next_round()
 
     # --- Game flow -----------------------------------------------------------
@@ -128,16 +137,26 @@ class PygameSecretRecipeGame:
 
         pygame.quit()
 
+    def _prepare_new_round(self) -> None:
+        self.pending_recipes = self._pick_recipes()
+        self.found_recipes = [None] * self.recipes_per_round
+        self.current_recipe = None
+        self.current_trio.clear()
+        self.current_hand = []
+        self.hand_active = False
+        self.selected_indices.clear()
+
     def _pick_recipes(self) -> List[Recipe]:
-        pool = [recipe for recipe in self.data.recipes if len(recipe.trio) <= HAND_SIZE]
-        if len(pool) < RECIPES_TO_FIND:
+        pool = [recipe for recipe in self.data.recipes if len(recipe.trio) <= self.hand_size]
+        if len(pool) < self.recipes_per_round:
             raise RuntimeError("Not enough recipes to start the game.")
-        return self.rng.sample(pool, RECIPES_TO_FIND)
+        return self.rng.sample(pool, self.recipes_per_round)
 
     def _start_next_round(self) -> None:
         if not self.pending_recipes:
-            self._finish_game()
-            return
+            self._complete_round()
+            if not self.pending_recipes or self.waiting_for_next_round:
+                return
         self.current_recipe = self.pending_recipes.pop(0)
         self.current_trio = set(self.current_recipe.trio)
         self._deal_hand(self._build_hand(self.current_recipe))
@@ -158,11 +177,69 @@ class PygameSecretRecipeGame:
         self.status_message = "All recipes discovered! Great job."
         self.target_message = "All recipes discovered!"
 
+    def _recipe_points(self, recipe: Recipe) -> int:
+        total = 0
+        for name in recipe.trio:
+            ingredient = self.data.ingredients.get(name)
+            if ingredient is None:
+                continue
+            total += getattr(ingredient, "Value", 0)
+        return total
+
+    def _complete_round(self) -> None:
+        completed_recipes = [recipe for recipe in self.found_recipes if recipe]
+        if not completed_recipes:
+            self._prepare_new_round()
+            return
+
+        entries: List[Dict[str, Any]] = []
+        round_points = 0
+        for recipe in completed_recipes:
+            ingredient_names = [self._display_name(name) for name in recipe.trio]
+            points = self._recipe_points(recipe)
+            round_points += points
+            entries.append(
+                {
+                    "recipe": recipe,
+                    "ingredients": ingredient_names,
+                    "points": points,
+                }
+            )
+
+        summary = {
+            "round": self.round,
+            "recipes": entries,
+            "total_points": round_points,
+        }
+        self.round_summaries.append(summary)
+        self.total_points += round_points
+
+        self.status_message = (
+            f"Round {self.round} complete! {round_points} points added to the cookbook."
+        )
+        self.target_message = (
+            f"Cookbook updated. Prepare for round {self.round + 1}!"
+        )
+
+        self.cookbook_visible = True
+        self.current_recipe = None
+        self.current_trio.clear()
+        self.current_hand = []
+        self.hand_active = False
+        self.selected_indices.clear()
+
+        self.round += 1
+        self.hand_size += 1
+        self.card_rects = self._build_card_layout(self.hand_size)
+        self._prepare_new_round()
+        self.waiting_for_next_round = True
+        pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
+
     def _build_hand(self, recipe: Recipe) -> List[str]:
         required = list(recipe.trio)
         extras = [name for name in self.data.ingredients if name not in required]
         self.rng.shuffle(extras)
-        needed = HAND_SIZE - len(required)
+        needed = self.hand_size - len(required)
         if needed < 0:
             raise RuntimeError("Recipe requires more ingredients than the hand allows.")
         selected_extras = extras[:needed]
@@ -172,6 +249,8 @@ class PygameSecretRecipeGame:
 
     def _deal_hand(self, hand: Sequence[str]) -> None:
         self.current_hand = list(hand)
+        if len(self.current_hand) > len(self.card_rects):
+            self.card_rects = self._build_card_layout(len(self.current_hand))
         self.hand_active = True
         self.selected_indices.clear()
 
@@ -201,8 +280,6 @@ class PygameSecretRecipeGame:
         self.hand_active = False
         self.selected_indices.clear()
         if all(recipe is not None for recipe in self.found_recipes):
-            self._finish_game()
-        else:
             self.waiting_for_next_round = True
             pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
 
@@ -240,6 +317,16 @@ class PygameSecretRecipeGame:
 
     # --- Event helpers -------------------------------------------------------
     def _handle_click(self, position: Tuple[int, int]) -> None:
+        if (
+            self.cookbook_button_rect
+            and self.cookbook_button_rect.collidepoint(position)
+            and self.round_summaries
+        ):
+            self.cookbook_visible = not self.cookbook_visible
+            return
+        if self.cookbook_visible:
+            self.cookbook_visible = False
+            return
         if self.finish_time is not None:
             # Game already completed; allow closing only.
             return
@@ -402,6 +489,8 @@ class PygameSecretRecipeGame:
         self._draw_controls()
         self._draw_summary()
         self._draw_version()
+        if self.cookbook_visible:
+            self._draw_cookbook_overlay()
         if self.finish_time is not None:
             self._draw_summary_overlay()
 
@@ -504,6 +593,26 @@ class PygameSecretRecipeGame:
         title = self.font_medium.render("Recipes Found", True, TEXT_COLOR)
         self.screen.blit(title, (panel_rect.x + 20, panel_rect.y + 16))
 
+        button_width = 160
+        button_height = 44
+        button_rect = pygame.Rect(
+            panel_rect.right - button_width - 20,
+            panel_rect.y + 12,
+            button_width,
+            button_height,
+        )
+        self.cookbook_button_rect = button_rect
+        has_cookbook = bool(self.round_summaries)
+        button_color = ACCENT_COLOR if has_cookbook else CARD_DISABLED_COLOR
+        pygame.draw.rect(self.screen, button_color, button_rect, border_radius=10)
+        button_label = self.font_small.render("Cookbook", True, (20, 20, 20))
+        self.screen.blit(button_label, button_label.get_rect(center=button_rect.center))
+
+        points_text = self.font_small.render(
+            f"Total Points: {self.total_points}", True, TEXT_COLOR
+        )
+        self.screen.blit(points_text, (panel_rect.x + 20, panel_rect.y + 52))
+
         spacing = 12
         slots = len(self.found_recipes)
         if slots == 0:
@@ -597,8 +706,77 @@ class PygameSecretRecipeGame:
         version_rect.bottomright = (SCREEN_WIDTH - 24, SCREEN_HEIGHT - 20)
         self.screen.blit(version_surface, version_rect)
 
+    def _draw_cookbook_overlay(self) -> None:
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((8, 12, 20, 220))
+        self.screen.blit(overlay, (0, 0))
+
+        panel_width = 860
+        panel_height = 560
+        panel = pygame.Rect(0, 0, panel_width, panel_height)
+        panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        pygame.draw.rect(self.screen, PANEL_COLOR, panel, border_radius=18)
+        pygame.draw.rect(self.screen, ACCENT_COLOR, panel, width=3, border_radius=18)
+
+        title = self.font_large.render("Cookbook", True, TEXT_COLOR)
+        self.screen.blit(title, title.get_rect(center=(panel.centerx, panel.y + 60)))
+
+        if not self.round_summaries:
+            empty = self.font_medium.render("Find recipes to populate the cookbook!", True, TEXT_COLOR)
+            self.screen.blit(empty, empty.get_rect(center=panel.center))
+            return
+
+        content_rect = pygame.Rect(
+            panel.x + 36,
+            panel.y + 110,
+            panel.width - 72,
+            panel.height - 150,
+        )
+
+        line_y = content_rect.y
+        line_height = self.font_small.get_linesize()
+        for summary in self.round_summaries:
+            header = self.font_medium.render(
+                f"Round {summary['round']} - {summary['total_points']} points", True, TEXT_COLOR
+            )
+            self.screen.blit(header, (content_rect.x, line_y))
+            line_y += self.font_medium.get_linesize()
+
+            for entry in summary["recipes"]:
+                recipe: Recipe = entry["recipe"]
+                recipe_name = recipe.display_name or recipe.name
+                recipe_header = self.font_small.render(
+                    f"• {recipe_name} (+{entry['points']} pts)", True, TEXT_COLOR
+                )
+                self.screen.blit(recipe_header, (content_rect.x + 10, line_y))
+                line_y += line_height
+
+                ingredients_text = ", ".join(entry["ingredients"])
+                ingredient_lines = self._wrap_text(
+                    ingredients_text, self.font_xsmall, content_rect.width - 40
+                )
+                for ingredient_line in ingredient_lines:
+                    line_surface = self.font_xsmall.render(
+                        ingredient_line, True, TEXT_MUTED_COLOR
+                    )
+                    self.screen.blit(
+                        line_surface,
+                        (content_rect.x + 36, line_y),
+                    )
+                    line_y += self.font_xsmall.get_linesize()
+                line_y += 6
+
+            line_y += 12
+            if line_y > content_rect.bottom - line_height:
+                break
+
+        footer = self.font_small.render(
+            "Click anywhere to close the cookbook", True, TEXT_COLOR
+        )
+        self.screen.blit(footer, footer.get_rect(center=(panel.centerx, panel.bottom - 40)))
+
     # --- Utility helpers -----------------------------------------------------
-    def _build_card_layout(self) -> List[pygame.Rect]:
+    def _build_card_layout(self, hand_size: int) -> List[pygame.Rect]:
         card_width = 180
         card_height = 140
         padding_x = 20
@@ -616,8 +794,12 @@ class PygameSecretRecipeGame:
         # rows.
         start_y = 360
         rects: List[pygame.Rect] = []
-        for row in range(CARD_ROWS):
+        rows = max(1, math.ceil(hand_size / CARD_COLUMNS))
+        for row in range(rows):
             for column in range(CARD_COLUMNS):
+                index = row * CARD_COLUMNS + column
+                if index >= hand_size:
+                    break
                 x = start_x + column * (card_width + padding_x)
                 y = start_y + row * (card_height + padding_y)
                 rects.append(pygame.Rect(x, y, card_width, card_height))

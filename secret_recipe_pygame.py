@@ -288,8 +288,28 @@ class PygameSecretRecipeGame:
         pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
 
     # --- Layout helpers -----------------------------------------------------
+    def _header_bottom(self) -> int:
+        header_y = 40
+        text_height = self.font_title.get_linesize()
+        text_bottom = header_y + text_height
+
+        recipe_surface = self._recipe_image_surface(self.current_recipe)
+        image_height = recipe_surface.get_height()
+        image_top = header_y + (text_height - image_height) // 2
+        image_top = max(20, image_top)
+        image_bottom = image_top + image_height
+
+        slot_bottom = text_bottom
+        slot_count = len(self.recipe_slots)
+        if slot_count:
+            slot_height = RECIPE_SLOT_SIZE[1]
+            slot_y = max(image_top, text_bottom + 12)
+            slot_bottom = slot_y + slot_height
+
+        return max(text_bottom, image_bottom, slot_bottom)
+
     def _summary_panel_rect(self) -> pygame.Rect:
-        header_bottom = 40 + self.font_title.get_linesize()
+        header_bottom = self._header_bottom()
         top = header_bottom + self.summary_panel_header_gap
         return pygame.Rect(
             self.card_left_margin,
@@ -332,6 +352,7 @@ class PygameSecretRecipeGame:
         self.recipe_slots = [None] * count
         self.card_to_slot.clear()
         self.selected_indices.clear()
+        self._recompute_layout()
 
     def _clear_recipe_slots(self) -> None:
         if not self.recipe_slots:

@@ -48,6 +48,10 @@ NEXT_ROUND_EVENT = pygame.USEREVENT + 1
 SUMMARY_ENTRY_PENDING_COLOR = (52, 59, 74)
 SUMMARY_ENTRY_FOUND_COLOR = (62, 86, 70)
 SUMMARY_ENTRY_BORDER_COLOR = (94, 106, 128)
+RECIPE_SLOT_SIZE = (86, 86)
+RECIPE_SLOT_SPACING = 18
+RECIPE_SLOT_BACKGROUND = (52, 58, 76)
+RECIPE_SLOT_ASSIGNED = (108, 148, 112)
 
 VERSION = "v. 0.02"
 CARD_IMAGE_MAX_SIZE = (120, 72)
@@ -93,6 +97,8 @@ class PygameSecretRecipeGame:
         self.current_hand: List[str] = []
         self.hand_size = HAND_SIZE
         self.max_hand_size = MAX_HAND_SIZE
+        self.recipe_slots: List[Optional[int]] = []
+        self.card_to_slot: Dict[int, int] = {}
         self.card_columns = CARD_COLUMNS
         self.card_rows = CARD_ROWS
         self.card_width = CARD_WIDTH
@@ -191,7 +197,7 @@ class PygameSecretRecipeGame:
         self.current_trio.clear()
         self.current_hand = []
         self.hand_active = False
-        self.selected_indices.clear()
+        self._set_recipe_slot_count(0)
 
     def _pick_recipes(self) -> List[Recipe]:
         pool = [recipe for recipe in self.data.recipes if len(recipe.trio) <= self.hand_size]
@@ -206,15 +212,12 @@ class PygameSecretRecipeGame:
                 return
         self.current_recipe = self.pending_recipes.pop(0)
         self.current_trio = set(self.current_recipe.trio)
+        self._set_recipe_slot_count(len(self.current_trio))
         self._deal_hand(self._build_hand(self.current_recipe))
-        ingredient_total = len(self.current_recipe.trio)
         display_name = self.current_recipe.display_name or self.current_recipe.name
-        self.target_message = (
-            f"Find this recipe: {display_name}"
-            f" ({ingredient_total} ingredients)"
-        )
+        self.target_message = f"Find this recipe: {display_name}"
         self.status_message = (
-            f"A new secret recipe awaits. Gather the {ingredient_total} key ingredients."
+            "A new secret recipe awaits. Fill each recipe slot with the correct ingredients."
         )
 
     def _finish_game(self) -> None:
@@ -223,6 +226,7 @@ class PygameSecretRecipeGame:
         self.hand_active = False
         self.status_message = "All recipes discovered! Great job."
         self.target_message = "All recipes discovered!"
+        self._set_recipe_slot_count(0)
 
     def _recipe_points(self, recipe: Recipe) -> int:
         total = 0
@@ -274,6 +278,7 @@ class PygameSecretRecipeGame:
         self.current_hand = []
         self.hand_active = False
         self.selected_indices.clear()
+        self._set_recipe_slot_count(0)
 
         self.round += 1
         self.hand_size = min(self.hand_size + 1, self.max_hand_size)
@@ -323,6 +328,21 @@ class PygameSecretRecipeGame:
         self.controls_rect = self._build_controls_rect()
         self._position_cook_button()
 
+    def _set_recipe_slot_count(self, count: int) -> None:
+        self.recipe_slots = [None] * count
+        self.card_to_slot.clear()
+        self.selected_indices.clear()
+
+    def _clear_recipe_slots(self) -> None:
+        if not self.recipe_slots:
+            self.card_to_slot.clear()
+            self.selected_indices.clear()
+            return
+        for index in range(len(self.recipe_slots)):
+            self.recipe_slots[index] = None
+        self.card_to_slot.clear()
+        self.selected_indices.clear()
+
     def _build_hand(self, recipe: Recipe) -> List[str]:
         required = list(recipe.trio)
         extras = [name for name in self.data.ingredients if name not in required]
@@ -341,7 +361,7 @@ class PygameSecretRecipeGame:
             self.hand_size = min(len(self.current_hand), self.max_hand_size)
             self._recompute_layout()
         self.hand_active = True
-        self.selected_indices.clear()
+        self._clear_recipe_slots()
 
     def _reshuffle_current_hand(self, failure_message: Optional[str] = None) -> None:
         if not self.current_recipe:
@@ -369,6 +389,7 @@ class PygameSecretRecipeGame:
         self.hand_active = False
         self.selected_indices.clear()
         self.current_recipe = None
+        self._set_recipe_slot_count(0)
         if all(recipe is not None for recipe in self.found_recipes):
             self.waiting_for_next_round = True
             pygame.time.set_timer(NEXT_ROUND_EVENT, NEXT_ROUND_DELAY_MS, loops=1)
@@ -436,10 +457,28 @@ class PygameSecretRecipeGame:
             return
         for index, rect in enumerate(self.card_rects):
             if rect.collidepoint(position) and index < len(self.current_hand):
-                if index in self.selected_indices:
-                    self.selected_indices.remove(index)
-                else:
-                    self.selected_indices.add(index)
+                if index in self.card_to_slot:
+                    slot_index = self.card_to_slot.pop(index)
+                    if 0 <= slot_index < len(self.recipe_slots):
+                        self.recipe_slots[slot_index] = None
+                    self.selected_indices.discard(index)
+                    self._play_sound(self.click_sound)
+                    self._update_status_message()
+                    break
+
+                free_slot = next(
+                    (slot for slot, value in enumerate(self.recipe_slots) if value is None),
+                    None,
+                )
+                if free_slot is None:
+                    self.status_message = (
+                        "All recipe slots are filled. Remove one to try a different ingredient."
+                    )
+                    break
+
+                self.recipe_slots[free_slot] = index
+                self.card_to_slot[index] = free_slot
+                self.selected_indices.add(index)
                 self._play_sound(self.click_sound)
                 self._update_status_message()
                 break
@@ -447,21 +486,32 @@ class PygameSecretRecipeGame:
     def _update_status_message(self) -> None:
         if not self.current_recipe:
             return
-        required = len(self.current_recipe.trio)
-        if not self.selected_indices:
+        required = len(self.recipe_slots)
+        filled_slots = [index for index in self.recipe_slots if index is not None]
+        filled_count = len(filled_slots)
+        if filled_count == 0:
             plural = "s" if required != 1 else ""
             self.status_message = (
-                f"Select up to {required} ingredient{plural}, then press Cook!"
+                f"Select ingredients to fill the {required} recipe slot{plural}, then press Cook!"
             )
             return
-        names = [self._display_name(self.current_hand[idx]) for idx in sorted(self.selected_indices)]
+
+        names = [
+            self._display_name(self.current_hand[idx])
+            for idx in filled_slots
+            if 0 <= idx < len(self.current_hand)
+        ]
         formatted = self._format_display_list(names)
-        selected_count = len(self.selected_indices)
         plural = "s" if required != 1 else ""
-        self.status_message = (
-            f"Selected {selected_count}/{required} ingredient{plural}: {formatted}."
-            " Press Cook when ready."
-        )
+        if filled_count < required:
+            self.status_message = (
+                f"Filled {filled_count}/{required} recipe slot{plural}: {formatted}."
+                " Keep selecting or press Cook to test this combination."
+            )
+        else:
+            self.status_message = (
+                f"All recipe slots filled: {formatted}. Press Cook when ready."
+            )
 
     # --- Asset helpers -------------------------------------------------------
     @staticmethod
@@ -680,6 +730,43 @@ class PygameSecretRecipeGame:
         text_rect.left = image_rect.right + 30
         text_rect.top = header_y
         self.screen.blit(header_surface, text_rect)
+
+        slot_count = len(self.recipe_slots)
+        if slot_count:
+            slot_width, slot_height = RECIPE_SLOT_SIZE
+            slot_spacing = RECIPE_SLOT_SPACING
+            total_width = slot_count * slot_width + (slot_count - 1) * slot_spacing
+            max_start_x = SCREEN_WIDTH - 60 - total_width
+            slot_start_x = max(image_rect.right + 30, min(text_rect.left, max_start_x))
+            slot_y = max(image_rect.top, text_rect.bottom + 12)
+
+            for offset, card_index in enumerate(self.recipe_slots):
+                slot_x = slot_start_x + offset * (slot_width + slot_spacing)
+                slot_rect = pygame.Rect(slot_x, slot_y, slot_width, slot_height)
+                has_ingredient = (
+                    card_index is not None and 0 <= card_index < len(self.current_hand)
+                )
+                fill_color = RECIPE_SLOT_ASSIGNED if has_ingredient else RECIPE_SLOT_BACKGROUND
+                pygame.draw.rect(self.screen, fill_color, slot_rect, border_radius=12)
+                pygame.draw.rect(
+                    self.screen,
+                    SUMMARY_ENTRY_BORDER_COLOR,
+                    slot_rect,
+                    width=2,
+                    border_radius=12,
+                )
+
+                if has_ingredient:
+                    ingredient_name = self.current_hand[card_index]
+                    tile_surface = self._ingredient_image_surface(ingredient_name)
+                else:
+                    tile_surface = self.ingredient_placeholder
+
+                tile_surface = self._scale_surface(
+                    tile_surface, (slot_rect.width - 18, slot_rect.height - 18)
+                )
+                tile_rect = tile_surface.get_rect(center=slot_rect.center)
+                self.screen.blit(tile_surface, tile_rect)
 
     def _draw_cards(self) -> None:
         for index, rect in enumerate(self.card_rects):

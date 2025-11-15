@@ -7,10 +7,11 @@ instead of Tkinter so it can run in a more arcade-like environment.
 """
 from __future__ import annotations
 
+import math
 import random
 import time
+from array import array
 from pathlib import Path
-import math
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import pygame
@@ -53,6 +54,7 @@ CARD_IMAGE_MAX_SIZE = (120, 72)
 RECIPE_IMAGE_MAX_SIZE = (96, 96)
 INGREDIENT_ICON_DIR = Path(__file__).resolve().parent / "Ingredients"
 RECIPE_ICON_DIR = Path(__file__).resolve().parent / "recipes"
+BUTTON_ICON_DIR = Path(__file__).resolve().parent / "icons"
 
 
 class PygameSecretRecipeGame:
@@ -69,6 +71,14 @@ class PygameSecretRecipeGame:
         self.font_medium = pygame.font.SysFont("Segoe UI", 24)
         self.font_small = pygame.font.SysFont("Segoe UI", 20)
         self.font_xsmall = pygame.font.SysFont("Segoe UI", 18)
+
+        self.sounds_enabled = False
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            self.sounds_enabled = pygame.mixer.get_init() is not None
+        except pygame.error:
+            self.sounds_enabled = False
 
         self.data = GameData.from_json()
         self.rng = random.Random()
@@ -133,6 +143,18 @@ class PygameSecretRecipeGame:
         self.recipe_placeholder = self._build_placeholder_surface(
             RECIPE_IMAGE_MAX_SIZE, border_radius=18
         )
+
+        self.click_sound = self._build_tone(880.0, 90, volume=0.3) if self.sounds_enabled else None
+        self.cook_sound = self._build_tone(420.0, 260, volume=0.4) if self.sounds_enabled else None
+
+        (
+            self.cook_icon_enabled,
+            self.cook_icon_disabled,
+        ) = self._load_button_icon_pair("cook.png", (44, 44))
+        (
+            self.cookbook_icon_enabled,
+            self.cookbook_icon_disabled,
+        ) = self._load_button_icon_pair("cookbook.png", (40, 40))
 
         self.cookbook_button_rect: Optional[pygame.Rect] = None
         self.active_card_rows = 0
@@ -407,6 +429,7 @@ class PygameSecretRecipeGame:
         if self.waiting_for_next_round:
             return
         if self.cook_button.collidepoint(position) and self.hand_active:
+            self._play_sound(self.cook_sound)
             self._cook_selected()
             return
         if not self.hand_active:
@@ -417,6 +440,7 @@ class PygameSecretRecipeGame:
                     self.selected_indices.remove(index)
                 else:
                     self.selected_indices.add(index)
+                self._play_sound(self.click_sound)
                 self._update_status_message()
                 break
 
@@ -489,6 +513,77 @@ class PygameSecretRecipeGame:
             new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
             surface = pygame.transform.smoothscale(surface, new_size)
         return surface
+
+    def _build_tone(
+        self,
+        frequency: float,
+        duration_ms: int,
+        *,
+        volume: float = 0.5,
+    ) -> Optional[pygame.mixer.Sound]:
+        init_info = pygame.mixer.get_init()
+        if not init_info:
+            return None
+        sample_rate, sample_size, channels = init_info
+        if abs(sample_size) != 16:
+            return None
+
+        total_samples = max(1, int(sample_rate * (duration_ms / 1000.0)))
+        amplitude = (2**15) - 1
+        waveform: List[int] = []
+        for index in range(total_samples):
+            theta = 2.0 * math.pi * frequency * (index / sample_rate)
+            sample_value = int(amplitude * math.sin(theta))
+            if sample_size > 0:
+                sample_value += amplitude
+            waveform.append(sample_value)
+
+        mono_samples = array("h", waveform)
+        if channels == 2:
+            stereo_samples = array("h")
+            for value in mono_samples:
+                stereo_samples.append(value)
+                stereo_samples.append(value)
+            buffer = stereo_samples.tobytes()
+        else:
+            buffer = mono_samples.tobytes()
+
+        try:
+            sound = pygame.mixer.Sound(buffer=buffer)
+        except pygame.error:
+            return None
+        sound.set_volume(max(0.0, min(volume, 1.0)))
+        return sound
+
+    def _load_button_icon(self, filename: str, max_size: Tuple[int, int]) -> Optional[pygame.Surface]:
+        path = BUTTON_ICON_DIR / filename
+        if not path.exists():
+            return None
+        try:
+            surface = pygame.image.load(str(path)).convert_alpha()
+        except pygame.error:
+            return None
+        return self._scale_surface(surface, max_size)
+
+    def _load_button_icon_pair(
+        self, filename: str, max_size: Tuple[int, int]
+    ) -> Tuple[Optional[pygame.Surface], Optional[pygame.Surface]]:
+        icon = self._load_button_icon(filename, max_size)
+        if icon is None:
+            return None, None
+        disabled = icon.copy()
+        disabled.fill((180, 180, 180, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        disabled.set_alpha(150)
+        return icon, disabled
+
+    @staticmethod
+    def _play_sound(sound: Optional[pygame.mixer.Sound]) -> None:
+        if not sound:
+            return
+        try:
+            sound.play()
+        except pygame.error:
+            pass
 
     @staticmethod
     def _scale_surface(surface: pygame.Surface, max_size: Tuple[int, int]) -> pygame.Surface:
@@ -633,10 +728,30 @@ class PygameSecretRecipeGame:
             border_radius=16,
         )
 
-        cook_color = ACCENT_COLOR if self.hand_active and self.selected_indices else CARD_DISABLED_COLOR
+        cook_enabled = bool(self.hand_active and self.selected_indices)
+        cook_color = ACCENT_COLOR if cook_enabled else CARD_DISABLED_COLOR
         pygame.draw.rect(self.screen, cook_color, self.cook_button, border_radius=10)
+
         label = self.font_medium.render("Cook", True, (20, 20, 20))
-        self.screen.blit(label, label.get_rect(center=self.cook_button.center))
+        icon_surface = (
+            self.cook_icon_enabled
+            if cook_enabled
+            else self.cook_icon_disabled or self.cook_icon_enabled
+        )
+        content_width = label.get_width()
+        if icon_surface:
+            content_width += icon_surface.get_width() + 12
+        start_x = self.cook_button.centerx - content_width // 2
+        if icon_surface:
+            icon_rect = icon_surface.get_rect()
+            icon_rect.centery = self.cook_button.centery
+            icon_rect.x = start_x
+            self.screen.blit(icon_surface, icon_rect)
+            start_x = icon_rect.right + 12
+        label_rect = label.get_rect()
+        label_rect.centery = self.cook_button.centery
+        label_rect.x = start_x
+        self.screen.blit(label, label_rect)
 
         status_top = self.cook_button.bottom + 24
         status_rect = pygame.Rect(
@@ -697,7 +812,25 @@ class PygameSecretRecipeGame:
         button_color = ACCENT_COLOR if has_cookbook else CARD_DISABLED_COLOR
         pygame.draw.rect(self.screen, button_color, button_rect, border_radius=12)
         cookbook_label = self.font_small.render("Cookbook", True, (20, 20, 20))
-        self.screen.blit(cookbook_label, cookbook_label.get_rect(center=button_rect.center))
+        cookbook_icon = (
+            self.cookbook_icon_enabled
+            if has_cookbook
+            else self.cookbook_icon_disabled or self.cookbook_icon_enabled
+        )
+        content_width = cookbook_label.get_width()
+        if cookbook_icon:
+            content_width += cookbook_icon.get_width() + 10
+        start_x = button_rect.centerx - content_width // 2
+        if cookbook_icon:
+            icon_rect = cookbook_icon.get_rect()
+            icon_rect.centery = button_rect.centery
+            icon_rect.x = start_x
+            self.screen.blit(cookbook_icon, icon_rect)
+            start_x = icon_rect.right + 10
+        label_rect = cookbook_label.get_rect()
+        label_rect.centery = button_rect.centery
+        label_rect.x = start_x
+        self.screen.blit(cookbook_label, label_rect)
 
         info_y = panel_rect.y + title_surface.get_height() + 24
         points_surface = self.font_small.render(
@@ -840,41 +973,140 @@ class PygameSecretRecipeGame:
         )
 
         line_y = content_rect.y
-        line_height = self.font_small.get_linesize()
+        ingredient_tile_size = (48, 48)
+        icon_spacing = 12
+        content_height_limit = content_rect.bottom
         for summary in self.round_summaries:
             header = self.font_medium.render(
                 f"Round {summary['round']} - {summary['total_points']} points", True, TEXT_COLOR
             )
             self.screen.blit(header, (content_rect.x, line_y))
-            line_y += self.font_medium.get_linesize()
+            line_y += self.font_medium.get_linesize() + 10
 
             for entry in summary["recipes"]:
                 recipe: Recipe = entry["recipe"]
                 recipe_name = recipe.display_name or recipe.name
-                recipe_header = self.font_small.render(
+                recipe_icon = self._scale_surface(
+                    self._recipe_image_surface(recipe),
+                    (min(96, ingredient_tile_size[0] * 2), min(96, ingredient_tile_size[1] * 2)),
+                )
+                recipe_icon_width, recipe_icon_height = recipe_icon.get_size()
+                text_area_width = content_rect.width - recipe_icon_width - 56
+                ingredient_names = [self._display_name(name) for name in recipe.trio]
+                ingredient_text = ", ".join(ingredient_names)
+                text_width_estimate = max(40, text_area_width)
+                ingredient_lines = self._wrap_text(
+                    ingredient_text, self.font_xsmall, max(60, text_width_estimate)
+                )
+                if ingredient_names:
+                    available_width = max(ingredient_tile_size[0], text_width_estimate)
+                    icons_per_row = max(
+                        1,
+                        (available_width + icon_spacing)
+                        // (ingredient_tile_size[0] + icon_spacing),
+                    )
+                    icon_rows = math.ceil(len(ingredient_names) / icons_per_row)
+                    icons_height = (
+                        icon_rows * ingredient_tile_size[1]
+                        + max(0, icon_rows - 1) * icon_spacing
+                    )
+                else:
+                    icons_height = 0
+                detail_text_height = len(ingredient_lines) * self.font_xsmall.get_linesize()
+                block_height = max(
+                    recipe_icon_height + 32,
+                    16
+                    + self.font_small.get_linesize()
+                    + (12 if icons_height else 0)
+                    + icons_height
+                    + (8 if ingredient_lines else 0)
+                    + detail_text_height
+                    + 16,
+                )
+                block_rect = pygame.Rect(content_rect.x, line_y, content_rect.width, block_height)
+                if block_rect.bottom > content_height_limit:
+                    line_y = content_height_limit
+                    break
+
+                pygame.draw.rect(
+                    self.screen,
+                    (58, 66, 84),
+                    block_rect,
+                    border_radius=14,
+                )
+                pygame.draw.rect(
+                    self.screen,
+                    SUMMARY_ENTRY_BORDER_COLOR,
+                    block_rect,
+                    width=1,
+                    border_radius=14,
+                )
+
+                icon_rect = recipe_icon.get_rect()
+                icon_rect.left = block_rect.x + 16
+                icon_rect.centery = block_rect.centery
+                self.screen.blit(recipe_icon, icon_rect)
+
+                text_x = icon_rect.right + 20
+                text_width = max(40, block_rect.right - text_x - 20)
+                header_surface = self.font_small.render(
                     f"• {recipe_name} (+{entry['points']} pts)", True, TEXT_COLOR
                 )
-                self.screen.blit(recipe_header, (content_rect.x + 10, line_y))
-                line_y += line_height
-
-                ingredients_text = ", ".join(entry["ingredients"])
-                ingredient_lines = self._wrap_text(
-                    ingredients_text, self.font_xsmall, content_rect.width - 40
-                )
-                for ingredient_line in ingredient_lines:
-                    line_surface = self.font_xsmall.render(
-                        ingredient_line, True, TEXT_MUTED_COLOR
+                header_rect = header_surface.get_rect()
+                header_rect.topleft = (text_x, block_rect.y + 16)
+                if header_rect.width > text_width:
+                    header_surface = self.font_xsmall.render(
+                        f"• {recipe_name} (+{entry['points']} pts)", True, TEXT_COLOR
                     )
-                    self.screen.blit(
-                        line_surface,
-                        (content_rect.x + 36, line_y),
-                    )
-                    line_y += self.font_xsmall.get_linesize()
-                line_y += 6
+                    header_rect = header_surface.get_rect()
+                    header_rect.topleft = (text_x, block_rect.y + 16)
+                self.screen.blit(header_surface, header_rect)
 
-            line_y += 12
-            if line_y > content_rect.bottom - line_height:
+                icon_start_y = header_rect.bottom + (12 if icons_height else 0)
+                icon_y = icon_start_y
+                icon_x = text_x
+                items_in_row = 0
+                for ingredient_name in ingredient_names:
+                    ingredient_surface = self._scale_surface(
+                        self._ingredient_image_surface(ingredient_name),
+                        ingredient_tile_size,
+                    )
+                    if (
+                        items_in_row
+                        and icon_x + ingredient_tile_size[0] > text_x + text_width
+                    ):
+                        icon_x = text_x
+                        icon_y += ingredient_tile_size[1] + icon_spacing
+                        items_in_row = 0
+                    tile_rect = pygame.Rect(
+                        icon_x,
+                        icon_y,
+                        ingredient_tile_size[0],
+                        ingredient_tile_size[1],
+                    )
+                    pygame.draw.rect(
+                        self.screen,
+                        CARD_COLOR,
+                        tile_rect,
+                        border_radius=10,
+                    )
+                    image_rect = ingredient_surface.get_rect(center=tile_rect.center)
+                    self.screen.blit(ingredient_surface, image_rect)
+                    icon_x += ingredient_tile_size[0] + icon_spacing
+                    items_in_row += 1
+
+                detail_y = icon_start_y + (icons_height + 8 if icons_height else 0)
+                for line in ingredient_lines:
+                    line_surface = self.font_xsmall.render(line, True, TEXT_MUTED_COLOR)
+                    self.screen.blit(line_surface, (text_x, detail_y))
+                    detail_y += self.font_xsmall.get_linesize()
+
+                line_y += block_height + 16
+
+            if line_y >= content_height_limit:
                 break
+
+            line_y += 8
 
         footer = self.font_small.render(
             "Click anywhere to close the cookbook", True, TEXT_COLOR

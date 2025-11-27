@@ -110,29 +110,29 @@ class PygameSecretRecipeGame:
         )
 
         # Initialized in _reset_game_state
-        self.round: int
-        self.total_points: int
-        self.round_summaries: List[Dict[str, Any]]
-        self.cookbook_records: Dict[str, Dict[str, Any]]
-        self.cookbook_visible: bool
-        self.pending_recipes: List[Recipe]
-        self.current_recipe: Optional[Recipe]
-        self.current_trio: Set[str]
-        self.current_hand: List[str]
-        self.hand_size: int
+        self.round = 1
+        self.total_points = 0
+        self.round_summaries: List[Dict[str, Any]] = []
+        self.cookbook_records: Dict[str, Dict[str, Any]] = {}
+        self.cookbook_visible = False
+        self.pending_recipes: List[Recipe] = []
+        self.current_recipe: Optional[Recipe] = None
+        self.current_trio: Set[str] = set()
+        self.current_hand: List[str] = []
+        self.hand_size = HAND_SIZE
         self.max_hand_size = MAX_HAND_SIZE
-        self.recipe_slots: List[Optional[int]]
-        self.card_to_slot: Dict[int, int]
+        self.recipe_slots: List[Optional[int]] = []
+        self.card_to_slot: Dict[int, int] = {}
         self.summary_rect = pygame.Rect(0, 0, 0, 0)
-        self.hand_active: bool
-        self.selected_indices: Set[int]
-        self.attempts: int
-        self.start_time: float
-        self.finish_time: Optional[float]
-        self.status_message: str
-        self.target_message: str
-        self.waiting_for_next_round: bool
-        self.found_recipes: List[Optional[Recipe]]
+        self.hand_active = False
+        self.selected_indices: Set[int] = set()
+        self.attempts = 0
+        self.start_time = time.perf_counter()
+        self.finish_time: Optional[float] = None
+        self.status_message = ""
+        self.target_message = ""
+        self.waiting_for_next_round = False
+        self.found_recipes: List[Optional[Recipe]] = []
         self.card_rects: List[pygame.Rect] = []
         self.controls_rect = pygame.Rect(0, 0, 0, 0)
         self.cook_button = pygame.Rect(0, 0, 0, 0)

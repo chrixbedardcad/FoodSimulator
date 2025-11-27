@@ -67,7 +67,10 @@ class PygameSecretRecipeGame:
     def __init__(self) -> None:
         pygame.init()
         pygame.display.set_caption("Secret Recipe Hunt - Pygame Edition")
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # self.window is the actual display window (resizable)
+        self.window = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+        # self.screen is the logical surface we draw to (fixed resolution)
+        self.screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.clock = pygame.time.Clock()
 
         self.font_large = pygame.font.SysFont("Segoe UI", 32, bold=True)
@@ -203,6 +206,12 @@ class PygameSecretRecipeGame:
         self._prepare_new_round()
         self._start_next_round()
 
+    def _scale_pos(self, pos: Tuple[int, int]) -> Tuple[int, int]:
+        """Convert window coordinates to logical screen coordinates."""
+        win_w, win_h = self.window.get_size()
+        x, y = pos
+        return (int(x * SCREEN_WIDTH / win_w), int(y * SCREEN_HEIGHT / win_h))
+
     # --- Game flow -----------------------------------------------------------
     def run(self) -> None:
         running = True
@@ -217,12 +226,14 @@ class PygameSecretRecipeGame:
                     elif event.key == pygame.K_r and self.finish_time is not None:
                         self._reset_game_state()
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    self._handle_click(event.pos)
+                    self._handle_click(self._scale_pos(event.pos))
                 elif event.type == NEXT_ROUND_EVENT:
                     self.waiting_for_next_round = False
                     self._start_next_round()
 
             self._draw()
+            # Scale the logical screen to fit the current window
+            pygame.transform.scale(self.screen, self.window.get_size(), self.window)
             pygame.display.flip()
 
         pygame.quit()

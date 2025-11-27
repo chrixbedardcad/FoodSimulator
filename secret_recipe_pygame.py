@@ -23,18 +23,18 @@ RECIPES_TO_FIND = 3
 CARD_COLUMNS = 6
 CARD_ROWS = 4
 MAX_HAND_SIZE = CARD_COLUMNS * CARD_ROWS
-CARD_WIDTH = 150
-CARD_HEIGHT = 112
+CARD_WIDTH = 140
+CARD_HEIGHT = 100
 CARD_PADDING_X = 18
 CARD_PADDING_Y = 18
 CARD_LEFT_MARGIN = 60
-SUMMARY_PANEL_HEIGHT = 240
-SUMMARY_PANEL_HEADER_GAP = 20
-SUMMARY_TO_CARDS_GAP = 36
+SUMMARY_PANEL_HEIGHT = 210
+SUMMARY_PANEL_HEADER_GAP = 10
+SUMMARY_TO_CARDS_GAP = 20
 CONTROLS_GAP = 40
 CONTROLS_RIGHT_MARGIN = 40
 SCREEN_WIDTH = 1360
-SCREEN_HEIGHT = 900
+SCREEN_HEIGHT = 860
 BACKGROUND_COLOR = (26, 30, 41)
 PANEL_COLOR = (38, 45, 60)
 CARD_COLOR = (233, 233, 240)
@@ -67,7 +67,10 @@ class PygameSecretRecipeGame:
     def __init__(self) -> None:
         pygame.init()
         pygame.display.set_caption("Secret Recipe Hunt - Pygame Edition")
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # self.window is the actual display window (resizable)
+        self.window = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+        # self.screen is the logical surface we draw to (fixed resolution)
+        self.screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.clock = pygame.time.Clock()
 
         self.font_large = pygame.font.SysFont("Segoe UI", 32, bold=True)
@@ -87,19 +90,7 @@ class PygameSecretRecipeGame:
         self.data = GameData.from_json()
         self.rng = random.Random()
         self.recipes_per_round = RECIPES_TO_FIND
-        self.round = 1
-        self.total_points = 0
-        self.round_summaries: List[Dict[str, Any]] = []
-        self.cookbook_records: Dict[str, Dict[str, Any]] = {}
-        self.cookbook_visible = False
-        self.pending_recipes: List[Recipe] = []
-        self.current_recipe: Optional[Recipe] = None
-        self.current_trio: Set[str] = set()
-        self.current_hand: List[str] = []
-        self.hand_size = HAND_SIZE
-        self.max_hand_size = MAX_HAND_SIZE
-        self.recipe_slots: List[Optional[int]] = []
-        self.card_to_slot: Dict[int, int] = {}
+
         self.card_columns = CARD_COLUMNS
         self.card_rows = CARD_ROWS
         self.card_width = CARD_WIDTH
@@ -120,17 +111,31 @@ class PygameSecretRecipeGame:
             self.card_rows * self.card_height
             + (self.card_rows - 1) * self.card_padding_y
         )
+
+        # Initialized in _reset_game_state
+        self.round = 1
+        self.total_points = 0
+        self.round_summaries: List[Dict[str, Any]] = []
+        self.cookbook_records: Dict[str, Dict[str, Any]] = {}
+        self.cookbook_visible = False
+        self.pending_recipes: List[Recipe] = []
+        self.current_recipe: Optional[Recipe] = None
+        self.current_trio: Set[str] = set()
+        self.current_hand: List[str] = []
+        self.hand_size = HAND_SIZE
+        self.max_hand_size = MAX_HAND_SIZE
+        self.recipe_slots: List[Optional[int]] = []
+        self.card_to_slot: Dict[int, int] = {}
         self.summary_rect = pygame.Rect(0, 0, 0, 0)
         self.hand_active = False
         self.selected_indices: Set[int] = set()
         self.attempts = 0
         self.start_time = time.perf_counter()
         self.finish_time: Optional[float] = None
-        self.status_message = "Select ingredients and press Cook!"
-        self.target_message = "Find this recipe: ???"
+        self.status_message = ""
+        self.target_message = ""
         self.waiting_for_next_round = False
-
-        self.found_recipes: List[Optional[Recipe]] = [None] * self.recipes_per_round
+        self.found_recipes: List[Optional[Recipe]] = []
         self.card_rects: List[pygame.Rect] = []
         self.controls_rect = pygame.Rect(0, 0, 0, 0)
         self.cook_button = pygame.Rect(0, 0, 0, 0)
@@ -170,11 +175,42 @@ class PygameSecretRecipeGame:
         ) = self._load_button_icon_pair("cookbook.png", (40, 40))
 
         self.cookbook_button_rect: Optional[pygame.Rect] = None
+
+        self._reset_game_state()
+
+    def _reset_game_state(self) -> None:
+        self.round = 1
+        self.total_points = 0
+        self.round_summaries.clear()
+        self.cookbook_records.clear()
+        self.cookbook_visible = False
+        self.pending_recipes = []
+        self.current_recipe = None
+        self.current_trio = set()
+        self.current_hand = []
+        self.hand_size = HAND_SIZE
+        self.recipe_slots = []
+        self.card_to_slot = {}
+        self.hand_active = False
+        self.selected_indices = set()
+        self.attempts = 0
+        self.start_time = time.perf_counter()
+        self.finish_time = None
+        self.status_message = "Select ingredients and press Cook!"
+        self.target_message = "Find this recipe: ???"
+        self.waiting_for_next_round = False
+        self.found_recipes = [None] * self.recipes_per_round
         self.active_card_rows = 0
 
         self._recompute_layout()
         self._prepare_new_round()
         self._start_next_round()
+
+    def _scale_pos(self, pos: Tuple[int, int]) -> Tuple[int, int]:
+        """Convert window coordinates to logical screen coordinates."""
+        win_w, win_h = self.window.get_size()
+        x, y = pos
+        return (int(x * SCREEN_WIDTH / win_w), int(y * SCREEN_HEIGHT / win_h))
 
     # --- Game flow -----------------------------------------------------------
     def run(self) -> None:
@@ -184,15 +220,22 @@ class PygameSecretRecipeGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    running = False
+                elif event.type == pygame.VIDEORESIZE:
+                    self.window = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        running = False
+                    elif event.key == pygame.K_r and self.finish_time is not None:
+                        self._reset_game_state()
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    self._handle_click(event.pos)
+                    self._handle_click(self._scale_pos(event.pos))
                 elif event.type == NEXT_ROUND_EVENT:
                     self.waiting_for_next_round = False
                     self._start_next_round()
 
             self._draw()
+            # Scale the logical screen to fit the current window
+            pygame.transform.scale(self.screen, self.window.get_size(), self.window)
             pygame.display.flip()
 
         pygame.quit()
@@ -1090,7 +1133,7 @@ class PygameSecretRecipeGame:
             timer = self.font_medium.render(f"Time: {minutes:02d}:{seconds:02d}", True, TEXT_COLOR)
             self.screen.blit(timer, timer.get_rect(center=(panel.centerx, panel.y + 160)))
 
-        prompt = self.font_small.render("Press ESC or close the window to exit", True, TEXT_COLOR)
+        prompt = self.font_small.render("Press R to Restart • ESC to Exit", True, TEXT_COLOR)
         self.screen.blit(prompt, prompt.get_rect(center=(panel.centerx, panel.y + 210)))
 
     def _draw_version(self) -> None:
